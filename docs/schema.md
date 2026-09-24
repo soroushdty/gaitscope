@@ -55,7 +55,7 @@ automatically, with a warning, because that is almost always a transposed record
 | Role | How it is found |
 |---|---|
 | **Time** | CSV: a header named `time`, `t`, `elapsed`, `timestamp`. MAT or headerless CSV: the first column, if it increases in more than 95% of steps and never decreases. Shifted to start at 0. Values that look like milliseconds are converted to seconds. Physics Toolbox clock times (`13:05:10:006`) are converted to elapsed seconds. |
-| **x, y, z** | CSV: Physics Toolbox names (`gFx`, `ax`, `wx`, …) or `x`, `acc_x`, …; MAT: the three columns after time. |
+| **x, y, z** | CSV: Physics Toolbox names (`gFx`, `ax`, `wx`, …) or `x`, `acc_x`, …, optionally followed by a unit in brackets (`ax (m/s^2)`); MAT: the three columns after time. |
 | **Magnitude** | CSV: `TgF`, `aT`, `total`, `magnitude`, …; MAT: a column that equals √(x²+y²+z²) within rounding. |
 | **Other** | Kept with generic names and still selectable. |
 

@@ -92,6 +92,14 @@ def main():
         for r, g in zip(W, zip(gx, gy, gz)):
             f.write(f"{r[0]:.4f},{g[0]:.3f},{g[1]:.3f},{g[2]:.3f},{np.linalg.norm(g):.3f},,,\n")
             f.write(f"{r[0] + 0.002:.4f},,,,,{r[2] * 0.1:.3f},{r[1] * 0.1:.3f},{r[3] * 0.1:.3f}\n")
+    # newer Physics Toolbox layout: '#' metadata lines (with ';' inside) and units in headers
+    with open(p("ptb_metadata_units.csv"), "w") as f:
+        f.write("# sensor:linear_accelerometer\n# Requested Sample Rate: 50 Hz\n"
+                "# Inertial correction: sensor=linear_acceleration; operation=add; unit=m/s^2; x=0.0; y=0.0; z=0.0\n"
+                "# Recording started at: 2026-09-23 16:53:10.681\n"
+                "time,ax (m/s^2),ay (m/s^2),az (m/s^2),aT (m/s^2)\n")
+        for r in W:
+            f.write(f"{r[0]:.6f}," + ",".join(f"{v:.4f}" for v in r[1:]) + "\n")
     np.savetxt(p("plain_noheader.csv"), W, delimiter=",", fmt="%.5f")
     with open(p("bad_backwards_time.csv"), "w") as f:
         f.write("time,ax\n")
