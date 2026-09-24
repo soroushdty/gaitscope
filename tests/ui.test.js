@@ -40,6 +40,9 @@ test('loads a MAT file, compares versions, edits and exports', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   assert.match(text(pg, 'valTitle'), /^Valid/);
+  assert.equal(pg.d.getElementById('valList').hidden, true, 'checks start collapsed when the file is valid');
+  pg.d.getElementById('valToggle').click();
+  assert.equal(pg.d.getElementById('valList').hidden, false, 'and open on click');
   assert.equal(pg.d.getElementById('analysis').hidden, false);
   assert.equal(pg.d.getElementById('chanSel').value, '1', 'defaults to column 2 like the lab code');
   const last = pg.plots.at(-1);
@@ -72,6 +75,7 @@ test('shows a fix for an unreadable file', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'bad_v73.mat'));
   assert.match(text(pg, 'valTitle'), /can’t be analysed/);
+  assert.equal(pg.d.getElementById('valList').hidden, false, 'errors are always shown');
   assert.equal(pg.d.getElementById('analysis').hidden, true);
   assert.match(text(pg, 'valList'), /save\('myfile\.mat','-v7'\)/);
 });

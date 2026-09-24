@@ -304,7 +304,8 @@
     const pt = $('passToggle');
     if (pt) pt.addEventListener('click', () => { showPass = !showPass; renderValidation(lastExtra); });
     lastExtra = extra;
-    const expand = valOpenedByUser !== null ? valOpenedByUser : true;
+    // collapsed to its one-line summary unless the file can't be analysed
+    const expand = e > 0 || (valOpenedByUser !== null ? valOpenedByUser : false);
     setValOpen(expand);
   }
   function codeify(s) { return esc(s).replace(/([A-Za-z_][\w.]*\([^)]*\);?(?:\s*save\([^)]*\);?)?)/g, '<code>$1</code>'); }
