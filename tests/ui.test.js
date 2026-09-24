@@ -53,12 +53,14 @@ test('loads a MAT file, compares versions, edits and exports', async () => {
   assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' fixed, ' + lab + ' lab code'));
 
   // remove one fixed step, add one, undo
+  assert.equal(pg.d.getElementById('legAdded').hidden, true, 'edit legend hidden until editing');
   pg.d.getElementById('editMode').checked = true;
   pg.d.getElementById('editMode').dispatchEvent(new pg.w.Event('change'));
   const cd = pg.plots.at(-1).traces[2].customdata[2];
   pg.d.getElementById('plot')._click({ points: [{ curveNumber: 2, customdata: cd }] });
   await sleep(20);
   assert.equal(text(pg, 'editCount'), '1 removed');
+  assert.equal(pg.d.getElementById('legRemoved').hidden, false);
   pg.d.getElementById('plot')._click({ points: [{ curveNumber: 0, pointIndex: 5 }] });
   await sleep(20);
   assert.equal(text(pg, 'editCount'), '1 added, 1 removed');
