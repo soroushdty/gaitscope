@@ -19,6 +19,9 @@ behaviour when it matters.
 
 ## Hard rules
 
+- **Never commit or push to `main`.** Every change goes new branch → atomic commits →
+  PR → Rebase and merge, as described in `CONTRIBUTING.md`. Each commit must pass both
+  test suites on its own.
 - **The "original" algorithm must stay bit-exact with MATLAB.** This covers
   `detect_steps`/`gait_metrics` in Python and `detectOriginal`/`originalMetrics` in
   JS. That includes its quirks: 1-based indices in the output, loop bounds
