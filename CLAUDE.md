@@ -26,8 +26,9 @@ behaviour when it matters.
   `detect_steps`/`gait_metrics` in Python and `detectOriginal`/`originalMetrics` in
   JS. That includes its quirks: 1-based indices in the output, loop bounds
   `w+1 … length-w`, `/100` for seconds, the `Pace = duration*60` formula, and
-  N−1 `std`. Improvements go into the *fixed* version only (`detectFixed`,
-  `fixedMetrics`).
+  N−1 `std`. Improvements go into our own algorithms, never into the original. Each
+  one is an entry in `ALGORITHMS` in `src/core.js`; the first is **Coza** (`detectCoza`,
+  `cozaMetrics`), the lab detector with its bugs fixed.
 - **`src/core.js` has no DOM access.** It is shared by the browser and by the
   Node tests (UMD-style export at the bottom).
 - **Never commit course files.** `data/` is git-ignored except its README. Test
@@ -95,6 +96,6 @@ unless the course file is present in `data/`.
 
 | File | Key parts |
 |---|---|
-| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `detectFixed`, `fixedMetrics`, `demoWalk` |
+| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `detectCoza`, `cozaMetrics`, `ALGORITHMS` (algorithm registry), `demoWalk` |
 | `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (trace order matters for click handling: 0 signal, 1 lab markers, 2 fixed, 3 added, 4 removed, 5–6 interval strip), edits, export |
 | `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, CLI |

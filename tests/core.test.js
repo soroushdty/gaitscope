@@ -72,7 +72,7 @@ test('fixed version removes tied duplicates and the stop artefact', () => {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
   const ch = C.prepareChannel(ds, 1);
   const orig = C.detectOriginal(ch.A, 30, 1);
-  const noTies = C.detectFixed(ch.A, 30, 1, { ties: true, weak: false });
+  const noTies = C.detectCoza(ch.A, 30, 1, { ties: true, weak: false });
   const d = noTies.idx.slice(1).map((v, k) => v - noTies.idx[k]);
   assert.ok(d.every(v => v > 30), 'no two fixed steps inside one window');
   assert.ok(noTies.idx.length < orig.length, 'tie fix removes duplicates');
@@ -94,9 +94,9 @@ test('windowExtreme matches a brute-force sliding max/min', () => {
 test('fixed metrics use timestamps and report cadence', () => {
   const t = Float64Array.from({ length: 1000 }, (_, i) => i * 0.02); // 50 Hz
   const idx = [0, 25, 50, 75, 100]; // every 0.5 s
-  const m = C.fixedMetrics(idx, t, { stride: false });
+  const m = C.cozaMetrics(idx, t, { stride: false });
   assert.ok(close(m.stepInterval, 0.5)); assert.ok(close(m.cadence, 120));
-  const s = C.fixedMetrics(idx, t, { stride: true });
+  const s = C.cozaMetrics(idx, t, { stride: true });
   assert.equal(s.steps, 10); assert.ok(close(s.cadence, 240)); assert.ok(Number.isNaN(s.asymmetry));
 });
 
