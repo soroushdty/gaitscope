@@ -71,15 +71,6 @@
         <small>A click on the signal adds the step at the highest point within 0.15 s.</small></label>
       </details>
     </section>
-
-    <section id="exportSec">
-      <h2>Export</h2>
-      <div class="stack">
-        <button class="btn" id="expSteps" type="button" disabled>Export steps (CSV)</button>
-        <button class="btn" id="expMetrics" type="button" disabled>Export metrics (CSV)</button>
-      </div>
-      <p class="hint" id="exportNote">Steps include both versions and why each was kept or dropped.</p>
-    </section>
   </aside>
 
   <main>
@@ -130,7 +121,13 @@
 
         <div class="results">
           <section class="card">
-            <h2>Metrics</h2>
+            <div class="card-head">
+              <h2>Metrics</h2>
+              <div class="stack">
+                <button class="btn" id="expMetrics" type="button" disabled title="Metrics from both versions, plus the settings used">Export metrics (CSV)</button>
+                <button class="btn" id="expSteps" type="button" disabled title="Every step from both versions, and why each was kept or dropped">Export steps (CSV)</button>
+              </div>
+            </div>
             <table class="metrics" id="metricsTable"></table>
             <p class="note">The lab code column reproduces LabStepDet_2025.m exactly, including its 100 Hz assumption and its Pace formula. It was checked against MATLAB's output (via Octave) on Walking.mat.</p>
           </section>
