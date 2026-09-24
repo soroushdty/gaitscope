@@ -262,7 +262,7 @@
     }
     if (finalIdx.length >= 3 && !p.stride) {
       const iv = S.res.fixedM.stepInterval;
-      if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Peaks may be strides', detail: 'Peaks are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; turn on "Each peak is a stride".' });
+      if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Peaks may be strides', detail: 'Peaks are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; turn on "Each peak is a stride" under Advanced.' });
     }
     return out;
   }

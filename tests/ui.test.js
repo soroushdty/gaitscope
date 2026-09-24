@@ -44,6 +44,8 @@ test('loads a MAT file, compares versions, edits and exports', async () => {
   pg.d.getElementById('valToggle').click();
   assert.equal(pg.d.getElementById('valList').hidden, false, 'and open on click');
   assert.equal(pg.d.getElementById('analysis').hidden, false);
+  assert.equal(pg.d.getElementById('advDetails').open, false, 'advanced options start closed');
+  assert.equal(pg.d.getElementById('snap').checked, true);
   assert.equal(pg.d.getElementById('chanSel').value, '1', 'defaults to column 2 like the lab code');
   const last = pg.plots.at(-1);
   const lab = last.traces[1].x.length, fixed = last.traces[2].x.length;
