@@ -425,6 +425,8 @@
     const on = $('editMode').checked && !!S.ch;
     $('editBanner').hidden = !on;
     $('plotCard').classList.toggle('editing', on);
+    // the edit markers only need a legend entry once they can appear
+    $('legAdded').hidden = !(on || a); $('legRemoved').hidden = !(on || r);
   }
 
   /* ------------------------------------------------------------ tables */
