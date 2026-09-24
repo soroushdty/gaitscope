@@ -99,7 +99,7 @@ without any error.
 | Missing values, no time column, ≤ 1% | warn, interpolated | Dropping rows would shift the timing. |
 | Missing values, no time column, > 1% | error | Too many to fill in honestly. |
 | Constant signal | error | No peaks exist. |
-| Runs at the extreme value | warn | Possible sensor clipping. |
+| Runs at the extreme value lasting ≥ 3 samples and ≥ 20 ms | warn | Possible sensor clipping. The 20 ms floor stops values rounded to 0.01 from triggering it at high sampling rates. |
 | Recording shorter than 3 s | warn | Too few steps for meaningful metrics. |
 | Non-acceleration sensor | warn | Peaks may exist, but `h = 1` has no physical meaning. |
 

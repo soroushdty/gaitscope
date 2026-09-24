@@ -590,9 +590,15 @@
     // saturation: long runs at the extreme values
     let mx = -Infinity, mn = Infinity;
     for (const v of A) { if (v > mx) mx = v; if (v < mn) mn = v; }
-    let sat = 0;
-    for (let i = 2; i < A.length; i++) if ((A[i] === mx || A[i] === mn) && A[i] === A[i - 1] && A[i] === A[i - 2]) sat++;
-    if (sat) checks.push({ level: 'warn', title: 'Possible sensor clipping', detail: 'The signal sits at its extreme value (' + fmt(A[0] === mx ? mx : mx, 2) + ' or ' + fmt(mn, 2) + ') for several samples in a row. Peaks there may be cut off.' });
+    // A run counts if it lasts at least 3 samples and 20 ms: at high rates, values rounded
+    // to 0.01 repeat for a few samples at any smooth peak without the sensor saturating.
+    const minRun = Math.max(3, Math.ceil(0.02 * fs));
+    let sat = false;
+    for (let i = 0, run = 0; i < A.length && !sat; i++) {
+      run = (A[i] === mx || A[i] === mn) && i > 0 && A[i] === A[i - 1] ? run + 1 : 1;
+      if (run >= minRun) sat = true;
+    }
+    if (sat) checks.push({ level: 'warn', title: 'Possible sensor clipping', detail: 'The signal sits at its extreme value (' + fmt(mx, 2) + ' or ' + fmt(mn, 2) + ') for ' + minRun + ' or more samples in a row. Peaks there may be cut off.' });
     const dur = t[t.length - 1] - t[0];
     if (dur < 3) checks.push({ level: 'warn', title: 'Short recording', detail: 'Only ' + fmt(dur, 1) + ' s long; step metrics need several steps to be meaningful.' });
     return { A, t, fs, checks, fatal: false, min: mn, max: mx };

@@ -182,6 +182,17 @@ test('newer export with # metadata lines and units in the headers', () => {
   const ref = loadMatDataset(path.join(FIX, 'walk.mat')).ds;
   assert.deepEqual(C.detectOriginal(C.prepareChannel(ds, 1).A, 30, 1), C.detectOriginal(C.prepareChannel(ref, 1).A, 30, 1));
 });
+test('clipping: rounding plateaus at high rates are ignored, long plateaus are flagged', () => {
+  const n = 4600, fs = 460;
+  const t = Array.from({ length: n }, (_, i) => i / fs);
+  // same peak held for 3 samples (6.5 ms, like TgF rounding at 460 Hz) vs 15 samples (33 ms)
+  const plateau = len => t.map((v, i) => (i >= 2000 && i < 2000 + len ? 1.5 : 1 + 0.4 * Math.sin(2 * Math.PI * v)));
+  const smooth = plateau(3), clipped = plateau(15);
+  const check = sig => C.prepareChannel(C.buildDataset(['time', 'ax'], [Float64Array.from(t), Float64Array.from(sig)], 'csv'), 1)
+    .checks.some(c => /clipping/.test(c.title));
+  assert.equal(check(smooth), false);
+  assert.equal(check(clipped), true);
+});
 test('clock-time export is converted to elapsed seconds', () => {
   const { p, ds } = loadCsvDataset(path.join(FIX, 'ptb_clock_time.csv'));
   assert.equal(p.clockTime, true);
