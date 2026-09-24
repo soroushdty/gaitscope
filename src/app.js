@@ -471,7 +471,7 @@
     const { A, t } = S.ch;
     const rows = stepRows();
     const nF = S.res.finalIdx.length;
-    $('stepsTitle').textContent = 'Steps (' + nF + ' fixed, ' + S.res.origIdx.length + ' lab code)';
+    $('stepsTitle').textContent = 'All steps (' + nF + ' fixed, ' + S.res.origIdx.length + ' lab code)';
     const shown = rows.slice(0, 1500);
     $('stepsTable').innerHTML = '<thead><tr><th class="num">Time (s)</th><th class="num">Sample</th><th class="num">Value</th><th>Lab code</th><th>Fixed</th></tr></thead><tbody>' +
       shown.map(r => '<tr class="' + (r.inF ? (r.why === 'added by you' ? 'manual' : '') : 'only-orig') + '"><td class="num">' + fmt(t[r.i], 3) + '</td><td class="num">' + (r.i + 1) + '</td><td class="num">' + fmt(A[r.i], 2) + '</td><td>' + (r.inO ? 'yes' : '—') + '</td><td>' + (r.inF ? (r.why === 'kept' ? 'yes' : r.why) : 'dropped: ' + r.why) + '</td></tr>').join('') +
