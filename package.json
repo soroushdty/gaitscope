@@ -5,7 +5,7 @@
   "description": "Browser dashboard and Python port for the Wearable Devices Lab 1 step detector",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "fixtures": "python3 scripts/make_fixtures.py",
+    "fixtures": "uv run --locked python scripts/make_fixtures.py",
     "serve": "python3 -m http.server 8000"
   },
   "engines": { "node": ">=18" },
