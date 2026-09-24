@@ -67,6 +67,16 @@ input[type=range] { width: 100%; margin: 6px 0 0; accent-color: var(--signal); }
 .check input { margin: 3px 0 0; accent-color: var(--fixed); }
 .check small { grid-column: 2; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
 .subrange { margin: 6px 0 0 26px; }
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after { content: "▾"; margin-left: 6px; font-size: 11px; color: var(--muted); display: inline-block; transition: transform .15s; }
+details[open] > summary::after { transform: rotate(180deg); }
+.adv > summary { display: flex; align-items: baseline; }
+.adv > summary h2 { margin: 0; }
+.adv h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 0; }
+.howto { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.howto > summary { color: var(--signal); }
+.howto p { margin: 6px 0 0; }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 13.5px; font-weight: 500; }
 .btn:hover:not(:disabled) { border-color: var(--signal); }

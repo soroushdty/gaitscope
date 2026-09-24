@@ -47,12 +47,17 @@
         <div class="ctl-head"><label for="hIn">Threshold h</label><input type="number" id="hNum" value="1" step="0.1" aria-label="Threshold h value"></div>
         <input type="range" id="hIn" min="-5" max="15" value="1" step="0.05">
       </div>
-      <p class="hint">A sample is a step when it is the highest point within w samples on each side and is above h. Both versions use these settings.</p>
       <p class="hint"><button class="link" id="resetParams" type="button">Reset to lab defaults (w = 30, h = 1)</button></p>
+      <details class="howto">
+        <summary>How detection works</summary>
+        <p>A sample is a step when it is the highest point within w samples on each side and is above h. Both versions use these settings.</p>
+      </details>
     </section>
 
-    <section id="fixSec">
-      <h2>Fixed version</h2>
+    <section id="advSec">
+      <details class="adv" id="advDetails">
+        <summary><h2>Advanced</h2></summary>
+      <h3>Fixed version</h3>
       <label class="check"><input type="checkbox" id="fxTies" checked><span>Count tied peaks once</span>
         <small>When two neighbouring samples share the peak value, count one step instead of two.</small></label>
       <label class="check"><input type="checkbox" id="fxWeak" checked><span>Drop weak peaks</span>
@@ -61,13 +66,16 @@
       <label class="check"><input type="checkbox" id="fxStride"><span>Each peak is a stride</span>
         <small>Turn on if one peak covers a left and a right step (for example, phone in one pocket). Doubles steps and cadence.</small></label>
       <p class="hint">The fixed version also times steps from the real timestamps instead of assuming 100 Hz, and reports cadence in steps per minute.</p>
+      <h3>Editing</h3>
+      <label class="check"><input type="checkbox" id="snap" checked><span>Snap new steps to the nearest peak</span>
+        <small>A click on the signal adds the step at the highest point within 0.15 s.</small></label>
+      </details>
     </section>
 
     <section id="editSec">
       <h2>Manual edits</h2>
       <label class="check"><input type="checkbox" id="editMode"><span>Edit steps on the plot</span>
         <small>Click the signal to add a step. Click a filled marker to remove it, or a grey cross to restore it.</small></label>
-      <label class="check"><input type="checkbox" id="snap" checked><span>Snap new steps to the nearest peak</span></label>
       <div class="edit-row"><span id="editCount">No edits yet</span>
         <button class="btn" id="undoEdit" type="button" disabled>Undo</button>
         <button class="btn" id="clearEdits" type="button" disabled>Clear</button></div>
