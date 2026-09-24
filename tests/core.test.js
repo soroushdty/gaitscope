@@ -178,6 +178,7 @@ test('newer export with # metadata lines and units in the headers', () => {
   const { p, ds } = loadCsvDataset(path.join(FIX, 'ptb_metadata_units.csv'));
   assert.equal(p.delim, ','); assert.equal(p.hasHeader, true);
   assert.equal(ds.x.name, 'ax (m/s^2)'); assert.equal(ds.mag.name, 'aT (m/s^2)');
+  assert.equal(ds.x.label, 'x (ax)'); assert.equal(ds.mag.label, 'magnitude (aT)');
   assert.ok(ds.checks.some(c => c.title === 'Units: m/s²'));
   const ref = loadMatDataset(path.join(FIX, 'walk.mat')).ds;
   assert.deepEqual(C.detectOriginal(C.prepareChannel(ds, 1).A, 30, 1), C.detectOriginal(C.prepareChannel(ref, 1).A, 30, 1));

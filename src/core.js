@@ -486,7 +486,9 @@
     const role = { x: 'x', y: 'y', z: 'z', mag: 'magnitude', time: 'time' }[c.role];
     if (source === 'mat') return (role ? role + ' ' : '') + '(column ' + c.matCol + ')';
     if (c.role === 'time') return c.name;
-    return role ? (c.name.toLowerCase() === role ? role : role + ' (' + c.name + ')') : c.name + (c.sensor ? ' (' + c.sensor.label.toLowerCase() + ')' : '');
+    // drop a unit suffix ('ax (m/s^2)' -> 'ax') when the sensor is known; the plot axis adds the unit
+    const name = c.sensor ? c.name.replace(/\s*\(.*\)\s*$/, '') : c.name;
+    return role ? (name.toLowerCase() === role ? role : role + ' (' + name + ')') : name + (c.sensor ? ' (' + c.sensor.label.toLowerCase() + ')' : '');
   }
 
   /* Guess units from the quietest one-second stretch of the magnitude. */
