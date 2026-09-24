@@ -14,7 +14,6 @@
     chanKey: null,
     ch: null,          // prepared channel
     res: null,         // detection results
-    edits: { added: new Set(), removed: new Set(), history: [] },
     plotReady: false,
   };
 
@@ -37,7 +36,6 @@
     $('fxStride').checked = false;
     showPass = false;
     S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.res = null;
-    clearEdits(true);
   }
 
   async function handleFile(file) {
@@ -149,7 +147,6 @@
 
   function selectChannel(key) {
     S.chanKey = key;
-    clearEdits(true);
     const fsManual = Number($('fsIn').value) || 100;
     const ch = C.prepareChannel(S.ds, key === 'computed' ? 'computed' : Number(key), fsManual);
     S.ch = ch.fatal ? null : ch;
@@ -190,7 +187,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'editMode', 'snap', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -218,7 +215,7 @@
   }
   function resetParams(run) {
     $('wIn').value = '30'; syncH(1); updateWOut();
-    if (run !== false && S.ch) { clearEdits(true); recompute(); }
+    if (run !== false && S.ch) recompute();
   }
   function selectedAlgo() { return C.ALGORITHMS.find(a => a.id === $('algoSel').value) || C.ALGORITHMS[0]; }
   function showAlgo() {
@@ -244,14 +241,10 @@
     const orig = C.originalMetrics(origIdx, p.w);
     const algo = selectedAlgo();
     const fx = algo.detect(A, t, p);
-    const autoSet = new Set(fx.idx);
-    // manual edits relative to the algorithm's automatic set
-    const finalSet = new Set(fx.idx.filter(i => !S.edits.removed.has(i)));
-    for (const i of S.edits.added) finalSet.add(i);
-    const finalIdx = Array.from(finalSet).sort((a, b) => a - b);
+    const finalIdx = fx.idx, finalSet = new Set(finalIdx);
     const algM = algo.metrics(finalIdx, t, p);
     const weakSet = new Set(fx.weakDropped);
-    S.res = { p, algo, origIdx, orig, fx, autoSet, finalIdx, finalSet, algM, weakSet };
+    S.res = { p, algo, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet };
     render();
   }
 
@@ -281,7 +274,6 @@
     renderPlot();
     renderMetrics();
     renderSteps();
-    updateEditUi();
     updateExportButtons();
   }
 
@@ -325,14 +317,11 @@
       return;
     }
     const { A, t } = S.ch;
-    const { p, origIdx, autoSet, finalIdx, fx } = S.res;
-    const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), algo: cssVar('--algo'), added: cssVar('--added'),
-      removed: cssVar('--removed'), ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'), surface: cssVar('--surface') };
+    const { p, origIdx, finalIdx } = S.res;
+    const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), algo: cssVar('--algo'),
+      ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'), surface: cssVar('--surface') };
     let mn = Infinity, mx = -Infinity; for (const v of A) { if (v < mn) mn = v; if (v > mx) mx = v; }
     const lift = (mx - mn) * 0.06;
-    const autoFinal = finalIdx.filter(i => autoSet.has(i));
-    const added = finalIdx.filter(i => !autoSet.has(i));
-    const removed = Array.from(S.edits.removed).filter(i => autoSet.has(i));
     const col = S.chanKey === 'computed' ? null : S.ds.columns[Number(S.chanKey)];
     const unit = col && col.sensor ? col.sensor.unit : '';
     const hov = (name) => '<b>' + name + '</b><br>%{x:.3f} s<br>value %{customdata[1]:.3f}<br>sample %{customdata[0]} (MATLAB)<extra></extra>';
@@ -345,12 +334,8 @@
         hovertemplate: '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code',
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
-      { x: autoFinal.map(i => t[i]), y: autoFinal.map(i => A[i]), customdata: cd(autoFinal), type: 'scatter', mode: 'markers', name: S.res.algo.name,
+      { x: finalIdx.map(i => t[i]), y: finalIdx.map(i => A[i]), customdata: cd(finalIdx), type: 'scatter', mode: 'markers', name: S.res.algo.name,
         marker: { symbol: 'circle', size: 9, color: colors.algo, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov(S.res.algo.name + ' step') },
-      { x: added.map(i => t[i]), y: added.map(i => A[i]), customdata: cd(added), type: 'scatter', mode: 'markers', name: 'Added',
-        marker: { symbol: 'diamond', size: 11, color: colors.added, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov('Added by you') },
-      { x: removed.map(i => t[i]), y: removed.map(i => A[i]), customdata: cd(removed), type: 'scatter', mode: 'markers', name: 'Removed',
-        marker: { symbol: 'x-thin-open', size: 11, color: colors.removed, line: { color: colors.removed, width: 2.2 } }, hovertemplate: hov('Removed by you (click to restore)') },
       { x: fi.x, y: fi.y, width: fi.wd, type: 'bar', name: S.res.algo.name + ' interval', xaxis: 'x', yaxis: 'y2', marker: { color: colors.algo, opacity: 0.55 },
         hovertemplate: esc(S.res.algo.name) + ': %{y:.3f} s between peaks<extra></extra>' },
       { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2',
@@ -373,68 +358,8 @@
       modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     const el = $('plot');
     Plotly.react(el, traces, layout, config);
-    if (!el.__bound) { el.on('plotly_click', onPlotClick); el.__bound = true; }
     const name = S.file.demo ? 'Synthetic walk' : (S.varName ? S.varName : S.file.name);
     $('plotTitle').textContent = name + ', ' + (col ? col.label : 'computed magnitude');
-  }
-
-  /* ------------------------------------------------------------- edits */
-  function onPlotClick(ev) {
-    if (!$('editMode').checked || !S.res || !ev.points || !ev.points.length) return;
-    // prefer marker hits over the line
-    const pts = ev.points.slice().sort((a, b) => (a.curveNumber === 0) - (b.curveNumber === 0));
-    const pt = pts[0];
-    const { A, t } = S.ch;
-    if (pt.curveNumber === 2 || pt.curveNumber === 3) {
-      const i = pt.customdata[0] - 1;
-      if (S.edits.added.has(i)) { S.edits.added.delete(i); S.edits.history.push({ type: 'unadd', i }); }
-      else { S.edits.removed.add(i); S.edits.history.push({ type: 'remove', i }); }
-      recompute(); return;
-    }
-    if (pt.curveNumber === 4) {
-      const i = pt.customdata[0] - 1;
-      S.edits.removed.delete(i); S.edits.history.push({ type: 'restore', i });
-      recompute(); return;
-    }
-    if (pt.curveNumber === 0 || pt.curveNumber === 1) {
-      let i = pt.curveNumber === 0 ? pt.pointIndex : pt.customdata[0] - 1;
-      if (pt.curveNumber === 0 && $('snap').checked) {
-        const r = Math.max(1, Math.round(0.15 * S.ch.fs));
-        let best = i;
-        for (let k = Math.max(0, i - r); k <= Math.min(A.length - 1, i + r); k++) if (A[k] > A[best]) best = k;
-        i = best;
-      }
-      if (S.res.finalSet.has(i)) { toast('There is already a step at ' + fmt(t[i], 2) + ' s.'); return; }
-      if (S.edits.removed.has(i)) { S.edits.removed.delete(i); S.edits.history.push({ type: 'restore', i }); }
-      else { S.edits.added.add(i); S.edits.history.push({ type: 'add', i }); }
-      recompute();
-    }
-  }
-  function undoEdit() {
-    const h = S.edits.history.pop();
-    if (!h) return;
-    if (h.type === 'add') S.edits.added.delete(h.i);
-    else if (h.type === 'unadd') S.edits.added.add(h.i);
-    else if (h.type === 'remove') S.edits.removed.delete(h.i);
-    else if (h.type === 'restore') S.edits.removed.add(h.i);
-    recompute();
-  }
-  function clearEdits(silent) {
-    const had = S.edits.added.size + S.edits.removed.size;
-    S.edits = { added: new Set(), removed: new Set(), history: [] };
-    if (!silent) { recompute(); if (had) toast('Manual edits cleared.'); }
-    updateEditUi();
-  }
-  function updateEditUi() {
-    const a = S.edits.added.size, r = S.edits.removed.size;
-    $('editCount').textContent = a + r ? [a ? a + ' added' : '', r ? r + ' removed' : ''].filter(Boolean).join(', ') : 'No edits yet';
-    $('undoEdit').disabled = !S.edits.history.length;
-    $('clearEdits').disabled = !(a + r);
-    const on = $('editMode').checked && !!S.ch;
-    $('editBanner').hidden = !on;
-    $('plotCard').classList.toggle('editing', on);
-    // the edit markers only need a legend entry once they can appear
-    $('legAdded').hidden = !(on || a); $('legRemoved').hidden = !(on || r);
   }
 
   /* ------------------------------------------------------------ tables */
@@ -450,7 +375,7 @@
       ['Gait asymmetry', f(orig.asymmetry, 3) + '<small>even ÷ odd intervals</small>', p.stride ? '—<small>needs single steps</small>' : f(algM.asymmetry, 3) + '<small>1.000 = symmetric</small>', ''],
       ['Walking span', '—', f(algM.span, 1, 's') + '<small>first to last step</small>', ''],
     ];
-    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th><th class="num col-orig">Lab code</th><th class="num col-algo">' + esc(S.res.algo.name) + (S.edits.added.size + S.edits.removed.size ? ' + edits' : '') + '</th></tr></thead><tbody>' +
+    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th><th class="num col-orig">Lab code</th><th class="num col-algo">' + esc(S.res.algo.name) + '</th></tr></thead><tbody>' +
       rows.map(r => {
         const differs = r[1].split('<')[0] !== r[2].split('<')[0] && !r[1].startsWith('—') && !r[2].startsWith('—');
         return '<tr><td>' + r[0] + '</td><td class="num">' + r[1] + '</td><td class="num' + (differs ? ' diff' : '') + '">' + r[2] + '</td></tr>';
@@ -458,15 +383,14 @@
   }
 
   function stepRows() {
-    const { origIdx, finalSet, autoSet, weakSet } = S.res;
+    const { origIdx, finalSet, weakSet } = S.res;
     const origSet = new Set(origIdx);
-    const all = Array.from(new Set(origIdx.concat(Array.from(finalSet)).concat(Array.from(S.edits.removed)))).sort((a, b) => a - b);
+    const all = Array.from(new Set(origIdx.concat(Array.from(finalSet)))).sort((a, b) => a - b);
     let prevOrig = -10;
     return all.map(i => {
       const inO = origSet.has(i), inF = finalSet.has(i);
       let why;
-      if (inF) why = autoSet.has(i) ? 'kept' : 'added by you';
-      else if (S.edits.removed.has(i)) why = 'removed by you';
+      if (inF) why = 'kept';
       else if (weakSet.has(i)) why = 'weak peak';
       else if (inO && i - prevOrig <= S.res.p.w) why = 'tied peak';
       else why = 'not a ' + S.res.algo.name + ' peak';
@@ -482,7 +406,7 @@
     $('stepsTitle').textContent = 'All steps (' + nF + ' ' + S.res.algo.name + ', ' + S.res.origIdx.length + ' lab code)';
     const shown = rows.slice(0, 1500);
     $('stepsTable').innerHTML = '<thead><tr><th class="num">Time (s)</th><th class="num">Sample</th><th class="num">Value</th><th>Lab code</th><th>' + esc(S.res.algo.name) + '</th></tr></thead><tbody>' +
-      shown.map(r => '<tr class="' + (r.inF ? (r.why === 'added by you' ? 'manual' : '') : 'only-orig') + '"><td class="num">' + fmt(t[r.i], 3) + '</td><td class="num">' + (r.i + 1) + '</td><td class="num">' + fmt(A[r.i], 2) + '</td><td>' + (r.inO ? 'yes' : '—') + '</td><td>' + (r.inF ? (r.why === 'kept' ? 'yes' : r.why) : 'dropped: ' + r.why) + '</td></tr>').join('') +
+      shown.map(r => '<tr class="' + (r.inF ? '' : 'only-orig') + '"><td class="num">' + fmt(t[r.i], 3) + '</td><td class="num">' + (r.i + 1) + '</td><td class="num">' + fmt(A[r.i], 2) + '</td><td>' + (r.inO ? 'yes' : '—') + '</td><td>' + (r.inF ? 'yes' : 'dropped: ' + r.why) + '</td></tr>').join('') +
       (rows.length > shown.length ? '<tr><td colspan="5">' + (rows.length - shown.length) + ' more rows in the export</td></tr>' : '') + '</tbody>';
   }
 
@@ -527,8 +451,6 @@
       csvRow(['fix_tied_peaks', p.ties ? 'on' : 'off']),
       csvRow(['fix_weak_peaks', p.weak ? 'on, ' + Math.round(p.weakRatio * 100) + '%' : 'off']),
       csvRow(['each_peak_is_stride', p.stride ? 'yes' : 'no']),
-      csvRow(['manual_added', S.edits.added.size]),
-      csvRow(['manual_removed', S.edits.removed.size]),
     ];
     save(baseName() + '_metrics.csv', L.join('\n') + '\n');
   }
@@ -562,12 +484,9 @@
   for (const id of ['fxTies', 'fxWeak', 'fxStride']) $(id).addEventListener('change', schedule);
   $('fxWeak').addEventListener('change', e => { $('rIn').disabled = !e.target.checked || !S.ch; });
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
-  $('algoSel').addEventListener('change', () => { showAlgo(); clearEdits(true); schedule(); });
+  $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
   showAlgo();
   $('resetParams').addEventListener('click', () => resetParams(true));
-  $('editMode').addEventListener('change', updateEditUi);
-  $('undoEdit').addEventListener('click', undoEdit);
-  $('clearEdits').addEventListener('click', () => clearEdits(false));
   $('expSteps').addEventListener('click', exportSteps);
   $('expMetrics').addEventListener('click', exportMetrics);
   $('valToggle').addEventListener('click', () => { const open = $('valToggle').getAttribute('aria-expanded') !== 'true'; valOpenedByUser = open; setValOpen(open); });

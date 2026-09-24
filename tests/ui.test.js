@@ -36,7 +36,7 @@ async function upload(pg, file) {
 }
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
-test('loads a MAT file, compares versions, edits and exports', async () => {
+test('loads a MAT file, compares versions and exports', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   assert.match(text(pg, 'valTitle'), /^Valid/);
@@ -45,7 +45,6 @@ test('loads a MAT file, compares versions, edits and exports', async () => {
   assert.equal(pg.d.getElementById('valList').hidden, false, 'and open on click');
   assert.equal(pg.d.getElementById('analysis').hidden, false);
   assert.equal(pg.d.getElementById('advDetails').open, false, 'advanced options start closed');
-  assert.equal(pg.d.getElementById('snap').checked, true);
   assert.equal(pg.d.getElementById('chanSel').value, '1', 'defaults to column 2 like the lab code');
   const last = pg.plots.at(-1);
   const lab = last.traces[1].x.length, fixed = last.traces[2].x.length;
@@ -56,22 +55,6 @@ test('loads a MAT file, compares versions, edits and exports', async () => {
   assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
   assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
   assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza, ' + lab + ' lab code'));
-
-  // remove one fixed step, add one, undo
-  assert.equal(pg.d.getElementById('legAdded').hidden, true, 'edit legend hidden until editing');
-  pg.d.getElementById('editMode').checked = true;
-  pg.d.getElementById('editMode').dispatchEvent(new pg.w.Event('change'));
-  const cd = pg.plots.at(-1).traces[2].customdata[2];
-  pg.d.getElementById('plot')._click({ points: [{ curveNumber: 2, customdata: cd }] });
-  await sleep(20);
-  assert.equal(text(pg, 'editCount'), '1 removed');
-  assert.equal(pg.d.getElementById('legRemoved').hidden, false);
-  pg.d.getElementById('plot')._click({ points: [{ curveNumber: 0, pointIndex: 5 }] });
-  await sleep(20);
-  assert.equal(text(pg, 'editCount'), '1 added, 1 removed');
-  pg.d.getElementById('undoEdit').click();
-  await sleep(20);
-  assert.equal(text(pg, 'editCount'), '1 removed');
 
   // export uses a download link outside Claude
   let saved = null;
