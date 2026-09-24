@@ -342,6 +342,7 @@
   };
 
   function sensorFromName(name) {
+    name = name.replace(/\s*\(.*\)\s*$/, ''); // 'ax (m/s^2)' -> 'ax'
     if (/^(gf[xyz]|tgf)$/i.test(name)) return { key: 'gforce', label: 'G-Force Meter', unit: 'g', gravity: true, accel: true };
     if (/^(a[xyzt])$/i.test(name)) return { key: 'linacc', label: 'Linear accelerometer', unit: 'm/s²', gravity: false, accel: true };
     if (/^(w[xyzt])$/i.test(name)) return { key: 'gyro', label: 'Gyroscope', unit: 'rad/s', gravity: false, accel: false };

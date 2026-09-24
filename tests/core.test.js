@@ -174,6 +174,14 @@ test('semicolon-separated export with decimal commas', () => {
   const a = C.prepareChannel(ds, 1), b = C.prepareChannel(ref, 1);
   assert.deepEqual(C.detectOriginal(a.A, 30, 1), C.detectOriginal(b.A, 30, 1));
 });
+test('newer export with # metadata lines and units in the headers', () => {
+  const { p, ds } = loadCsvDataset(path.join(FIX, 'ptb_metadata_units.csv'));
+  assert.equal(p.delim, ','); assert.equal(p.hasHeader, true);
+  assert.equal(ds.x.name, 'ax (m/s^2)'); assert.equal(ds.mag.name, 'aT (m/s^2)');
+  assert.ok(ds.checks.some(c => c.title === 'Units: m/s²'));
+  const ref = loadMatDataset(path.join(FIX, 'walk.mat')).ds;
+  assert.deepEqual(C.detectOriginal(C.prepareChannel(ds, 1).A, 30, 1), C.detectOriginal(C.prepareChannel(ref, 1).A, 30, 1));
+});
 test('clock-time export is converted to elapsed seconds', () => {
   const { p, ds } = loadCsvDataset(path.join(FIX, 'ptb_clock_time.csv'));
   assert.equal(p.clockTime, true);
