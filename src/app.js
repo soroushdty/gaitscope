@@ -190,7 +190,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['wIn', 'hIn', 'hNum', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'editMode', 'snap', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'editMode', 'snap', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -220,6 +220,13 @@
     $('wIn').value = '30'; syncH(1); updateWOut();
     if (run !== false && S.ch) { clearEdits(true); recompute(); }
   }
+  function selectedAlgo() { return C.ALGORITHMS.find(a => a.id === $('algoSel').value) || C.ALGORITHMS[0]; }
+  function showAlgo() {
+    const a = selectedAlgo();
+    $('algoDesc').textContent = a.summary;
+    $('legAlgo').textContent = a.name;
+    for (const el of document.querySelectorAll('.algo-opts')) el.hidden = el.dataset.algo !== a.id;
+  }
   function params() {
     return {
       w: Number($('wIn').value), h: Number($('hNum').value),
@@ -235,16 +242,16 @@
     const { A, t } = S.ch;
     const origIdx = C.detectOriginal(A, p.w, p.h);
     const orig = C.originalMetrics(origIdx, p.w);
-    const algo = C.ALGORITHMS[0];
+    const algo = selectedAlgo();
     const fx = algo.detect(A, t, p);
     const autoSet = new Set(fx.idx);
-    // manual edits relative to the automatic fixed set
+    // manual edits relative to the algorithm's automatic set
     const finalSet = new Set(fx.idx.filter(i => !S.edits.removed.has(i)));
     for (const i of S.edits.added) finalSet.add(i);
     const finalIdx = Array.from(finalSet).sort((a, b) => a - b);
-    const fixedM = algo.metrics(finalIdx, t, p);
+    const algM = algo.metrics(finalIdx, t, p);
     const weakSet = new Set(fx.weakDropped);
-    S.res = { p, algo, origIdx, orig, fx, autoSet, finalIdx, finalSet, fixedM, weakSet };
+    S.res = { p, algo, origIdx, orig, fx, autoSet, finalIdx, finalSet, algM, weakSet };
     render();
   }
 
@@ -256,13 +263,13 @@
       out.push({ level: 'warn', title: 'No steps found at h = ' + p.h, detail: 'No sample rises above the threshold as a window peak. If the data is in g, walking peaks can stay below 1; lower h or check the units.' });
     }
     if (orig.tiedPairs) {
-      out.push({ level: 'warn', title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (p.ties ? ' The fixed version counts each once.' : '') });
+      out.push({ level: 'warn', title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (p.ties ? ' ' + S.res.algo.name + ' counts each once.' : '') });
     }
     if (p.weak && fx.weakDropped.length) {
       out.push({ level: 'info', title: fx.weakDropped.length + ' weak peak' + (fx.weakDropped.length > 1 ? 's' : '') + ' dropped', detail: 'At ' + fx.weakDropped.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(p.weakRatio * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
     }
     if (finalIdx.length >= 3 && !p.stride) {
-      const iv = S.res.fixedM.stepInterval;
+      const iv = S.res.algM.stepInterval;
       if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Peaks may be strides', detail: 'Peaks are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; turn on "Each peak is a stride" under Advanced.' });
     }
     return out;
@@ -319,7 +326,7 @@
     }
     const { A, t } = S.ch;
     const { p, origIdx, autoSet, finalIdx, fx } = S.res;
-    const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), fixed: cssVar('--fixed'), added: cssVar('--added'),
+    const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), algo: cssVar('--algo'), added: cssVar('--added'),
       removed: cssVar('--removed'), ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'), surface: cssVar('--surface') };
     let mn = Infinity, mx = -Infinity; for (const v of A) { if (v < mn) mn = v; if (v > mx) mx = v; }
     const lift = (mx - mn) * 0.06;
@@ -338,14 +345,14 @@
         hovertemplate: '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code',
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
-      { x: autoFinal.map(i => t[i]), y: autoFinal.map(i => A[i]), customdata: cd(autoFinal), type: 'scatter', mode: 'markers', name: 'Fixed',
-        marker: { symbol: 'circle', size: 9, color: colors.fixed, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov('Fixed step') },
+      { x: autoFinal.map(i => t[i]), y: autoFinal.map(i => A[i]), customdata: cd(autoFinal), type: 'scatter', mode: 'markers', name: S.res.algo.name,
+        marker: { symbol: 'circle', size: 9, color: colors.algo, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov(S.res.algo.name + ' step') },
       { x: added.map(i => t[i]), y: added.map(i => A[i]), customdata: cd(added), type: 'scatter', mode: 'markers', name: 'Added',
         marker: { symbol: 'diamond', size: 11, color: colors.added, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov('Added by you') },
       { x: removed.map(i => t[i]), y: removed.map(i => A[i]), customdata: cd(removed), type: 'scatter', mode: 'markers', name: 'Removed',
         marker: { symbol: 'x-thin-open', size: 11, color: colors.removed, line: { color: colors.removed, width: 2.2 } }, hovertemplate: hov('Removed by you (click to restore)') },
-      { x: fi.x, y: fi.y, width: fi.wd, type: 'bar', name: 'Fixed interval', xaxis: 'x', yaxis: 'y2', marker: { color: colors.fixed, opacity: 0.55 },
-        hovertemplate: 'Fixed: %{y:.3f} s between peaks<extra></extra>' },
+      { x: fi.x, y: fi.y, width: fi.wd, type: 'bar', name: S.res.algo.name + ' interval', xaxis: 'x', yaxis: 'y2', marker: { color: colors.algo, opacity: 0.55 },
+        hovertemplate: esc(S.res.algo.name) + ': %{y:.3f} s between peaks<extra></extra>' },
       { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2',
         marker: { symbol: 'triangle-down', size: 7, color: colors.orig }, hovertemplate: 'Lab code: %{y:.3f} s between peaks<extra></extra>' },
     ];
@@ -432,18 +439,18 @@
 
   /* ------------------------------------------------------------ tables */
   function renderMetrics() {
-    const { orig, fixedM, p } = S.res;
+    const { orig, algM, p } = S.res;
     const f = (v, d, u) => Number.isFinite(v) ? v.toFixed(d) + (u ? ' ' + u : '') : '—';
     const rows = [
-      ['Steps', String(orig.steps), p.stride ? fixedM.steps + '<small>' + fixedM.peaks + ' strides × 2</small>' : String(fixedM.steps), ''],
-      ['Average step duration', f(orig.avgStepDuration, 3, 's') + '<small>samples ÷ 100</small>', f(fixedM.stepInterval, 3, 's') + '<small>from timestamps</small>', ''],
-      ['Cadence', '—<small>not computed</small>', f(fixedM.cadence, 1, 'steps/min'), ''],
+      ['Steps', String(orig.steps), p.stride ? algM.steps + '<small>' + algM.peaks + ' strides × 2</small>' : String(algM.steps), ''],
+      ['Average step duration', f(orig.avgStepDuration, 3, 's') + '<small>samples ÷ 100</small>', f(algM.stepInterval, 3, 's') + '<small>from timestamps</small>', ''],
+      ['Cadence', '—<small>not computed</small>', f(algM.cadence, 1, 'steps/min'), ''],
       ['Pace (lab formula)', f(orig.pace, 2) + '<small>duration × 60, labelled steps/min</small>', '—<small>replaced by cadence</small>', ''],
-      [p.stride ? 'Stride-time variability' : 'Step-time variability', f(orig.variabilitySamples, 1, 'samples') + '<small>SD of intervals</small>', f(fixedM.variabilityMs, 0, 'ms') + (Number.isFinite(fixedM.cv) ? '<small>SD, CV ' + fixedM.cv.toFixed(1) + '%</small>' : ''), ''],
-      ['Gait asymmetry', f(orig.asymmetry, 3) + '<small>even ÷ odd intervals</small>', p.stride ? '—<small>needs single steps</small>' : f(fixedM.asymmetry, 3) + '<small>1.000 = symmetric</small>', ''],
-      ['Walking span', '—', f(fixedM.span, 1, 's') + '<small>first to last step</small>', ''],
+      [p.stride ? 'Stride-time variability' : 'Step-time variability', f(orig.variabilitySamples, 1, 'samples') + '<small>SD of intervals</small>', f(algM.variabilityMs, 0, 'ms') + (Number.isFinite(algM.cv) ? '<small>SD, CV ' + algM.cv.toFixed(1) + '%</small>' : ''), ''],
+      ['Gait asymmetry', f(orig.asymmetry, 3) + '<small>even ÷ odd intervals</small>', p.stride ? '—<small>needs single steps</small>' : f(algM.asymmetry, 3) + '<small>1.000 = symmetric</small>', ''],
+      ['Walking span', '—', f(algM.span, 1, 's') + '<small>first to last step</small>', ''],
     ];
-    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th><th class="num col-orig">Lab code</th><th class="num col-fixed">Fixed' + (S.edits.added.size + S.edits.removed.size ? ' + edits' : '') + '</th></tr></thead><tbody>' +
+    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th><th class="num col-orig">Lab code</th><th class="num col-algo">' + esc(S.res.algo.name) + (S.edits.added.size + S.edits.removed.size ? ' + edits' : '') + '</th></tr></thead><tbody>' +
       rows.map(r => {
         const differs = r[1].split('<')[0] !== r[2].split('<')[0] && !r[1].startsWith('—') && !r[2].startsWith('—');
         return '<tr><td>' + r[0] + '</td><td class="num">' + r[1] + '</td><td class="num' + (differs ? ' diff' : '') + '">' + r[2] + '</td></tr>';
@@ -462,7 +469,7 @@
       else if (S.edits.removed.has(i)) why = 'removed by you';
       else if (weakSet.has(i)) why = 'weak peak';
       else if (inO && i - prevOrig <= S.res.p.w) why = 'tied peak';
-      else why = 'not a fixed peak';
+      else why = 'not a ' + S.res.algo.name + ' peak';
       if (inO) prevOrig = i;
       return { i, inO, inF, why };
     });
@@ -472,9 +479,9 @@
     const { A, t } = S.ch;
     const rows = stepRows();
     const nF = S.res.finalIdx.length;
-    $('stepsTitle').textContent = 'All steps (' + nF + ' fixed, ' + S.res.origIdx.length + ' lab code)';
+    $('stepsTitle').textContent = 'All steps (' + nF + ' ' + S.res.algo.name + ', ' + S.res.origIdx.length + ' lab code)';
     const shown = rows.slice(0, 1500);
-    $('stepsTable').innerHTML = '<thead><tr><th class="num">Time (s)</th><th class="num">Sample</th><th class="num">Value</th><th>Lab code</th><th>Fixed</th></tr></thead><tbody>' +
+    $('stepsTable').innerHTML = '<thead><tr><th class="num">Time (s)</th><th class="num">Sample</th><th class="num">Value</th><th>Lab code</th><th>' + esc(S.res.algo.name) + '</th></tr></thead><tbody>' +
       shown.map(r => '<tr class="' + (r.inF ? (r.why === 'added by you' ? 'manual' : '') : 'only-orig') + '"><td class="num">' + fmt(t[r.i], 3) + '</td><td class="num">' + (r.i + 1) + '</td><td class="num">' + fmt(A[r.i], 2) + '</td><td>' + (r.inO ? 'yes' : '—') + '</td><td>' + (r.inF ? (r.why === 'kept' ? 'yes' : r.why) : 'dropped: ' + r.why) + '</td></tr>').join('') +
       (rows.length > shown.length ? '<tr><td colspan="5">' + (rows.length - shown.length) + ' more rows in the export</td></tr>' : '') + '</tbody>';
   }
@@ -490,24 +497,27 @@
 
   function exportSteps() {
     const { A, t } = S.ch;
-    const lines = [csvRow(['time_s', 'sample_matlab', 'value', 'in_lab_code', 'in_fixed', 'fixed_status'])];
+    const id = S.res.algo.id;
+    const lines = [csvRow(['time_s', 'sample_matlab', 'value', 'in_lab_code', 'in_' + id, id + '_status'])];
     for (const r of stepRows()) lines.push(csvRow([t[r.i].toFixed(4), r.i + 1, A[r.i], r.inO ? 'yes' : 'no', r.inF ? 'yes' : 'no', r.why]));
     save(baseName() + '_steps.csv', lines.join('\n') + '\n');
   }
   function exportMetrics() {
-    const { orig, fixedM, p } = S.res;
+    const { orig, algM, p } = S.res;
     const n = v => Number.isFinite(v) ? +v.toFixed(6) : '';
     const col = S.chanKey === 'computed' ? 'magnitude (computed)' : S.ds.columns[Number(S.chanKey)].label;
-    const L = [csvRow(['metric', 'lab_code', 'fixed', 'unit_lab_code', 'unit_fixed']),
-      csvRow(['steps', orig.steps, fixedM.steps, 'count', 'count']),
-      csvRow(['average_step_duration', n(orig.avgStepDuration), n(fixedM.stepInterval), 's (samples/100)', 's (timestamps)']),
-      csvRow(['cadence', '', n(fixedM.cadence), '', 'steps/min']),
+    const id = S.res.algo.id;
+    const L = [csvRow(['metric', 'lab_code', id, 'unit_lab_code', 'unit_' + id]),
+      csvRow(['steps', orig.steps, algM.steps, 'count', 'count']),
+      csvRow(['average_step_duration', n(orig.avgStepDuration), n(algM.stepInterval), 's (samples/100)', 's (timestamps)']),
+      csvRow(['cadence', '', n(algM.cadence), '', 'steps/min']),
       csvRow(['pace_lab_formula', n(orig.pace), '', 'duration*60', '']),
-      csvRow([p.stride ? 'stride_time_variability' : 'step_time_variability', n(orig.variabilitySamples), n(fixedM.variabilityMs), 'samples (SD)', 'ms (SD)']),
-      csvRow(['coefficient_of_variation', '', n(fixedM.cv), '', '%']),
-      csvRow(['gait_asymmetry', n(orig.asymmetry), p.stride ? '' : n(fixedM.asymmetry), 'even/odd intervals', 'even/odd intervals']),
+      csvRow([p.stride ? 'stride_time_variability' : 'step_time_variability', n(orig.variabilitySamples), n(algM.variabilityMs), 'samples (SD)', 'ms (SD)']),
+      csvRow(['coefficient_of_variation', '', n(algM.cv), '', '%']),
+      csvRow(['gait_asymmetry', n(orig.asymmetry), p.stride ? '' : n(algM.asymmetry), 'even/odd intervals', 'even/odd intervals']),
       '',
       csvRow(['setting', 'value']),
+      csvRow(['algorithm', S.res.algo.name]),
       csvRow(['file', S.file.name]),
       csvRow(['variable', S.varName || '']),
       csvRow(['signal', col]),
@@ -551,6 +561,9 @@
   $('rIn').addEventListener('input', e => { $('rOut').textContent = e.target.value + '%'; schedule(); });
   for (const id of ['fxTies', 'fxWeak', 'fxStride']) $(id).addEventListener('change', schedule);
   $('fxWeak').addEventListener('change', e => { $('rIn').disabled = !e.target.checked || !S.ch; });
+  $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
+  $('algoSel').addEventListener('change', () => { showAlgo(); clearEdits(true); schedule(); });
+  showAlgo();
   $('resetParams').addEventListener('click', () => resetParams(true));
   $('editMode').addEventListener('change', updateEditUi);
   $('undoEdit').addEventListener('click', undoEdit);

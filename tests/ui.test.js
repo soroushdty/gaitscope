@@ -49,9 +49,13 @@ test('loads a MAT file, compares versions, edits and exports', async () => {
   assert.equal(pg.d.getElementById('chanSel').value, '1', 'defaults to column 2 like the lab code');
   const last = pg.plots.at(-1);
   const lab = last.traces[1].x.length, fixed = last.traces[2].x.length;
-  assert.ok(lab > fixed, 'fixed version drops the tied duplicate');
+  assert.ok(lab > fixed, 'Coza drops the tied duplicate');
+  assert.equal(pg.d.getElementById('algoSel').value, 'coza');
+  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza']);
+  assert.equal(text(pg, 'legAlgo'), 'Coza');
+  assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
   assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
-  assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' fixed, ' + lab + ' lab code'));
+  assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza, ' + lab + ' lab code'));
 
   // remove one fixed step, add one, undo
   assert.equal(pg.d.getElementById('legAdded').hidden, true, 'edit legend hidden until editing');

@@ -1,4 +1,4 @@
-# Step detection: original and fixed
+# Step detection: the lab code and Coza
 
 ## Original (lab code)
 
@@ -41,9 +41,14 @@ original script run in GNU Octave, for columns 2, 3 and 4
    1.14 s, which is slow for single steps (normally 0.45–0.7 s). If the phone rode
    on one leg, each peak is a left plus a right step.
 
-## Coza, the fixed version (`detectCoza`, `cozaMetrics`)
+## Coza (`detectCoza`, `cozaMetrics`)
 
-Each fix can be switched on or off in the dashboard, so its effect can be seen on its own.
+Coza is the dashboard's first step detection algorithm: the lab code with the problems
+above fixed. It is picked from the **Algorithm** dropdown; later algorithms are added as
+entries in `ALGORITHMS` in `src/core.js`, and the lab code stays alongside each of them
+as the MATLAB reference.
+
+Each fix can be switched on or off under Advanced, so its effect can be seen on its own.
 Window `w` and threshold `h` are shared with the original.
 
 | Fix | Rule |
