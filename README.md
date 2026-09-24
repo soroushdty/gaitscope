@@ -67,6 +67,11 @@ All fixtures are generated from a synthetic walk. The course files (`Walking.mat
 `LabStepDet_2025.m`) are **not** committed. If you put them in `data/`, the
 MATLAB-parity tests run as well; otherwise they are skipped.
 
+## Contributing
+
+Changes go through a branch and a pull request with atomic commits. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Layout
 
 ```
