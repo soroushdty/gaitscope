@@ -15,14 +15,14 @@ function makePage() {
     .replace(/<link[^>]+>/g, '')
     .replace('<script src="src/core.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/core.js'), 'utf8') + '</script>')
     .replace('<script src="src/app.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8') + '</script>');
-  const plots = [];
+  const plots = [], blobs = [];
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
     w.pako = pako; w.TextDecoder = TextDecoder;
     w.matchMedia = () => ({ matches: false, addEventListener() {} });
     w.Plotly = { react(el, traces, layout) { plots.push({ traces, layout }); el.on = (ev, fn) => { el._click = fn; }; } };
-    w.URL.createObjectURL = () => 'blob:x'; w.URL.revokeObjectURL = () => {};
+    w.URL.createObjectURL = b => { blobs.push(b); return 'blob:x'; }; w.URL.revokeObjectURL = () => {};
   } });
-  return { w: dom.window, d: dom.window.document, plots };
+  return { w: dom.window, d: dom.window.document, plots, blobs };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function upload(pg, file) {
@@ -61,6 +61,49 @@ test('loads a MAT file, compares versions and exports', async () => {
   pg.w.HTMLAnchorElement.prototype.click = function () { saved = this.download; };
   pg.d.getElementById('expSteps').click();
   assert.equal(saved, 'walk_steps.csv');
+});
+
+test('notes are pinned to the plot, listed, exported and deleted, without changing steps', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  const stepsBefore = text(pg, 'stepsTitle');
+  $('plot')._click({ points: [{ x: 3.25, curveNumber: 0 }] });
+  assert.equal($('noteForm').hidden, true, 'clicks do nothing until note mode is on');
+
+  $('noteMode').checked = true; $('noteMode').dispatchEvent(new pg.w.Event('change'));
+  assert.equal($('noteHint').hidden, false);
+  $('plot')._click({ points: [{ x: 3.25, curveNumber: 0 }] });
+  assert.equal($('noteForm').hidden, false);
+  assert.equal(text(pg, 'noteAt'), 'Note at 3.25 s');
+  $('noteText').value = '  turned <around>  ';
+  $('noteForm').dispatchEvent(new pg.w.Event('submit', { cancelable: true }));
+  assert.equal($('noteForm').hidden, true);
+  assert.match(text(pg, 'noteList'), /3\.25 s\s*turned <around>/);
+  assert.equal($('legNotes').hidden, false);
+  const lay = pg.plots.at(-1).layout;
+  assert.equal(lay.annotations.length, 1);
+  assert.equal(lay.annotations[0].text, 'turned &lt;around&gt;', 'note text is escaped for Plotly');
+  assert.ok(lay.shapes.some(s => s.x0 === 3.25 && s.yref === 'paper'));
+  assert.equal(text(pg, 'stepsTitle'), stepsBefore, 'notes never change the steps');
+
+  // an empty note is not added; Cancel closes the form
+  $('plot')._click({ points: [{ x: 5, curveNumber: 0 }] });
+  $('noteText').value = '   ';
+  $('noteForm').dispatchEvent(new pg.w.Event('submit', { cancelable: true }));
+  assert.equal($('noteForm').hidden, false);
+  $('noteCancel').click();
+  assert.equal($('noteForm').hidden, true);
+  assert.equal($('noteList').children.length, 1);
+
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('expMetrics').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /note_time_s,note\n3\.250,turned <around>\n/);
+
+  $('noteList').querySelector('button').click();
+  assert.equal($('noteList').hidden, true);
+  assert.equal(pg.plots.at(-1).layout.annotations.length, 0);
 });
 
 test('shows a fix for an unreadable file', async () => {

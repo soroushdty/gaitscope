@@ -14,6 +14,8 @@
     chanKey: null,
     ch: null,          // prepared channel
     res: null,         // detection results
+    notes: [],         // [{t, text}] pinned by the user; never change the steps
+    noteT: null,       // time of the note being written
     plotReady: false,
   };
 
@@ -36,6 +38,7 @@
     $('fxStride').checked = false;
     showPass = false;
     S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.res = null;
+    S.notes = []; closeNoteForm();
   }
 
   async function handleFile(file) {
@@ -187,7 +190,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'noteMode', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -274,6 +277,7 @@
     renderPlot();
     renderMetrics();
     renderSteps();
+    renderNotes();
     updateExportButtons();
   }
 
@@ -318,7 +322,7 @@
     }
     const { A, t } = S.ch;
     const { p, origIdx, finalIdx } = S.res;
-    const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), algo: cssVar('--algo'),
+    const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), algo: cssVar('--algo'), note: cssVar('--note'),
       ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'), surface: cssVar('--surface') };
     let mn = Infinity, mx = -Infinity; for (const v of A) { if (v < mn) mn = v; if (v > mx) mx = v; }
     const lift = (mx - mn) * 0.06;
@@ -352,14 +356,63 @@
       xaxis: { title: { text: 'Time (s)' }, range: [t[0], tMax], gridcolor: colors.line, zeroline: false, linecolor: colors.line, anchor: 'y2' },
       yaxis: { domain: [0.3, 1], title: { text: (col ? col.label : 'magnitude (computed)') + (unit ? ' (' + unit + ')' : '') }, gridcolor: colors.line, zerolinecolor: colors.line, automargin: true },
       yaxis2: { domain: [0, 0.22], title: { text: 'Interval (s)' }, gridcolor: colors.line, zeroline: false, rangemode: 'tozero', automargin: true },
-      shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: p.h, y1: p.h, line: { color: colors.muted, width: 1.2, dash: 'dash' } }],
+      shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: p.h, y1: p.h, line: { color: colors.muted, width: 1.2, dash: 'dash' } }]
+        .concat(S.notes.map(n => ({ type: 'line', xref: 'x', x0: n.t, x1: n.t, yref: 'paper', y0: 0, y1: 1, line: { color: colors.note, width: 1.3, dash: 'dot' } }))),
+      // labels in the right quarter extend leftwards so they don't run off the plot or under the toolbar
+      annotations: S.notes.map(n => ({ x: n.t, xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', showarrow: false,
+        xanchor: n.t > t[0] + 0.75 * (tMax - t[0]) ? 'right' : 'left',
+        text: esc(n.text), font: { color: colors.note, size: 12 }, bgcolor: colors.surface })),
     };
+    if (S.notes.length) layout.margin.t = 26; // room for the note labels
     const config = { responsive: true, displaylogo: false, scrollZoom: false,
       modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     const el = $('plot');
     Plotly.react(el, traces, layout, config);
+    if (!el.__bound) { el.on('plotly_click', onPlotClick); el.__bound = true; }
     const name = S.file.demo ? 'Synthetic walk' : (S.varName ? S.varName : S.file.name);
     $('plotTitle').textContent = name + ', ' + (col ? col.label : 'computed magnitude');
+  }
+
+  /* ------------------------------------------------------------- notes */
+  function onPlotClick(ev) {
+    if (!$('noteMode').checked || !S.ch || !ev.points || !ev.points.length) return;
+    openNoteForm(ev.points[0].x);
+  }
+  function openNoteForm(t) {
+    S.noteT = t;
+    $('noteAt').textContent = 'Note at ' + fmt(t, 2) + ' s';
+    $('noteText').value = '';
+    $('noteForm').hidden = false; $('noteHint').hidden = true;
+    $('noteText').focus();
+  }
+  function closeNoteForm() {
+    S.noteT = null;
+    $('noteForm').hidden = true;
+    updateNoteUi();
+  }
+  function addNote(e) {
+    e.preventDefault();
+    const text = $('noteText').value.trim();
+    if (!text || S.noteT === null) { $('noteText').focus(); return; }
+    S.notes.push({ t: S.noteT, text });
+    S.notes.sort((a, b) => a.t - b.t);
+    closeNoteForm();
+    renderNotes(); renderPlot();
+  }
+  function deleteNote(i) {
+    S.notes.splice(i, 1);
+    renderNotes(); renderPlot();
+  }
+  function renderNotes() {
+    $('noteList').innerHTML = S.notes.map((n, i) => '<li><b>' + fmt(n.t, 2) + ' s</b>' + esc(n.text) +
+      '<button type="button" data-i="' + i + '" aria-label="Delete note at ' + fmt(n.t, 2) + ' s" title="Delete note">×</button></li>').join('');
+    $('noteList').hidden = !S.notes.length;
+    $('legNotes').hidden = !S.notes.length;
+  }
+  function updateNoteUi() {
+    const on = $('noteMode').checked && !!S.ch;
+    $('noteHint').hidden = !on || !$('noteForm').hidden;
+    $('plotCard').classList.toggle('noting', on);
   }
 
   /* ------------------------------------------------------------ tables */
@@ -452,6 +505,7 @@
       csvRow(['fix_weak_peaks', p.weak ? 'on, ' + Math.round(p.weakRatio * 100) + '%' : 'off']),
       csvRow(['each_peak_is_stride', p.stride ? 'yes' : 'no']),
     ];
+    if (S.notes.length) L.push('', csvRow(['note_time_s', 'note']), ...S.notes.map(n => csvRow([n.t.toFixed(3), n.text])));
     save(baseName() + '_metrics.csv', L.join('\n') + '\n');
   }
   function save(filename, text) {
@@ -486,6 +540,11 @@
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
   showAlgo();
+  $('noteMode').addEventListener('change', () => { if (!$('noteMode').checked) closeNoteForm(); else updateNoteUi(); });
+  $('noteForm').addEventListener('submit', addNote);
+  $('noteCancel').addEventListener('click', closeNoteForm);
+  $('noteText').addEventListener('keydown', e => { if (e.key === 'Escape') closeNoteForm(); });
+  $('noteList').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) deleteNote(Number(b.dataset.i)); });
   $('resetParams').addEventListener('click', () => resetParams(true));
   $('expSteps').addEventListener('click', exportSteps);
   $('expMetrics').addEventListener('click', exportMetrics);
