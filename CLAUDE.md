@@ -12,7 +12,8 @@ students to skip MATLAB and use an AI tool to run the code instead. This repo ho
 1. `python/lab_step_det.py`: a faithful Python port of the MATLAB script.
 2. A static browser dashboard (`index.html` + `src/`) that validates an uploaded
    `.mat` or Physics Toolbox `.csv` file, runs the lab algorithm, and compares it with
-   a corrected version. Features: interactive sliders, an algorithm dropdown, CSV export.
+   a corrected version. Features: interactive sliders, an algorithm dropdown, notes pinned to the plot,
+   CSV export.
 
 The owner does not know MATLAB and works in Python. Explain MATLAB-specific
 behaviour when it matters.
@@ -97,5 +98,5 @@ unless the course file is present in `data/`.
 | File | Key parts |
 |---|---|
 | `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `detectCoza`, `cozaMetrics`, `ALGORITHMS` (algorithm registry), `demoWalk` |
-| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0 signal, 1 lab markers, 2 algorithm markers, 3–4 interval strip), export |
+| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0 signal, 1 lab markers, 2 algorithm markers, 3–4 interval strip; notes are shapes + annotations), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
 | `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, CLI |

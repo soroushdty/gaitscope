@@ -24,6 +24,9 @@ fix individual steps by hand, and export the results.
   once, drops start/stop artefacts, uses real timestamps, and reports cadence; it can
   also treat each peak as a stride.
   See [docs/algorithm.md](docs/algorithm.md).
+- **Notes on the plot.** Pin a short note to a moment in the recording ("turned
+  around", "stairs"). Notes are listed under the plot and included in the metrics
+  export; they never change the detected steps.
 - **CSV export** of the steps (lab code and Coza, with the reason each step was dropped)
   and of the metrics (with all settings used).
 - **Private.** Files are processed in the browser and never uploaded.

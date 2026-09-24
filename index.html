@@ -104,10 +104,22 @@
               <span><svg width="18" height="10"><path d="M1 7 L6 3 L11 7 L17 2" fill="none" stroke="var(--signal)" stroke-width="1.6"/></svg>Signal</span>
               <span><svg width="12" height="10"><path d="M1 1 H11 L6 9 Z" fill="var(--orig)"/></svg>Lab code (original)</span>
               <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--algo)"/></svg><span id="legAlgo">Coza</span></span>
+              <span id="legNotes" hidden><svg width="10" height="12"><path d="M5 1 V11" stroke="var(--note)" stroke-width="1.5" stroke-dasharray="2 2"/></svg>Your notes</span>
               <span><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="3 2"/></svg>Threshold h</span>
             </div>
           </div>
+          <div class="plot-tools">
+            <label class="toggle" title="Click the plot to pin a note at that time"><input type="checkbox" id="noteMode"><span>Add notes</span></label>
+            <form class="note-form" id="noteForm" hidden>
+              <label for="noteText" id="noteAt">Note at 0.00 s</label>
+              <input type="text" id="noteText" maxlength="80" placeholder="e.g. turned around" autocomplete="off">
+              <button class="btn" type="submit">Add</button>
+              <button class="btn" type="button" id="noteCancel">Cancel</button>
+            </form>
+            <span class="note-hint" id="noteHint" hidden>Click the plot where the note belongs.</span>
+          </div>
           <div id="plot" role="img" aria-label="Signal with detected steps and the time between steps"></div>
+          <ul class="note-list" id="noteList" hidden></ul>
         </section>
 
         <div class="results">

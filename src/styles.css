@@ -1,6 +1,6 @@
 :root {
   --bg: #F3F5F7; --surface: #FFFFFF; --sunk: #EEF1F4; --ink: #17222D; --muted: #5A6774; --line: #D8DEE4;
-  --signal: #3D5F82; --orig: #B7790A; --algo: #0D7A64;
+  --signal: #3D5F82; --orig: #B7790A; --algo: #0D7A64; --note: #6B4FC8;
   --err: #B42318; --err-bg: #FDF0EE; --warn: #8F5400; --warn-bg: #FDF5E8; --ok: #2F7D32; --ok-bg: #EEF7EE;
   --info: #3D5F82; --info-bg: #EEF3F8; --focus: #2B6CB0;
   --font: "Public Sans", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -12,14 +12,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #10171E; --surface: #172029; --sunk: #131B23; --ink: #E4EAF0; --muted: #97A4B1; --line: #2A3643;
-    --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2;
+    --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2;
     --err: #F07A6E; --err-bg: #2A1716; --warn: #E0A548; --warn-bg: #271F12; --ok: #6CC070; --ok-bg: #16241A;
     --info: #8DB0D6; --info-bg: #16212C; --focus: #7FB2EC; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #10171E; --surface: #172029; --sunk: #131B23; --ink: #E4EAF0; --muted: #97A4B1; --line: #2A3643;
-  --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2;
+  --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2;
   --err: #F07A6E; --err-bg: #2A1716; --warn: #E0A548; --warn-bg: #271F12; --ok: #6CC070; --ok-bg: #16241A;
   --info: #8DB0D6; --info-bg: #16212C; --focus: #7FB2EC; color-scheme: dark;
 }
@@ -119,6 +119,22 @@ main { padding: 20px 28px 40px; min-width: 0; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend svg { flex: none; }
+.plot-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 6px 8px; font-size: 13px; color: var(--muted); }
+.plot-tools .btn { padding: 4px 9px; font-size: 12.5px; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font-weight: 500; cursor: pointer; }
+.toggle input { margin: 0; accent-color: var(--note); }
+.toggle:has(input:checked) { border-color: var(--note); color: var(--note); }
+.toggle:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.note-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.note-form label { color: var(--note); font-weight: 500; }
+.note-form input { width: 18ch; padding: 4px 7px; border: 1px solid var(--note); border-radius: 5px; background: var(--surface); font-size: 13px; }
+.note-hint { color: var(--note); }
+.plot-card.noting #plot { cursor: crosshair; }
+.note-list { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 6px 8px; padding: 0; font-size: 13px; }
+.note-list li { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 9px; border: 1px solid var(--line); border-radius: 999px; }
+.note-list b { color: var(--note); font-weight: 600; font-variant-numeric: tabular-nums; }
+.note-list button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
+.note-list button:hover { color: var(--ink); }
 #plot { width: 100%; height: min(64vh, 560px); min-height: 380px; }
 
 .results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 18px; }
