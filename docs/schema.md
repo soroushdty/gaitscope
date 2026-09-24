@@ -109,5 +109,5 @@ without any error.
 |---|---|
 | No steps above `h` | warn: suggests checking units or lowering `h`. |
 | Lab code counts tied peaks twice | warn: explains the effect on variability and asymmetry. |
-| Weak peaks dropped by the fixed version | info: lists their times. |
+| Weak peaks dropped by Coza | info: lists their times. |
 | Peaks 0.85–1.6 s apart | info: suggests they may be strides rather than steps. |

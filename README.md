@@ -19,12 +19,13 @@ fix individual steps by hand, and export the results.
   before analysis. Problems come with a concrete fix, such as the exact MATLAB line
   to re-save a v7.3 file.
 - **Live sliders** for the window `w` and threshold `h`.
-- **Lab code vs fixed version**, compared on the same plot and metrics table. The
-  fixed version counts tied peaks once, drops start/stop artefacts, uses real
-  timestamps, and reports cadence; it can also treat each peak as a stride.
+- **Lab code vs Coza**, compared on the same plot and metrics table. Coza, picked from
+  the Algorithm dropdown, is the lab detector with its bugs fixed: it counts tied peaks
+  once, drops start/stop artefacts, uses real timestamps, and reports cadence; it can
+  also treat each peak as a stride.
   See [docs/algorithm.md](docs/algorithm.md).
 - **Click-to-edit.** Add, remove and restore steps on the plot, with undo.
-- **CSV export** of the steps (both versions, with the reason each step was dropped)
+- **CSV export** of the steps (lab code and Coza, with the reason each step was dropped)
   and of the metrics (with all settings used).
 - **Private.** Files are processed in the browser and never uploaded.
 

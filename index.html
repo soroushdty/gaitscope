@@ -39,6 +39,8 @@
 
     <section id="detSec">
       <h2>Detection</h2>
+      <label class="field">Algorithm<select id="algoSel"></select></label>
+      <p class="hint" id="algoDesc"></p>
       <div class="ctl">
         <div class="ctl-head"><label for="wIn">Window w</label><output id="wOut" for="wIn">30 samples</output></div>
         <input type="range" id="wIn" min="1" max="200" value="30" step="1">
@@ -57,7 +59,8 @@
     <section id="advSec">
       <details class="adv" id="advDetails">
         <summary><h2>Advanced</h2></summary>
-      <h3>Fixed version</h3>
+      <div class="algo-opts" data-algo="coza">
+      <h3>Coza</h3>
       <label class="check"><input type="checkbox" id="fxTies" checked><span>Count tied peaks once</span>
         <small>When two neighbouring samples share the peak value, count one step instead of two.</small></label>
       <label class="check"><input type="checkbox" id="fxWeak" checked><span>Drop weak peaks</span>
@@ -65,7 +68,7 @@
       <div class="subrange"><input type="range" id="rIn" min="5" max="90" value="40" step="5" aria-label="Weak peak cut-off"></div>
       <label class="check"><input type="checkbox" id="fxStride"><span>Each peak is a stride</span>
         <small>Turn on if one peak covers a left and a right step (for example, phone in one pocket). Doubles steps and cadence.</small></label>
-      <p class="hint">The fixed version also times steps from the real timestamps instead of assuming 100 Hz, and reports cadence in steps per minute.</p>
+      </div>
       <h3>Editing</h3>
       <label class="check"><input type="checkbox" id="snap" checked><span>Snap new steps to the nearest peak</span>
         <small>A click on the signal adds the step at the highest point within 0.15 s.</small></label>
@@ -103,7 +106,7 @@
             <div class="legend" aria-label="Legend">
               <span><svg width="18" height="10"><path d="M1 7 L6 3 L11 7 L17 2" fill="none" stroke="var(--signal)" stroke-width="1.6"/></svg>Signal</span>
               <span><svg width="12" height="10"><path d="M1 1 H11 L6 9 Z" fill="var(--orig)"/></svg>Lab code (original)</span>
-              <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--fixed)"/></svg>Fixed</span>
+              <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--algo)"/></svg><span id="legAlgo">Coza</span></span>
               <span id="legAdded" hidden><svg width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" fill="var(--added)"/></svg>Added by you</span>
               <span id="legRemoved" hidden><svg width="12" height="12"><path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--removed)" stroke-width="2"/></svg>Removed</span>
               <span><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="3 2"/></svg>Threshold h</span>
