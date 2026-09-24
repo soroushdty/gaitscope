@@ -1,0 +1,16 @@
+{
+  "name": "step-detector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser dashboard and Python port for the Wearable Devices Lab 1 step detector",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "fixtures": "python3 scripts/make_fixtures.py",
+    "serve": "python3 -m http.server 8000"
+  },
+  "engines": { "node": ">=18" },
+  "devDependencies": {
+    "jsdom": "^24.1.0",
+    "pako": "^2.1.0"
+  }
+}

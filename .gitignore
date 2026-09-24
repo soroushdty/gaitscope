@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+
+# Course files (instructor's code and data) stay local
+data/*
+!data/README.md
