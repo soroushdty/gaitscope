@@ -24,7 +24,6 @@ fix individual steps by hand, and export the results.
   once, drops start/stop artefacts, uses real timestamps, and reports cadence; it can
   also treat each peak as a stride.
   See [docs/algorithm.md](docs/algorithm.md).
-- **Click-to-edit.** Add, remove and restore steps on the plot, with undo.
 - **CSV export** of the steps (lab code and Coza, with the reason each step was dropped)
   and of the metrics (with all settings used).
 - **Private.** Files are processed in the browser and never uploaded.
@@ -78,7 +77,7 @@ Changes go through a branch and a pull request with atomic commits. See
 ```
 index.html            dashboard page
 src/core.js           parsing, validation and detection (no DOM; also runs in Node)
-src/app.js            dashboard UI: controls, Plotly figure, edits, export
+src/app.js            dashboard UI: controls, Plotly figure, export
 src/styles.css        light and dark themes
 python/               Python port and plotting script
 tests/                Node and pytest suites, generated fixtures

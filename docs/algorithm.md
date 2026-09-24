@@ -61,10 +61,3 @@ Window `w` and threshold `h` are shared with the original.
 
 Variability is reported as the standard deviation of intervals in ms, plus the
 coefficient of variation.
-
-## Manual edits
-
-Edits are stored relative to the automatic fixed set, as *added* and *removed*
-sample indices. They survive parameter changes, and are cleared when the file or
-channel changes. When snapping is on, a new step moves to the highest sample within
-±0.15 s of the click.
