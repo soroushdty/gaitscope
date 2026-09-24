@@ -11,7 +11,7 @@ Usage (from the repo root):
     python python/lab_step_det.py --file data/Lab1Data.mat --var Lab1Data
     python python/lab_step_det.py --no-plot           # print results only
 
-Requirements: numpy, scipy, matplotlib
+Requirements: numpy, scipy, matplotlib (pinned in uv.lock; install with `uv sync`)
 """
 import argparse
 

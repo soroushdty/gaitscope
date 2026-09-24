@@ -35,11 +35,17 @@ behaviour when it matters.
 - **Every validation message says what went wrong and how to fix it.** See
   `docs/schema.md`; update that document when checks change.
 
+- **Python dependencies are managed with uv only.** They live in `pyproject.toml` and
+  are locked in `uv.lock`; the environment is the git-ignored `.venv/` (`uv sync`).
+  Add packages with `uv add <pkg>` (or `uv add --dev`) and commit both files. Never
+  `pip install` into the system Python or a venv outside the repo. Minimum Python: 3.12.
+
 ## Commands
 
 ```bash
 npm install && npm test          # Node tests: core + jsdom UI (tests/*.test.js)
-pytest tests/                    # Python port tests
+uv sync                          # .venv from pyproject.toml + uv.lock; never the system Python
+uv run pytest                    # Python port tests
 python scripts/make_fixtures.py  # regenerate fixtures + expected.json after port changes
 bash scripts/octave_parity.sh    # needs data/LabStepDet_2025.m, data/Walking.mat, octave-cli
 python3 -m http.server 8000      # serve the dashboard locally

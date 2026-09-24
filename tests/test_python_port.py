@@ -1,4 +1,4 @@
-"""Tests for python/lab_step_det.py.  Run: pytest tests/"""
+"""Tests for python/lab_step_det.py.  Run: uv run pytest"""
 import json
 import os
 import sys

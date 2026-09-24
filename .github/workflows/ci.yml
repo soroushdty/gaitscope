@@ -16,10 +16,13 @@ jobs:
       - run: npm test
   python:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.14"]  # minimum supported and newest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
-          python-version: "3.12"
-      - run: pip install -r python/requirements.txt
-      - run: pytest tests/
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - run: uv run --locked pytest

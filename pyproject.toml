@@ -1,0 +1,22 @@
+[project]
+name = "gaitscope"
+version = "0.1.0"
+description = "Python port of the Wearable Devices Lab 1 step detector"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+# Lower bounds are the versions the tests were run with; exact versions live in uv.lock.
+dependencies = [
+    "numpy>=2.5.3",
+    "scipy>=1.18.1",
+    "matplotlib>=3.11.2",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.1.1"]
+
+[tool.uv]
+package = false  # scripts in python/ and scripts/, not an installable package
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
