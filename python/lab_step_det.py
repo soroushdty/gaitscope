@@ -6,10 +6,10 @@ parameters, same outputs. Verified against the original run in Octave on
 Walking.mat (identical step indices and metrics for columns 2, 3 and 4).
 
 Usage (from the repo root):
-    python python/lab_step_det.py                     # data/Walking.mat, column 2
-    python python/lab_step_det.py --col 4             # pick column 2, 3 or 4
-    python python/lab_step_det.py --file data/Lab1Data.mat --var Lab1Data
-    python python/lab_step_det.py --no-plot           # print results only
+    uv run python python/lab_step_det.py                     # data/Walking.mat, column 2
+    uv run python python/lab_step_det.py --col 4             # pick column 2, 3 or 4
+    uv run python python/lab_step_det.py --file data/Lab1Data.mat --var Lab1Data
+    uv run python python/lab_step_det.py --no-plot           # print results only
 
 Requirements: numpy, scipy, matplotlib (pinned in uv.lock; install with `uv sync`)
 """

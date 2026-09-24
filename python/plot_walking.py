@@ -3,8 +3,8 @@ Plot every accelerometer axis of a lab recording with the steps found by the
 lab algorithm, plus the total magnitude column if present.
 
 Usage:
-    python python/plot_walking.py data/Walking.mat
-    python python/plot_walking.py data/Walking.mat --var Walking --out walking_steps.png
+    uv run python python/plot_walking.py data/Walking.mat
+    uv run python python/plot_walking.py data/Walking.mat --var Walking --out walking_steps.png
 
 Expects the lab layout: column 1 = time (s), columns 2-4 = x, y, z,
 optional column 5 = magnitude.

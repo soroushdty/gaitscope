@@ -50,8 +50,8 @@ deploy from the `main` branch, root folder. The page will be at
 
 ```bash
 uv sync                          # once per clone: creates .venv from uv.lock (Python ≥ 3.12)
-python python/lab_step_det.py --file data/Walking.mat --col 2
-python python/plot_walking.py data/Walking.mat --out walking_steps.png
+uv run python python/lab_step_det.py --file data/Walking.mat --col 2
+uv run python python/plot_walking.py data/Walking.mat --out walking_steps.png
 ```
 
 ## Tests
@@ -59,7 +59,7 @@ python python/plot_walking.py data/Walking.mat --out walking_steps.png
 ```bash
 npm install && npm test          # parsing, validation, algorithms, UI (jsdom)
 uv run pytest                    # Python port
-python scripts/make_fixtures.py  # regenerate tests/fixtures after changing the port
+uv run python scripts/make_fixtures.py  # regenerate tests/fixtures after changing the port
 bash scripts/octave_parity.sh    # original .m in GNU Octave vs the Python port
 ```
 

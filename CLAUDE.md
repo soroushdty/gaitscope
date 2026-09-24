@@ -46,7 +46,7 @@ behaviour when it matters.
 npm install && npm test          # Node tests: core + jsdom UI (tests/*.test.js)
 uv sync                          # .venv from pyproject.toml + uv.lock; never the system Python
 uv run pytest                    # Python port tests
-python scripts/make_fixtures.py  # regenerate fixtures + expected.json after port changes
+uv run python scripts/make_fixtures.py  # regenerate fixtures + expected.json after port changes
 bash scripts/octave_parity.sh    # needs data/LabStepDet_2025.m, data/Walking.mat, octave-cli
 python3 -m http.server 8000      # serve the dashboard locally
 ```
