@@ -129,7 +129,10 @@ main { padding: 20px 28px 40px; min-width: 0; }
 .toggle:has(input:disabled) { opacity: .5; cursor: not-allowed; }
 .edit-banner { margin: 0 6px 6px; font-size: 13px; color: var(--added); }
 
-.results { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.steps > summary { display: flex; align-items: baseline; }
+.steps > summary h2 { margin: 0; }
+.steps[open] > summary { margin-bottom: 8px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
 .card h2 { font-size: 15px; margin-bottom: 8px; }
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
@@ -157,7 +160,6 @@ tr.manual td:last-child { color: var(--added); }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   aside { border-right: 0; border-bottom: 1px solid var(--line); }
-  .results { grid-template-columns: 1fr; }
   main { padding: 16px; }
   .top { padding: 18px 16px 14px; flex-direction: column; align-items: flex-start; }
   .filechip { text-align: left; }

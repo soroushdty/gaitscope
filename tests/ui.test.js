@@ -50,6 +50,7 @@ test('loads a MAT file, compares versions, edits and exports', async () => {
   const last = pg.plots.at(-1);
   const lab = last.traces[1].x.length, fixed = last.traces[2].x.length;
   assert.ok(lab > fixed, 'fixed version drops the tied duplicate');
+  assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
   assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' fixed, ' + lab + ' lab code'));
 
   // remove one fixed step, add one, undo
