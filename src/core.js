@@ -662,8 +662,8 @@
     };
   }
 
-  // Fixed version. opts: {ties, weak, weakRatio}
-  function detectFixed(A, w, h, opts) {
+  // Coza: the lab detector with its bugs fixed. opts: {ties, weak, weakRatio}
+  function detectCoza(A, w, h, opts) {
     const M = windowExtreme(A, w, w, true);
     const L = opts.ties ? windowExtreme(A, w, -1, true) : null; // max of A[i-w .. i-1]
     let idx = [];
@@ -684,7 +684,7 @@
     return { idx, weakDropped, medAmp };
   }
 
-  function fixedMetrics(idx, t, opts) {
+  function cozaMetrics(idx, t, opts) {
     const d = [];
     for (let k = 1; k < idx.length; k++) d.push(t[idx[k]] - t[idx[k - 1]]);
     const perPeak = opts.stride ? 2 : 1;
@@ -704,6 +704,20 @@
       intervals: d,
     };
   }
+
+  /* Step detection algorithms offered in the dashboard. The lab code (detectOriginal /
+     originalMetrics) is the MATLAB reference, always shown for comparison, and is not listed.
+     Each entry: detect(A, t, p) -> {idx, weakDropped?}; metrics(idx, t, p) -> the fields
+     cozaMetrics returns. p holds the shared w and h plus the algorithm's own options. */
+  const ALGORITHMS = [
+    {
+      id: 'coza',
+      name: 'Coza',
+      summary: 'The lab peak detector with its bugs fixed: tied peaks counted once, weak start/stop bumps dropped, timing from the real timestamps, cadence in steps/min.',
+      detect: (A, t, p) => detectCoza(A, p.w, p.h, { ties: p.ties, weak: p.weak, weakRatio: p.weakRatio }),
+      metrics: (idx, t, p) => cozaMetrics(idx, t, { stride: p.stride }),
+    },
+  ];
 
   /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
   function demoWalk() {
@@ -727,7 +741,7 @@
   }
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
-    prepareChannel, detectOriginal, originalMetrics, detectFixed, fixedMetrics, windowExtreme,
+    prepareChannel, detectOriginal, originalMetrics, detectCoza, cozaMetrics, ALGORITHMS, windowExtreme,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

@@ -75,8 +75,8 @@ gh pr create --base main --fill
 These come from `CLAUDE.md`:
 
 - The *original* algorithm (`detect_steps`/`gait_metrics`, `detectOriginal`/
-  `originalMetrics`) stays bit-exact with MATLAB. Improvements go in the *fixed*
-  version only.
+  `originalMetrics`) stays bit-exact with MATLAB. Improvements go into our own
+  algorithms (entries in `ALGORITHMS` in `src/core.js`, currently Coza) only.
 - `src/core.js` has no DOM access.
 - Never commit course files. `data/` is git-ignored except its README.
 - The dashboard stays a static page with no build step.

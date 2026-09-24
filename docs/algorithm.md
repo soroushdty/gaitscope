@@ -41,7 +41,7 @@ original script run in GNU Octave, for columns 2, 3 and 4
    1.14 s, which is slow for single steps (normally 0.45–0.7 s). If the phone rode
    on one leg, each peak is a left plus a right step.
 
-## Fixed version (`detectFixed`, `fixedMetrics`)
+## Coza, the fixed version (`detectCoza`, `cozaMetrics`)
 
 Each fix can be switched on or off in the dashboard, so its effect can be seen on its own.
 Window `w` and threshold `h` are shared with the original.

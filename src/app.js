@@ -235,15 +235,16 @@
     const { A, t } = S.ch;
     const origIdx = C.detectOriginal(A, p.w, p.h);
     const orig = C.originalMetrics(origIdx, p.w);
-    const fx = C.detectFixed(A, p.w, p.h, { ties: p.ties, weak: p.weak, weakRatio: p.weakRatio });
+    const algo = C.ALGORITHMS[0];
+    const fx = algo.detect(A, t, p);
     const autoSet = new Set(fx.idx);
     // manual edits relative to the automatic fixed set
     const finalSet = new Set(fx.idx.filter(i => !S.edits.removed.has(i)));
     for (const i of S.edits.added) finalSet.add(i);
     const finalIdx = Array.from(finalSet).sort((a, b) => a - b);
-    const fixedM = C.fixedMetrics(finalIdx, t, { stride: p.stride });
+    const fixedM = algo.metrics(finalIdx, t, p);
     const weakSet = new Set(fx.weakDropped);
-    S.res = { p, origIdx, orig, fx, autoSet, finalIdx, finalSet, fixedM, weakSet };
+    S.res = { p, algo, origIdx, orig, fx, autoSet, finalIdx, finalSet, fixedM, weakSet };
     render();
   }
 
