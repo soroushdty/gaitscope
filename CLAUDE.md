@@ -64,6 +64,11 @@ unless the course file is present in `data/`.
   files, structs, int16, and transposed matrices. It rejects v4 and v7.3 (HDF5) with
   re-save instructions.
 - The dashboard was rendered in headless Chromium in light, dark and mobile layouts.
+- Real Physics Toolbox exports from the owner's phone (2026-09-23, G-Force Meter at
+  ~460 Hz and Linear Accelerometer at ~57 Hz) load correctly. Newer exports start with
+  `# key: value` metadata lines and put units in headers (`ax (m/s^2)`); both are handled.
+  At 460 Hz the lab code (`w = 30` samples = ±65 ms, TgF rounded to 0.01) finds 193
+  "steps" in 6.6 s, so it only makes sense near 100 Hz.
 
 ## Findings about the lab code (see docs/algorithm.md)
 
@@ -77,9 +82,6 @@ unless the course file is present in `data/`.
 
 ## Open items
 
-- [ ] Test with a real Physics Toolbox export from the owner's phone. The CSV support
-      was built from documented column names (`time`, `gFx/gFy/gFz/TgF`,
-      `ax/ay/az/aT`, `wx/wy/wz`), not from a real file.
 - [ ] Ask the instructor: is a Python version acceptable for submissions? Is "Pace"
       intended? Are the peaks steps or strides?
 - [ ] Enable GitHub Pages (Settings → Pages → main / root).
