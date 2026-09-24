@@ -28,6 +28,7 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`,
 | MAT v4 | error | Obsolete. Fix: re-save with `-v7`. |
 | Text file named `.mat` | warn / error | Read as CSV if it parses; otherwise told to rename it. |
 | Random or corrupted bytes, truncated blocks | error | Detected from the header and element sizes. |
+| CSV lines starting with `#` | skipped | Newer Physics Toolbox exports start with metadata lines (`# sensor:g_force`, `# Requested Sample Rate: …`). |
 
 ## 2. Variables (MAT)
 

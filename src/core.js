@@ -279,7 +279,8 @@
 
   function parseCsv(text) {
     text = text.replace(/^\uFEFF/, '');
-    const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
+    // Physics Toolbox (newer versions) starts with '# key: value' metadata lines; skip them.
+    const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '' && !l.trimStart().startsWith('#'));
     if (lines.length < 2) throw new InputError('The CSV file has fewer than 2 lines of data.', 'Record for longer, or check that the export completed.');
     const sample = lines.slice(0, Math.min(lines.length, 12));
     // Prefer a delimiter that splits every sampled line (header included) into the same number of fields.
