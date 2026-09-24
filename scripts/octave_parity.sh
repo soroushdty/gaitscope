@@ -6,8 +6,8 @@
 #   bash scripts/octave_parity.sh            # columns 2, 3 and 4
 set -euo pipefail
 cd "$(dirname "$0")/.."
-M=data/LabStepDet_2025.m; D=data/Walking.mat
-[[ -f $M && -f $D ]] || { echo "Put LabStepDet_2025.m and Walking.mat in data/ first."; exit 1; }
+M=$(ls data/LabStepDet_2025*.m 2>/dev/null | head -1); D=data/Walking.mat  # browsers may save it as LabStepDet_2025-2.m
+[[ -n $M && -f $M && -f $D ]] || { echo "Put LabStepDet_2025.m and Walking.mat in data/ first."; exit 1; }
 command -v octave-cli >/dev/null || { echo "Install GNU Octave (octave-cli)."; exit 1; }
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 status=0
