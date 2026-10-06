@@ -133,7 +133,50 @@ Uses timing, not peak height, so it ignores how hard each step lands.
    then adds no crossings. The 0.3 Hz and 0.3 SD are fixed; the cut-off is a setting.
 4. Crossings closer than the minimum interval (default 0.25 s) to the last step are ignored.
 
-Markers sit where the smoothed signal crosses its baseline, a quarter of a cycle before
-the peak, so their times are earlier than the peak-based detectors' but their intervals
-are the same. At the very first step the filter smears the rise from rest, so that one
+Markers sit where the smoothed signal crosses its baseline, on the rise before the peak,
+so their times are earlier than the peak-based detectors' (about 0.4 s on `Walking.mat`
+column 2) but their intervals are the same. At the very first step the filter smears the rise from rest, so that one
 crossing can come up to about 0.07 s early.
+
+## Comparison on real recordings
+
+Steps found with the dashboard defaults, and the mean interval between them (from the
+timestamps, for every column). `Walking.mat` is the course file; the CSVs are the
+owner's Physics Toolbox recordings from 2026-09-23 (G-Force Meter at ~460 Hz, 6.6 s;
+Linear Accelerometer at ~57 Hz, 7.6 s). None of these files is committed.
+
+| Signal | Lab code | Coza | Threshold peaks | Peak-to-valley | Zero-crossing |
+|---|---:|---:|---:|---:|---:|
+| `Walking.mat` x (column 2) | 15 (0.95 s) | 12 (1.15 s) | 12 (1.15 s) | 12 (1.15 s) | 12 (1.15 s) |
+| `Walking.mat` y (column 3) | 12 (1.14 s) | 12 (1.14 s) | 17 (0.98 s) | 13 (1.13 s) | 13 (1.13 s) |
+| `Walking.mat` z (column 4) | 21 (0.69 s) | 18 (0.82 s) | 16 (0.86 s) | 22 (0.71 s) | 17 (0.91 s) |
+| `Walking.mat` magnitude (column 5) | 27 (0.49 s) | 23 (0.57 s) | 21 (0.57 s) | 23 (0.57 s) | 21 (0.66 s) |
+| G-Force, gFz | 8 (0.80 s) | 5 (1.24 s) | 9 (0.75 s) | 8 (0.80 s) | 6 (1.13 s) |
+| G-Force, TgF (magnitude) | 193 (0.03 s) | 7 (0.93 s) | 7 (0.93 s) | 11 (0.56 s) | 8 (0.81 s) |
+| Linear Accelerometer, ay | 4 (1.78 s) | 6 (1.07 s) | 7 (0.81 s) | 6 (0.98 s) | 6 (1.17 s) |
+| Linear Accelerometer, aT (magnitude) | 5 (1.53 s) | 7 (0.88 s) | 7 (0.88 s) | 8 (0.87 s) | 4 (1.44 s) |
+
+What this shows, and what it doesn't:
+
+* **On the lab's own channel (column 2) all four algorithms agree:** 12 steps,
+  1.15 s apart. The peak-based detectors put them at Coza's times to within 0.05 s.
+  Zero-crossing's are about 0.4 s earlier, because it marks the rise through the
+  baseline rather than the peak. The lab code's 15 is these
+  12 plus two tied duplicates and the stop bump.
+* **Column 3** rests well away from its walking mean. Threshold peaks' global
+  threshold (mean + 0.5 SD) then falls below the resting level, and it counts 5 peaks of
+  noise before the walk starts and after it stops. Peak-to-valley and Zero-crossing each
+  add one step at the start or the stop. This is the weakness the issue predicted for a
+  global threshold.
+* **Columns 4 and 5 and the magnitudes** have several bumps per stride, and the
+  algorithms disagree by up to 6 steps. Without a known count, none of them can be
+  called right.
+* **The phone recordings are too short** (fewer than 10 steps) and have no known count,
+  so they only show that every algorithm except the lab code gives a plausible rate at
+  460 Hz. Their windows and cut-offs are in seconds and Hz, not samples.
+
+To say which algorithm is best needs recordings with a known step count, for example
+20 steps counted by hand at a normal pace, with the phone in the hand and in a pocket
+(#11, decision 4). The synthetic walk in `tests/core.test.js` (`knownWalk`) has a
+known count, and every algorithm finds all 20 steps there at 57, 100 and 460 Hz, with and
+without gravity.

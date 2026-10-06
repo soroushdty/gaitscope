@@ -81,6 +81,10 @@ unless the course file is present in `data/`.
   come in at ~460 Hz. `lab_step_det.py --resample 100` interpolates to 100 Hz before
   the lab code (MATLAB `interp1`); Coza's window is in seconds, so it needs no resampling.
 - phyphox exports (zip with `Raw Data.csv` + `meta/`) are not supported yet: issue #15.
+- Threshold peaks, Peak-to-valley and Zero-crossing (#11) all find the same 12 steps
+  as Coza on `Walking.mat` column 2. They disagree on the other channels and on the phone
+  recordings, which have no known step count (table in `docs/algorithm.md`).
+  `lowpass` matches scipy's `filtfilt(butter(2, …))` to 1e-13.
 
 ## Findings about the lab code (see docs/algorithm.md)
 
@@ -96,6 +100,8 @@ unless the course file is present in `data/`.
 
 - [ ] Ask the instructor: is a Python version acceptable for submissions? Is "Pace"
       intended? Are the peaks steps or strides?
+- [ ] Record walks with a known step count (e.g. 20 steps counted by hand, phone in the
+      hand and in a pocket) to rank the algorithms (#11, decision 4).
 - [x] GitHub Pages is enabled (main / root).
 - [ ] Maybe: support MAT v7.3 via h5wasm (large WebAssembly download; probably not
       worth it), batch processing of several files, overlaying x/y/z channels.
