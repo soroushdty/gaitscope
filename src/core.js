@@ -1033,6 +1033,72 @@
     },
   ];
 
+  /* Signal filters offered in the dashboard. A filter changes the signal the selected
+     algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
+     p: {filter, fOrder, fLow (Hz), fHigh (Hz, 0 = off), fRipple (dB), fAtten (dB)} */
+  const FILTERS = [
+    { id: 'none', name: 'None', tagline: 'Detection runs on the recorded signal.' },
+    { id: 'butter', name: 'Butterworth', tagline: 'Flat passband and the gentlest roll-off: the least change to the shape of each step.' },
+    { id: 'cheby1', name: 'Chebyshev I', tagline: 'A steeper roll-off, paid for with ripple in the passband that slightly reshapes peaks.' },
+    { id: 'cheby2', name: 'Chebyshev II', tagline: 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.' },
+  ];
+  const ORDINAL = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  function filterLabel(p) {
+    const f = FILTERS.find(x => x.id === p.filter);
+    if (!f || f.id === 'none') return 'none';
+    return f.name + ', ' + ORDINAL(p.fOrder) + ' order, ' + (p.fHigh > 0 ? fmt(p.fHigh, 1) + '\u2013' + fmt(p.fLow, 1) + ' Hz band-pass' : fmt(p.fLow, 1) + ' Hz low-pass') +
+      (f.id === 'cheby1' ? ', ' + fmt(p.fRipple, 1) + ' dB ripple' : f.id === 'cheby2' ? ', ' + fmt(p.fAtten, 0) + ' dB stopband' : '');
+  }
+
+  // Values of y (sampled at increasing times ts, repeats allowed) at the times td, by straight
+  // lines between neighbours; held flat beyond either end.
+  function interpAt(ts, y, td) {
+    const out = new Float64Array(td.length);
+    let j = 0;
+    for (let i = 0; i < td.length; i++) {
+      const v = td[i];
+      while (j + 1 < ts.length && ts[j + 1] <= v) j++;
+      if (v <= ts[0]) out[i] = y[0];
+      else if (j + 1 >= ts.length) out[i] = y[ts.length - 1];
+      else { const d = ts[j + 1] - ts[j]; out[i] = d > 0 ? y[j] + (y[j + 1] - y[j]) * (v - ts[j]) / d : y[j]; }
+    }
+    return out;
+  }
+
+  const RESAMPLE_JITTER = 0.01; // timing variation above which a filter runs on an even grid
+
+  /* Filter a prepared channel. IIR filters assume evenly spaced samples, and phone exports
+     aren't, so when the timestamps vary by more than 1% the signal is interpolated onto an
+     even grid at the median rate, filtered there and read back at the original timestamps:
+     the algorithm still sees one value per recorded sample. Returns {A, applied, resampled,
+     checks}; settings that can't be built leave the signal unfiltered with a check saying
+     what to change. */
+  function applyFilter(A, t, fs, p) {
+    const none = { A, applied: false, resampled: false, checks: [] };
+    if (!p.filter || p.filter === 'none') return none;
+    let sos;
+    try {
+      sos = designFilter({ type: p.filter, order: p.fOrder, fs, lowpass: p.fLow, highpass: p.fHigh, rp: p.fRipple, rs: p.fAtten }).sos;
+    } catch (e) {
+      if (!(e instanceof RangeError)) throw e;
+      return Object.assign(none, { checks: [{ level: 'warn', title: 'Filter not applied', detail: e.message + ' Detection runs on the recorded signal.', fix: 'Change the filter settings under Advanced.' }] });
+    }
+    const n = A.length, dts = [];
+    for (let i = 1; i < n; i++) { const d = t[i] - t[i - 1]; if (d > 0) dts.push(d); }
+    const md = median(dts), jitter = std(dts) / md;
+    if (!(jitter > RESAMPLE_JITTER)) return { A: sosfiltfilt(sos, A), applied: true, resampled: false, checks: [] };
+    const m = Math.floor((t[n - 1] - t[0]) / md) + 1;
+    if (m > 4 * n) {
+      return { A: sosfiltfilt(sos, A), applied: true, resampled: false, checks: [{ level: 'warn', title: 'Filtered as if evenly sampled',
+        detail: 'The recording has long gaps, so an even grid would be over 4 times its length. The filter treats the samples as evenly spaced, which blurs its cut-off.',
+        fix: 'Trim the gaps or split the recording.' }] };
+    }
+    const tg = Float64Array.from({ length: m }, (_, k) => t[0] + k * md);
+    const yg = sosfiltfilt(sos, interpAt(t, A, tg));
+    return { A: interpAt(tg, yg, t), applied: true, resampled: true, checks: [{ level: 'info', title: 'Resampled for filtering',
+      detail: 'Timing varies by ' + Math.round(jitter * 100) + '% between samples and the filter needs even spacing, so the signal was interpolated onto an even ' + fmt(1 / md, 1) + ' Hz grid, filtered, and read back at the original timestamps.' }] };
+  }
+
   /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
   function demoWalk() {
     const fs = 100, dur = 22, n = fs * dur;
@@ -1057,6 +1123,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
+    FILTERS, filterLabel, applyFilter, interpAt,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

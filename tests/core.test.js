@@ -248,6 +248,57 @@ test('Zero-crossing ignores noise near zero and crossings inside the minimum int
   assert.ok(n2 >= 19 && Math.abs(n6 - n2 / 2) <= 1, n2 + ' vs ' + n6);
 });
 
+const FP = { filter: 'butter', fOrder: 4, fLow: 3, fHigh: 0, fRipple: 0.5, fAtten: 40 };
+const ALGO_P = { h: 1, w: 30, weak: true, cozaWindow: 0.3, tpCutoff: 3, tpK: 0.5, tpMinInterval: 0.25, pvWindow: 1, pvSwing: 40, pvMinInterval: 0.25, zcCutoff: 3, zcMinInterval: 0.25 };
+
+test('a filtered noisy walk gives the same steps as the clean walk, for every algorithm and filter', () => {
+  const clean = knownWalk({ fs: 460, noise: 0 });
+  // 25 Hz vibration plus a 60 Hz hum, both larger than the noise the algorithms are tuned for
+  const noisy = clean.A.map((v, i) => v + 1.2 * Math.sin(2 * Math.PI * 25 * clean.t[i]) + 0.8 * Math.sin(2 * Math.PI * 60 * clean.t[i] + 1));
+  const p = Object.assign({ fs: 460 }, ALGO_P);
+  for (const filter of ['butter', 'cheby1', 'cheby2']) {
+    const f = C.applyFilter(noisy, clean.t, 460, Object.assign({}, FP, { filter, fLow: filter === 'cheby2' ? 8 : 4 }));
+    assert.equal(f.applied, true); assert.equal(f.resampled, false, 'evenly sampled: no resampling');
+    for (const a of C.ALGORITHMS) {
+      const want = a.detect(clean.A, clean.t, p).idx.map(i => clean.t[i]);
+      const got = a.detect(f.A, clean.t, p).idx.map(i => clean.t[i]);
+      assert.equal(got.length, want.length, filter + ', ' + a.id);
+      got.forEach((v, k) => assert.ok(Math.abs(v - want[k]) < 0.03, filter + ', ' + a.id + ', step ' + k));
+    }
+  }
+  assert.notEqual(C.detectOriginal(noisy, 30, 1).length, C.detectOriginal(clean.A, 30, 1).length, 'the noise does change the unfiltered lab code');
+});
+
+test('uneven timestamps are resampled for the filter and read back at the original times', () => {
+  let seed = 5;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+  const t = new Float64Array(3000);
+  for (let i = 1; i < t.length; i++) t[i] = t[i - 1] + (1 + 0.6 * rnd()) / 460; // ±30% timing jitter, like a phone
+  const slow = t.map(v => Math.sin(2 * Math.PI * v));
+  const A = t.map((v, i) => slow[i] + 0.5 * Math.sin(2 * Math.PI * 40 * v));
+  const f = C.applyFilter(A, t, 460, FP);
+  assert.equal(f.resampled, true);
+  assert.equal(f.A.length, A.length, 'one value per recorded sample');
+  assert.match(f.checks[0].title, /Resampled/); assert.match(f.checks[0].detail, /even 4\d\d\.\d Hz grid/);
+  // what remains is mostly the straight-line interpolation of the 40 Hz part onto the grid
+  const err = Math.max(...Array.from(f.A, (v, i) => i > 200 && i < A.length - 200 ? Math.abs(v - slow[i]) : 0));
+  assert.ok(err < 0.02, 'the 40 Hz part is gone and the 1 Hz part kept: ' + err);
+  const even = C.sosfiltfilt(C.designFilter({ type: 'butter', order: 4, fs: 460, lowpass: 3 }).sos, A);
+  const errEven = Math.max(...Array.from(even, (v, i) => i > 200 && i < A.length - 200 ? Math.abs(v - slow[i]) : 0));
+  assert.ok(errEven > 2 * err, 'treating the samples as even is worse: ' + errEven);
+});
+
+test('a filter that cannot be built leaves the signal alone and says what to change', () => {
+  const t = Float64Array.from({ length: 500 }, (_, i) => i / 50), A = t.map(v => Math.sin(v));
+  assert.equal(C.applyFilter(A, t, 50, { filter: 'none' }).A, A);
+  const r = C.applyFilter(A, t, 50, Object.assign({}, FP, { fLow: 30 }));
+  assert.equal(r.applied, false); assert.equal(r.A, A);
+  assert.equal(r.checks[0].title, 'Filter not applied');
+  assert.match(r.checks[0].detail, /under 25\.0 Hz/); assert.match(r.checks[0].fix, /Advanced/);
+  assert.equal(C.filterLabel(Object.assign({}, FP, { filter: 'cheby2', fOrder: 2, fHigh: 0.3 })), 'Chebyshev II, 2nd order, 0.3\u20133.0 Hz band-pass, 40 dB stopband');
+  assert.equal(C.filterLabel({ filter: 'none' }), 'none');
+});
+
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
