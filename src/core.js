@@ -638,34 +638,6 @@
     return out;
   }
 
-  /* Low-pass filter: 2nd-order Butterworth (bilinear transform, cut-off pre-warped) run
-     forwards and then backwards, like MATLAB's filtfilt. The two passes cancel each
-     other's delay, so peaks stay at the same time; the gain at the cut-off is 1/2.
-     Both ends are padded with a point reflection of the signal so the filter starts
-     settled. fs is the median rate; phone jitter is small next to a few-Hz cut-off.
-     A cut-off at or above fs/2 returns an unfiltered copy. Same output as scipy's
-     filtfilt(*butter(2, fc, fs=fs), A, padtype='odd', padlen=round(3*fs/fc)), to 1e-13. */
-  function lowpass(A, fs, fc) {
-    const n = A.length;
-    if (!(fc > 0) || !(fc < fs / 2) || n < 3) return Float64Array.from(A);
-    const K = Math.tan(Math.PI * fc / fs), q = Math.SQRT2, norm = 1 / (1 + q * K + K * K);
-    const b0 = K * K * norm, b1 = 2 * b0, b2 = b0, a1 = 2 * (K * K - 1) * norm, a2 = (1 - q * K + K * K) * norm;
-    const pad = Math.min(n - 1, Math.max(3, Math.round(3 * fs / fc)));
-    const N = n + 2 * pad, x = new Float64Array(N);
-    for (let i = 0; i < pad; i++) { x[i] = 2 * A[0] - A[pad - i]; x[N - 1 - i] = 2 * A[n - 1] - A[n - 1 - pad + i]; }
-    x.set(A, pad);
-    // one pass in place, in direction dir, starting as if the signal had always been at its first value
-    const pass = (from, to, dir) => {
-      let x1 = x[from], x2 = x1, y1 = x1, y2 = x1;
-      for (let i = from; i !== to; i += dir) {
-        const v = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-        x2 = x1; x1 = x[i]; y2 = y1; y1 = v; x[i] = v;
-      }
-    };
-    pass(0, N, 1); pass(N - 1, -1, -1);
-    return x.slice(pad, pad + n);
-  }
-
   /* ------------------------------------------------- IIR filter design */
   // Butterworth, Chebyshev I and Chebyshev II as cascaded second-order sections, designed the
   // way scipy's iirfilter(..., output='sos', fs=fs) does: analog prototype poles and zeros,
@@ -806,6 +778,17 @@
     };
     pass(0, N, 1); pass(N - 1, -1, -1);
     return x.slice(edge, edge + n);
+  }
+
+  /* Low-pass filter used inside the step detection algorithms: 2nd-order Butterworth run
+     forwards and then backwards (like MATLAB's filtfilt), so peaks stay at the same time; the
+     gain at the cut-off is 1/2. Both ends are padded with a point reflection of 3·fs/fc
+     samples, longer than sosfiltfilt's default, so slow cut-offs start settled. fs is the
+     median rate; phone jitter is small next to a few-Hz cut-off. A cut-off at or above fs/2
+     returns an unfiltered copy. */
+  function lowpass(A, fs, fc) {
+    if (!(fc > 0) || !(fc < fs / 2) || A.length < 3) return Float64Array.from(A);
+    return sosfiltfilt(designFilter({ type: 'butter', order: 2, fs, lowpass: fc }).sos, A, Math.round(3 * fs / fc));
   }
 
   // Sliding max and min over A[i-half .. i+half] and their midpoint, the dynamic threshold
