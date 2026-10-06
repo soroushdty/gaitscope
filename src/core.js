@@ -666,6 +666,148 @@
     return x.slice(pad, pad + n);
   }
 
+  /* ------------------------------------------------- IIR filter design */
+  // Butterworth, Chebyshev I and Chebyshev II as cascaded second-order sections, designed the
+  // way scipy's iirfilter(..., output='sos', fs=fs) does: analog prototype poles and zeros,
+  // frequency transform with pre-warping, bilinear transform. Only the pairing of poles and
+  // zeros into sections differs from scipy; the overall filter (and sosfiltfilt's output) is
+  // the same. Checked against scipy in tests/fixtures/filters.json.
+  const cx = (re, im = 0) => ({ re, im });
+  const cAdd = (a, b) => cx(a.re + b.re, a.im + b.im);
+  const cSub = (a, b) => cx(a.re - b.re, a.im - b.im);
+  const cMul = (a, b) => cx(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+  const cDiv = (a, b) => { const d = b.re * b.re + b.im * b.im; return cx((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d); };
+  const cScale = (a, s) => cx(a.re * s, a.im * s);
+  const cAbs = a => Math.hypot(a.re, a.im);
+  const cSqrt = a => { // principal branch, like numpy
+    const r = cAbs(a), re = Math.sqrt((r + a.re) / 2), im = Math.sqrt((r - a.re) / 2);
+    return cx(re, a.im < 0 ? -im : im);
+  };
+  const cProd = arr => arr.reduce(cMul, cx(1));
+
+  // analog low-pass prototypes with cut-off 1 rad/s: {z, p, k} (scipy buttap, cheb1ap, cheb2ap)
+  function prototype(type, N, rp, rs) {
+    const m = Array.from({ length: N }, (_, i) => -N + 1 + 2 * i);
+    if (type === 'butter') return { z: [], p: m.map(v => cx(-Math.cos(Math.PI * v / (2 * N)), -Math.sin(Math.PI * v / (2 * N)))), k: 1 };
+    if (type === 'cheby1') {
+      const eps = Math.sqrt(Math.pow(10, 0.1 * rp) - 1), mu = Math.asinh(1 / eps) / N;
+      const p = m.map(v => { const th = Math.PI * v / (2 * N); return cx(-Math.sinh(mu) * Math.cos(th), -Math.cosh(mu) * Math.sin(th)); });
+      let k = cProd(p.map(v => cScale(v, -1))).re;
+      if (N % 2 === 0) k /= Math.sqrt(1 + eps * eps);
+      return { z: [], p, k };
+    }
+    // cheby2
+    const de = 1 / Math.sqrt(Math.pow(10, 0.1 * rs) - 1), mu = Math.asinh(1 / de) / N;
+    const mz = N % 2 ? m.filter(v => v !== 0) : m;
+    const z = mz.map(v => cx(0, 1 / Math.sin(v * Math.PI / (2 * N))));
+    const p = m.map(v => { const th = Math.PI * v / (2 * N); return cDiv(cx(1), cx(-Math.sinh(mu) * Math.cos(th), -Math.cosh(mu) * Math.sin(th))); });
+    const k = cDiv(cProd(p.map(v => cScale(v, -1))), cProd(z.map(v => cScale(v, -1)))).re;
+    return { z, p, k };
+  }
+
+  /* Digital filter as second-order sections [b0, b1, b2, 1, a1, a2].
+     spec: {type: 'butter'|'cheby1'|'cheby2', order, fs, lowpass (Hz), highpass (Hz, 0 = none),
+     rp (dB passband ripple, cheby1), rs (dB stopband attenuation, cheby2)}. With a high-pass
+     cut-off it is a band-pass of twice the order, as in scipy. For Chebyshev I the cut-off is where
+     the ripple band ends; for Chebyshev II it is where the stopband starts. Throws a
+     RangeError saying what to change when the spec can't be built. */
+  function designFilter(spec) {
+    const { type, order: N, fs } = spec, lp = spec.lowpass || 0, hp = spec.highpass || 0;
+    const nyq = fs / 2;
+    if (!(N >= 1 && N <= 10 && Number.isInteger(N))) throw new RangeError('The filter order must be a whole number from 1 to 10.');
+    if (!(lp > 0)) throw new RangeError('The low-pass cut-off must be above 0 Hz.');
+    if (hp < 0) throw new RangeError('The high-pass cut-off must be 0 (off) or above.');
+    if (lp >= nyq) throw new RangeError('The low-pass cut-off must be below half the sampling rate: under ' + fmt(nyq, 1) + ' Hz for this recording.');
+    if (hp > 0 && hp >= lp) throw new RangeError('The high-pass cut-off must be below the low-pass cut-off.');
+    if (type === 'cheby1' && !(spec.rp > 0)) throw new RangeError('The passband ripple must be above 0 dB.');
+    if (type === 'cheby2' && !(spec.rs > 0)) throw new RangeError('The stopband attenuation must be above 0 dB.');
+    let { z, p, k } = prototype(type, N, spec.rp, spec.rs);
+    const warp = f => 4 * Math.tan(Math.PI * f / fs); // pre-warped, bilinear transform with fs = 2
+    const degree = p.length - z.length;
+    if (hp > 0) { // lp2bp_zpk
+      const w1 = warp(hp), w2 = warp(lp), wo = Math.sqrt(w1 * w2), bw = w2 - w1, wo2 = cx(wo * wo);
+      const split = r => { const h = cScale(r, bw / 2), s = cSqrt(cSub(cMul(h, h), wo2)); return [cAdd(h, s), cSub(h, s)]; };
+      const zs = z.map(split), ps = p.map(split);
+      z = zs.map(v => v[0]).concat(zs.map(v => v[1]), Array.from({ length: degree }, () => cx(0)));
+      p = ps.map(v => v[0]).concat(ps.map(v => v[1]));
+      k *= Math.pow(bw, degree);
+    } else { // lp2lp_zpk
+      const wo = warp(lp);
+      z = z.map(v => cScale(v, wo)); p = p.map(v => cScale(v, wo));
+      k *= Math.pow(wo, degree);
+    }
+    // bilinear_zpk with fs = 2
+    const four = cx(4), deg2 = p.length - z.length;
+    k *= cDiv(cProd(z.map(v => cSub(four, v))), cProd(p.map(v => cSub(four, v)))).re;
+    z = z.map(v => cDiv(cAdd(four, v), cSub(four, v))).concat(Array.from({ length: deg2 }, () => cx(-1)));
+    p = p.map(v => cDiv(cAdd(four, v), cSub(four, v)));
+    return { sos: zpkToSos(z, p, k), z, p, k };
+  }
+
+  // Group roots into first- and second-order factors: conjugate pairs together, real roots two
+  // at a time (a last odd one alone). Each unit: {r: a root to measure distance by, c: [1, c1, c2]}.
+  function rootUnits(roots) {
+    const tol = 1e-10, units = [], real = [];
+    for (const r of roots) {
+      if (Math.abs(r.im) <= tol * Math.max(1, cAbs(r))) real.push(r.re);
+      else if (r.im > 0) units.push({ r, c: [1, -2 * r.re, r.re * r.re + r.im * r.im] });
+    }
+    real.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < real.length; i += 2) units.push({ r: cx(real[i]), c: [1, -(real[i] + real[i + 1]), real[i] * real[i + 1]] });
+    if (real.length % 2) units.push({ r: cx(real[real.length - 1]), c: [1, -real[real.length - 1], 0], single: true });
+    return units;
+  }
+
+  // Pole units ordered from farthest to closest to the unit circle (scipy puts the "worst" last),
+  // each paired with the nearest unused zero unit; a lone real pole takes a lone real zero.
+  function zpkToSos(z, p, k) {
+    const pu = rootUnits(p), zu = rootUnits(z);
+    pu.sort((a, b) => Math.abs(1 - cAbs(b.r)) - Math.abs(1 - cAbs(a.r)));
+    const sos = pu.map((P, i) => {
+      let j = P.single ? zu.findIndex(Z => Z.single) : -1;
+      if (j < 0) { j = 0; zu.forEach((Z, q) => { if (!Z.single && cAbs(cSub(Z.r, P.r)) < cAbs(cSub(zu[j].r, P.r))) j = q; }); }
+      const b = j >= 0 && zu.length ? zu.splice(j, 1)[0].c : [1, 0, 0];
+      const g = i === 0 ? k : 1;
+      return [g * b[0], g * b[1], g * b[2], 1, P.c[1], P.c[2]];
+    });
+    return sos;
+  }
+
+  /* Zero-phase filtering with second-order sections, like scipy's sosfiltfilt: odd extension
+     of padlen samples at each end (default 3 × the filter length, as in scipy), each pass
+     starting from the steady state for its first sample (sosfilt_zi). */
+  function sosfiltfilt(sos, A, padlen) {
+    const n = A.length;
+    const ntaps = 2 * sos.length + 1 - Math.min(sos.filter(s => s[2] === 0).length, sos.filter(s => s[5] === 0).length);
+    const edge = Math.max(0, Math.min(padlen === undefined ? 3 * ntaps : padlen, n - 1));
+    const N = n + 2 * edge, x = new Float64Array(N);
+    for (let i = 0; i < edge; i++) { x[i] = 2 * A[0] - A[edge - i]; x[N - 1 - i] = 2 * A[n - 1] - A[n - 1 - edge + i]; }
+    x.set(A, edge);
+    // steady state of each section for a unit step (scipy sosfilt_zi)
+    let scale = 1;
+    const zi = sos.map(([b0, b1, b2, , a1, a2]) => {
+      const B0 = b1 - a1 * b0, B1 = b2 - a2 * b0, z0 = (B0 + B1) / (1 + a1 + a2), z1 = B1 - a2 * z0;
+      const out = [scale * z0, scale * z1];
+      scale *= (b0 + b1 + b2) / (1 + a1 + a2);
+      return out;
+    });
+    const pass = (from, to, dir) => { // transposed direct form II, in place
+      const x0 = x[from], st = zi.map(([a, b]) => [a * x0, b * x0]);
+      for (let i = from; i !== to; i += dir) {
+        let v = x[i];
+        for (let s = 0; s < sos.length; s++) {
+          const [b0, b1, b2, , a1, a2] = sos[s], z = st[s];
+          const y = b0 * v + z[0];
+          z[0] = b1 * v - a1 * y + z[1]; z[1] = b2 * v - a2 * y;
+          v = y;
+        }
+        x[i] = v;
+      }
+    };
+    pass(0, N, 1); pass(N - 1, -1, -1);
+    return x.slice(edge, edge + n);
+  }
+
   // Sliding max and min over A[i-half .. i+half] and their midpoint, the dynamic threshold
   // of peak-to-valley step counters (Zhao 2010). Also the envelope a plot can draw (#13).
   function dynamicThreshold(A, half) {
@@ -931,7 +1073,7 @@
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
-    lowpass, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
+    lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

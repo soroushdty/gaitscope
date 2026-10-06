@@ -3,7 +3,9 @@ Generate the test fixtures in tests/fixtures/ from a synthetic walk.
 
 No course data is used, so every fixture can be committed publicly.
 Also writes tests/fixtures/expected.json with the Python port's results,
-which the JavaScript tests use to check that both ports agree.
+which the JavaScript tests use to check that both ports agree, and
+tests/fixtures/filters.json with scipy's filter designs and zero-phase outputs,
+which the JavaScript filters (src/core.js designFilter, sosfiltfilt) must match.
 
 Run from the repo root:
     python scripts/make_fixtures.py
@@ -14,6 +16,7 @@ import sys
 
 import numpy as np
 import scipy.io as sio
+from scipy import signal
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "tests", "fixtures")
@@ -39,6 +42,33 @@ def synthetic_walk(seed=7, fs=100, dur=18.0):
     x, y, z = (np.round(v, 2) for v in (x, y, z))
     mag = np.round(np.sqrt(x ** 2 + y ** 2 + z ** 2), 2)
     return np.column_stack([t, x, y, z, mag])
+
+
+def filter_input(fs, dur=2.0):
+    """Test signal for the filter fixtures; tests/core.test.js builds the same one."""
+    t = np.arange(round(fs * dur)) / fs
+    return 1 + np.sin(2 * np.pi * 1.8 * t) + 0.3 * np.sin(2 * np.pi * 17 * t + 0.4) + 0.1 * np.sin(2 * np.pi * 0.2 * t)
+
+
+def filter_fixtures():
+    """scipy references for every filter the dashboard offers: three types, orders 2-6,
+    low-pass 3 Hz alone and with a 0.3 Hz high-pass (band-pass), at 57, 100 and 460 Hz.
+    Section pairing differs between scipy and the JS design, so each case stores the
+    frequency response of the whole cascade and sosfiltfilt's output (every 8th sample)."""
+    cases = []
+    for ftype in ("butter", "cheby1", "cheby2"):
+        for order in range(2, 7):
+            for fs in (57, 100, 460):
+                for hp in (0, 0.3):
+                    spec = {"type": ftype, "order": order, "fs": fs, "lowpass": 3, "highpass": hp, "rp": 0.5, "rs": 40}
+                    wn, btype = ([hp, 3], "bandpass") if hp else (3, "lowpass")
+                    sos = signal.iirfilter(order, wn, rp=0.5, rs=40, btype=btype, ftype=ftype, output="sos", fs=fs)
+                    freqs = np.linspace(0, fs / 2, 16, endpoint=False)
+                    _, h = signal.sosfreqz(sos, worN=freqs, fs=fs)
+                    y = signal.sosfiltfilt(sos, filter_input(fs))
+                    cases.append({"spec": spec, "freqs": freqs.tolist(), "h_re": h.real.tolist(), "h_im": h.imag.tolist(),
+                                  "y_every_8": y[::8].tolist()})
+    return cases
 
 
 def main():
@@ -122,6 +152,8 @@ def main():
         }
     with open(p("expected.json"), "w") as f:
         json.dump({"source": "walk.mat (synthetic), python/lab_step_det.py, w=30, h=1", "columns": expected}, f, indent=2)
+    with open(p("filters.json"), "w") as f:
+        json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures()}, f)
     print("Wrote fixtures to", OUT)
 
 
