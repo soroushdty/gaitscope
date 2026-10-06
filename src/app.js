@@ -190,7 +190,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'posSel', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'posSel', 'noteMode', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -260,6 +260,8 @@
     render();
   }
 
+  const showLab = () => $('showLab').checked;
+
   function derivedChecks() {
     const out = [];
     if (!S.res) return out;
@@ -268,7 +270,7 @@
       out.push({ level: 'warn', title: 'No steps found at h = ' + p.h, detail: 'No sample rises above the threshold as a window peak. If the data is in g, walking peaks can stay below 1; lower h or check the units.' });
     }
     if (orig.tiedPairs) {
-      out.push({ level: 'warn', title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (S.res.algo.id === 'coza' ? ' Coza counts each once.' : '') });
+      out.push({ level: 'warn', lab: true, title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (S.res.algo.id === 'coza' ? ' Coza counts each once.' : '') });
     }
     if (p.weak && fx.weakDropped.length) {
       out.push({ level: 'info', title: fx.weakDropped.length + ' weak peak' + (fx.weakDropped.length > 1 ? 's' : '') + ' dropped', detail: 'At ' + fx.weakDropped.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(C.WEAK_RATIO * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
@@ -292,7 +294,8 @@
 
   let valOpenedByUser = null, showPass = false, lastExtra = [];
   function renderValidation(extra) {
-    const all = S.fileChecks.concat(S.dsChecks || [], S.chChecks || [], extra || []);
+    // checks about the lab code only matter while it is compared
+    const all = S.fileChecks.concat(S.dsChecks || [], S.chChecks || [], extra || []).filter(c => !c.lab || showLab());
     const count = lv => all.filter(c => c.level === lv).length;
     const e = count('error'), w = count('warn');
     const dot = $('valDot');
@@ -345,13 +348,13 @@
     const traces = [
       { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, name: 'Signal',
         hovertemplate: '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
-      { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code',
+      { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code', visible: showLab(),
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
       { x: finalIdx.map(i => t[i]), y: finalIdx.map(i => A[i]), customdata: cd(finalIdx), type: 'scatter', mode: 'markers', name: S.res.algo.name,
         marker: { symbol: 'circle', size: 9, color: colors.algo, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov(S.res.algo.name + ' step') },
       { x: fi.x, y: fi.y, width: fi.wd, type: 'bar', name: S.res.algo.name + ' interval', xaxis: 'x', yaxis: 'y2', marker: { color: colors.algo, opacity: 0.55 },
         hovertemplate: esc(S.res.algo.name) + ': %{y:.3f} s between peaks<extra></extra>' },
-      { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2',
+      { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2', visible: showLab(),
         marker: { symbol: 'triangle-down', size: 7, color: colors.orig }, hovertemplate: 'Lab code: %{y:.3f} s between peaks<extra></extra>' },
     ];
     const tMax = t[t.length - 1];
@@ -437,10 +440,12 @@
       ['Gait asymmetry', f(orig.asymmetry, 3) + '<small>even ÷ odd intervals</small>', p.stride ? '—<small>needs single steps</small>' : f(algM.asymmetry, 3) + '<small>1.000 = symmetric</small>', ''],
       ['Walking span', '—', f(algM.span, 1, 's') + '<small>first to last step</small>', ''],
     ];
-    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th><th class="num col-orig">Lab code</th><th class="num col-algo">' + esc(S.res.algo.name) + '</th></tr></thead><tbody>' +
-      rows.map(r => {
-        const differs = r[1].split('<')[0] !== r[2].split('<')[0] && !r[1].startsWith('—') && !r[2].startsWith('—');
-        return '<tr><td>' + r[0] + '</td><td class="num">' + r[1] + '</td><td class="num' + (differs ? ' diff' : '') + '">' + r[2] + '</td></tr>';
+    const lab = showLab();
+    $('labNote').hidden = !lab;
+    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th>' + (lab ? '<th class="num col-orig">Lab code</th>' : '') + '<th class="num col-algo">' + esc(S.res.algo.name) + '</th></tr></thead><tbody>' +
+      rows.filter(r => lab || !r[2].startsWith('—')).map(r => {
+        const differs = lab && r[1].split('<')[0] !== r[2].split('<')[0] && !r[1].startsWith('—') && !r[2].startsWith('—');
+        return '<tr><td>' + r[0] + '</td>' + (lab ? '<td class="num">' + r[1] + '</td>' : '') + '<td class="num' + (differs ? ' diff' : '') + '">' + r[2] + '</td></tr>';
       }).join('') + '</tbody>';
   }
 
@@ -549,6 +554,7 @@
   $('posSel').addEventListener('change', updatePosHint);
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
+  $('showLab').addEventListener('change', () => { $('legLab').hidden = $('wCtl').hidden = !showLab(); if (S.ch && S.res) render(); });
   showAlgo();
   $('noteMode').addEventListener('change', () => { if (!$('noteMode').checked) closeNoteForm(); else updateNoteUi(); });
   $('noteForm').addEventListener('submit', addNote);
