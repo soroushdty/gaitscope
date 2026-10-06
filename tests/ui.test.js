@@ -125,6 +125,29 @@ test('notes are pinned to the plot, listed, exported and deleted, without changi
   assert.equal(pg.plots.at(-1).layout.annotations.length, 0);
 });
 
+test('the lab code comparison can be hidden', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  const heads = () => [...pg.d.querySelectorAll('#metricsTable th')].map(th => th.textContent);
+  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza']);
+  assert.match(text(pg, 'valList'), /Lab code counts 1 peak twice/);
+  $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
+  const last = pg.plots.at(-1);
+  assert.equal(last.traces[1].visible, false, 'lab markers hidden');
+  assert.equal(last.traces[4].visible, false, 'lab interval triangles hidden');
+  assert.equal(last.traces[2].visible, undefined, 'Coza still drawn');
+  assert.deepEqual(heads(), ['Metric', 'Coza']);
+  assert.ok(!/Pace \(lab formula\)/.test(text(pg, 'metricsTable')), 'lab-only rows go too');
+  assert.equal($('labNote').hidden, true);
+  assert.equal($('legLab').hidden, true);
+  assert.equal($('wCtl').hidden, true, 'the lab window slider goes with it');
+  assert.ok(!/Lab code/.test(text(pg, 'valList')), 'lab-only checks hidden');
+  $('showLab').checked = true; $('showLab').dispatchEvent(new pg.w.Event('change'));
+  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza']);
+  assert.equal(pg.plots.at(-1).traces[1].visible, true);
+});
+
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
