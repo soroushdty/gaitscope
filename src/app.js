@@ -432,22 +432,32 @@
   /* ------------------------------------------------------------ tables */
   function renderMetrics() {
     const { orig, algM, p } = S.res;
+    const name = S.res.algo.name;
     const f = (v, d, u) => Number.isFinite(v) ? v.toFixed(d) + (u ? ' ' + u : '') : '—';
+    // tip: how each value is computed, shown as a tooltip on the metric name
     const rows = [
-      ['Steps', String(orig.steps), p.stride ? algM.steps + '<small>' + algM.peaks + ' strides × 2</small>' : String(algM.steps), ''],
-      ['Average step duration', f(orig.avgStepDuration, 3, 's') + '<small>samples ÷ 100</small>', f(algM.stepInterval, 3, 's') + '<small>from timestamps</small>', ''],
-      ['Cadence', '—<small>not computed</small>', f(algM.cadence, 1, 'steps/min'), ''],
-      ['Pace (lab formula)', f(orig.pace, 2) + '<small>duration × 60, labelled steps/min</small>', '—<small>replaced by cadence</small>', ''],
-      [p.stride ? 'Stride-time variability' : 'Step-time variability', f(orig.variabilitySamples, 1, 'samples') + '<small>SD of intervals</small>', f(algM.variabilityMs, 0, 'ms') + (Number.isFinite(algM.cv) ? '<small>SD, CV ' + algM.cv.toFixed(1) + '%</small>' : ''), ''],
-      ['Gait asymmetry', f(orig.asymmetry, 3) + '<small>even ÷ odd intervals</small>', p.stride ? '—<small>needs single steps</small>' : f(algM.asymmetry, 3) + '<small>1.000 = symmetric</small>', ''],
-      ['Walking span', '—', f(algM.span, 1, 's') + '<small>first to last step</small>', ''],
+      { name: 'Steps', tip: 'Detected peaks. With Phone position set to One leg, ' + name + ' counts each peak as two steps.',
+        lab: String(orig.steps), algo: p.stride ? algM.steps + '<small>' + algM.peaks + ' strides × 2</small>' : String(algM.steps) },
+      { name: 'Average step duration', tip: 'Mean time between peaks. Lab code: samples ÷ 100, which assumes 100 Hz. ' + name + ': from the timestamps.',
+        lab: f(orig.avgStepDuration, 3, 's'), algo: f(algM.stepInterval, 3, 's') },
+      { name: 'Cadence', tip: 'Steps per minute: 60 ÷ average step duration. The lab code does not compute it.',
+        lab: '—', algo: f(algM.cadence, 1, 'steps/min') },
+      { name: 'Pace (lab formula)', labOnly: true, tip: 'The lab code\u2019s Pace is average step duration × 60. Its comment calls it steps/min, but that would be 60 ÷ duration, so ' + name + ' reports cadence instead.',
+        lab: f(orig.pace, 2), algo: '—' },
+      { name: p.stride ? 'Stride-time variability' : 'Step-time variability', tip: 'Standard deviation of the intervals between peaks (N−1, like MATLAB). Lab code: in samples. ' + name + ': in ms, with the coefficient of variation (CV = SD ÷ mean interval).',
+        lab: f(orig.variabilitySamples, 1, 'samples'), algo: f(algM.variabilityMs, 0, 'ms') + (Number.isFinite(algM.cv) ? ', CV ' + algM.cv.toFixed(1) + '%' : '') },
+      { name: 'Gait asymmetry', tip: 'Mean of the even intervals ÷ mean of the odd intervals; 1.000 is symmetric.' + (p.stride ? ' Not reported for strides, because it needs single steps.' : ''),
+        lab: f(orig.asymmetry, 3), algo: p.stride ? '—' : f(algM.asymmetry, 3) },
+      { name: 'Walking span', tip: 'Time from the first to the last ' + name + ' step.', lab: '—', algo: f(algM.span, 1, 's') },
     ];
     const lab = showLab();
     $('labNote').hidden = !lab;
-    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th>' + (lab ? '<th class="num col-orig">Lab code</th>' : '') + '<th class="num col-algo">' + esc(S.res.algo.name) + '</th></tr></thead><tbody>' +
-      rows.filter(r => lab || !r[2].startsWith('—')).map(r => {
-        const differs = lab && r[1].split('<')[0] !== r[2].split('<')[0] && !r[1].startsWith('—') && !r[2].startsWith('—');
-        return '<tr><td>' + r[0] + '</td>' + (lab ? '<td class="num">' + r[1] + '</td>' : '') + '<td class="num' + (differs ? ' diff' : '') + '">' + r[2] + '</td></tr>';
+    const plain = v => v.split('<')[0];
+    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th>' + (lab ? '<th class="num col-orig">Lab code</th>' : '') + '<th class="num col-algo">' + esc(name) + '</th></tr></thead><tbody>' +
+      rows.filter(r => lab || !r.labOnly).map(r => {
+        const differs = lab && plain(r.lab) !== plain(r.algo) && r.lab !== '—' && r.algo !== '—';
+        return '<tr><td><span class="tip" tabindex="0" title="' + esc(r.tip) + '">' + r.name + '</span></td>' + (lab ? '<td class="num">' + r.lab + '</td>' : '') +
+          '<td class="num' + (differs ? ' diff' : '') + '">' + r.algo + '</td></tr>';
       }).join('') + '</tbody>';
   }
 
