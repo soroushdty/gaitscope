@@ -49,10 +49,12 @@ entries in `ALGORITHMS` in `src/core.js`, and the lab code stays alongside each 
 as the MATLAB reference.
 
 Each fix can be switched on or off under Advanced, so its effect can be seen on its own.
-Window `w` and threshold `h` are shared with the original.
+Threshold `h` is shared with the original. The window is not: the lab code keeps `w` in
+samples, as in MATLAB, and Coza has its own window in seconds.
 
 | Fix | Rule |
 |---|---|
+| Window in seconds | Default 0.3 s, which is the lab's `w = 30` at 100 Hz. It is turned into `round(seconds × fs)` samples, so the window covers the same time at any sampling rate. In samples, `w = 30` is only ±0.065 s at 460 Hz (free Physics Toolbox), where the lab code finds many noise peaks. |
 | Tied peaks once | A sample must also be strictly greater than every earlier sample in its window, so on a plateau only the first sample counts. |
 | Weak peaks | Peak strength is `A(i) − h`. A peak is dropped when its strength is below *r* × the median strength (default *r* = 40%). This keeps the real first step in `Walking.mat` (strength 0.83) and drops the stop bump (0.13). |
 | Real timing | Intervals come from the timestamps, not `samples / 100`. |

@@ -190,7 +190,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxTies', 'fxWeak', 'rIn', 'fxStride', 'noteMode', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -209,15 +209,19 @@
     h.step = String(step);
     $('hNum').step = String(step);
     syncH(Number($('hNum').value));
-    updateWOut();
+    updateWOut(); updateCwOut();
   }
   function syncH(v) { $('hNum').value = String(v); $('hIn').value = String(v); }
   function updateWOut() {
     const w = Number($('wIn').value);
     $('wOut').textContent = w + ' samples' + (S.ch ? ' (' + fmt(w / S.ch.fs, 2) + ' s)' : '');
   }
+  function updateCwOut() {
+    const s = Number($('cwIn').value);
+    $('cwOut').textContent = fmt(s, 2) + ' s' + (S.ch ? ' (' + C.windowSamples(s, S.ch.fs, S.ch.A.length) + ' samples)' : '');
+  }
   function resetParams(run) {
-    $('wIn').value = '30'; syncH(1); updateWOut();
+    $('wIn').value = '30'; $('cwIn').value = '0.3'; syncH(1); updateWOut(); updateCwOut();
     if (run !== false && S.ch) recompute();
   }
   function selectedAlgo() { return C.ALGORITHMS.find(a => a.id === $('algoSel').value) || C.ALGORITHMS[0]; }
@@ -229,7 +233,8 @@
   }
   function params() {
     return {
-      w: Number($('wIn').value), h: Number($('hNum').value),
+      w: Number($('wIn').value), h: Number($('hNum').value), fs: S.ch ? S.ch.fs : 100,
+      cozaWindow: Number($('cwIn').value),
       ties: $('fxTies').checked, weak: $('fxWeak').checked, weakRatio: Number($('rIn').value) / 100,
       stride: $('fxStride').checked,
     };
@@ -499,6 +504,8 @@
       csvRow(['variable', S.varName || '']),
       csvRow(['signal', col]),
       csvRow(['window_w_samples', p.w]),
+      csvRow(['coza_window_s', p.cozaWindow]),
+      csvRow(['coza_window_samples', S.res.fx.w]),
       csvRow(['threshold_h', p.h]),
       csvRow(['sampling_rate_hz', n(S.ch.fs)]),
       csvRow(['fix_tied_peaks', p.ties ? 'on' : 'off']),
@@ -532,6 +539,7 @@
   $('chanSel').addEventListener('change', e => selectChannel(e.target.value));
   $('fsIn').addEventListener('change', () => { if (S.ds && !S.ds.t) selectChannel(S.chanKey); });
   $('wIn').addEventListener('input', () => { updateWOut(); schedule(); });
+  $('cwIn').addEventListener('input', () => { updateCwOut(); schedule(); });
   $('hIn').addEventListener('input', e => { $('hNum').value = e.target.value; schedule(); });
   $('hNum').addEventListener('input', e => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value !== '') { $('hIn').value = String(v); schedule(); } });
   $('rIn').addEventListener('input', e => { $('rOut').textContent = e.target.value + '%'; schedule(); });

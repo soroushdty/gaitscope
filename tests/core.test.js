@@ -91,6 +91,20 @@ test('windowExtreme matches a brute-force sliding max/min', () => {
   }
 });
 
+test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
+  const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
+  const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
+  const x4 = t4.map(v => { let k = 1; while (t[k] < v) k++; const f = (v - t[k - 1]) / (t[k] - t[k - 1]); return x[k - 1] + f * (x[k] - x[k - 1]); });
+  const coza = C.ALGORITHMS.find(a => a.id === 'coza');
+  const p = { h: 1, w: 30, cozaWindow: 0.3, ties: true, weak: true, weakRatio: 0.4 };
+  const r1 = coza.detect(x, t, Object.assign({}, p, { fs: 100 }));
+  const r4 = coza.detect(x4, t4, Object.assign({}, p, { fs: 460 }));
+  assert.equal(r1.w, 30); assert.equal(r4.w, 138);
+  assert.equal(r4.idx.length, r1.idx.length);
+  r1.idx.forEach((i, k) => assert.ok(Math.abs(t4[r4.idx[k]] - t[i]) < 0.02, 'step ' + k + ' at the same time'));
+  assert.equal(C.windowSamples(0.3, 100, 20), 8, 'clamped to the signal length');
+});
+
 test('fixed metrics use timestamps and report cadence', () => {
   const t = Float64Array.from({ length: 1000 }, (_, i) => i * 0.02); // 50 Hz
   const idx = [0, 25, 50, 75, 100]; // every 0.5 s

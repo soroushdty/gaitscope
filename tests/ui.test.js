@@ -56,6 +56,20 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
   assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza, ' + lab + ' lab code'));
 
+  // the lab code's w (samples) no longer moves Coza, which has its own window in seconds
+  assert.match(text(pg, 'cwOut'), /^0\.30 s \(30 samples\)$/);
+  const wIn = pg.d.getElementById('wIn');
+  wIn.value = '150'; wIn.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.equal(pg.plots.at(-1).traces[2].x.length, fixed, 'Coza unchanged by the lab w');
+  assert.notEqual(pg.plots.at(-1).traces[1].x.length, lab, 'the lab code follows w');
+  const cw = pg.d.getElementById('cwIn');
+  cw.value = '0.6'; cw.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.match(text(pg, 'cwOut'), /^0\.60 s \(60 samples\)$/);
+  pg.d.getElementById('resetParams').click();
+  assert.equal(wIn.value, '30'); assert.equal(cw.value, '0.3');
+
   // export uses a download link outside Claude
   let saved = null;
   pg.w.HTMLAnchorElement.prototype.click = function () { saved = this.download; };
