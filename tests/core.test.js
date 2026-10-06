@@ -114,6 +114,46 @@ test('lowpass keeps slow motion, removes fast noise and does not shift peaks', (
   assert.deepEqual(C.lowpass(Float64Array.of(1, 2, 3), 100, 60), Float64Array.of(1, 2, 3), 'cut-off above fs/2: unchanged');
 });
 
+// Same input as filter_input() in scripts/make_fixtures.py.
+const filterInput = fs => Float64Array.from({ length: Math.round(fs * 2) }, (_, i) => {
+  const t = i / fs;
+  return 1 + Math.sin(2 * Math.PI * 1.8 * t) + 0.3 * Math.sin(2 * Math.PI * 17 * t + 0.4) + 0.1 * Math.sin(2 * Math.PI * 0.2 * t);
+});
+// Frequency response of a cascade of sections at f Hz.
+function sosResponse(sos, f, fs) {
+  const w = 2 * Math.PI * f / fs, c1 = Math.cos(w), s1 = -Math.sin(w), c2 = Math.cos(2 * w), s2 = -Math.sin(2 * w);
+  let re = 1, im = 0;
+  for (const [b0, b1, b2, a0, a1, a2] of sos) {
+    const nr = b0 + b1 * c1 + b2 * c2, ni = b1 * s1 + b2 * s2, dr = a0 + a1 * c1 + a2 * c2, di = a1 * s1 + a2 * s2;
+    const d = dr * dr + di * di, qr = (nr * dr + ni * di) / d, qi = (ni * dr - nr * di) / d;
+    [re, im] = [re * qr - im * qi, re * qi + im * qr];
+  }
+  return [re, im];
+}
+
+test('Butterworth and Chebyshev I/II match scipy: design and zero-phase output', () => {
+  const { cases } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
+  assert.equal(cases.length, 90);
+  for (const c of cases) {
+    const label = JSON.stringify(c.spec);
+    const { sos } = C.designFilter(c.spec);
+    assert.equal(sos.length, Math.ceil(c.spec.order * (c.spec.highpass ? 2 : 1) / 2), label + ': sections');
+    c.freqs.forEach((f, i) => {
+      const [re, im] = sosResponse(sos, f, c.spec.fs);
+      assert.ok(Math.hypot(re - c.h_re[i], im - c.h_im[i]) < 1e-9, label + ' response at ' + f + ' Hz');
+    });
+    const y = C.sosfiltfilt(sos, filterInput(c.spec.fs));
+    c.y_every_8.forEach((v, i) => assert.ok(Math.abs(y[i * 8] - v) < 1e-9, label + ' output at sample ' + i * 8));
+  }
+});
+
+test('filter design refuses impossible settings with a fix', () => {
+  const base = { type: 'butter', order: 4, fs: 50, lowpass: 3, highpass: 0 };
+  const bad = [[{ lowpass: 25 }, /below half the sampling rate: under 25\.0 Hz/], [{ highpass: 3 }, /high-pass cut-off must be below the low-pass/],
+    [{ order: 0 }, /order/], [{ type: 'cheby1', rp: 0 }, /ripple/], [{ type: 'cheby2', rs: 0 }, /attenuation/], [{ lowpass: 0 }, /low-pass cut-off must be above 0/]];
+  for (const [chg, rx] of bad) assert.throws(() => C.designFilter(Object.assign({}, base, chg)), e => e instanceof RangeError && rx.test(e.message), JSON.stringify(chg));
+});
+
 test('dynamicThreshold matches brute force', () => {
   const A = Float64Array.from({ length: 200 }, (_, i) => Math.sin(i / 5) * 4 + (i % 7));
   const dt = C.dynamicThreshold(A, 6);
