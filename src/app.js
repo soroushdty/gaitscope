@@ -329,6 +329,7 @@
   function setValOpen(open) { $('valToggle').setAttribute('aria-expanded', String(open)); $('valList').hidden = !open; }
 
   function renderPlot() {
+    $('legH').textContent = 'Threshold h = ' + +S.res.p.h.toFixed(4);
     if (typeof Plotly === 'undefined') {
       $('plot').innerHTML = '<p class="note" style="padding:20px">The plotting library did not load. Check your internet connection and reload the page.</p>';
       return;

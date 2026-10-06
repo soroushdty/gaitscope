@@ -60,6 +60,8 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
   assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza']);
   assert.equal(text(pg, 'legAlgo'), 'Coza');
+  assert.ok(!/Signal/.test(pg.d.querySelector('.legend').textContent), 'the signal line needs no legend entry');
+  assert.equal(text(pg, 'legH'), 'Threshold h = 1');
   assert.equal(text(pg, 'algoDesc'), 'The lab detector with its bugs fixed.', 'one line under the dropdown');
   assert.match(text(pg, 'algoDetail'), /tied peaks are counted once/, 'the full list is under How detection works');
   assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
@@ -82,6 +84,10 @@ test('loads a MAT file, compares versions and exports', async () => {
   cw.value = '0.6'; cw.dispatchEvent(new pg.w.Event('input'));
   await sleep(40);
   assert.match(text(pg, 'cwOut'), /^0\.60 s \(60 samples\)$/);
+  const hNum = pg.d.getElementById('hNum');
+  hNum.value = '0.35'; hNum.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.equal(text(pg, 'legH'), 'Threshold h = 0.35');
   pg.d.getElementById('resetParams').click();
   assert.equal(wIn.value, '30'); assert.equal(cw.value, '0.3');
 
