@@ -96,7 +96,7 @@ test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
   const x4 = t4.map(v => { let k = 1; while (t[k] < v) k++; const f = (v - t[k - 1]) / (t[k] - t[k - 1]); return x[k - 1] + f * (x[k] - x[k - 1]); });
   const coza = C.ALGORITHMS.find(a => a.id === 'coza');
-  const p = { h: 1, w: 30, cozaWindow: 0.3, ties: true, weak: true, weakRatio: 0.4 };
+  const p = { h: 1, w: 30, cozaWindow: 0.3, weak: true, weakRatio: 0.4 };
   const r1 = coza.detect(x, t, Object.assign({}, p, { fs: 100 }));
   const r4 = coza.detect(x4, t4, Object.assign({}, p, { fs: 460 }));
   assert.equal(r1.w, 30); assert.equal(r4.w, 138);

@@ -49,6 +49,8 @@ test('loads a MAT file, compares versions and exports', async () => {
   const last = pg.plots.at(-1);
   const lab = last.traces[1].x.length, fixed = last.traces[2].x.length;
   assert.ok(lab > fixed, 'Coza drops the tied duplicate');
+  assert.equal(pg.d.getElementById('fxTies'), null, 'tied peaks are always counted once, no option');
+  assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza counts each once/);
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
   assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza']);
   assert.equal(text(pg, 'legAlgo'), 'Coza');

@@ -48,7 +48,8 @@ above fixed. It is picked from the **Algorithm** dropdown; later algorithms are 
 entries in `ALGORITHMS` in `src/core.js`, and the lab code stays alongside each of them
 as the MATLAB reference.
 
-Each fix can be switched on or off under Advanced, so its effect can be seen on its own.
+Tied peaks are always counted once; the lab code, drawn alongside, shows the double
+count. The weak-peak and stride options can be switched under Advanced.
 Threshold `h` is shared with the original. The window is not: the lab code keeps `w` in
 samples, as in MATLAB, and Coza has its own window in seconds.
 
