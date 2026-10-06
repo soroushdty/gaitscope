@@ -28,8 +28,8 @@ behaviour when it matters.
   JS. That includes its quirks: 1-based indices in the output, loop bounds
   `w+1 … length-w`, `/100` for seconds, the `Pace = duration*60` formula, and
   N−1 `std`. Improvements go into our own algorithms, never into the original. Each
-  one is an entry in `ALGORITHMS` in `src/core.js`; the first is **Coza** (`detectCoza`,
-  `cozaMetrics`), the lab detector with its bugs fixed.
+  one is an entry in `ALGORITHMS` in `src/core.js`; the first is **Coza** (`detectCoza`),
+  the lab detector with its bugs fixed. All of them share `timingMetrics`.
 - **`src/core.js` has no DOM access.** It is shared by the browser and by the
   Node tests (UMD-style export at the bottom).
 - **Never commit course files.** `data/` is git-ignored except its README. Test
@@ -104,6 +104,6 @@ unless the course file is present in `data/`.
 
 | File | Key parts |
 |---|---|
-| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `detectCoza`, `cozaMetrics`, `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, detect, metrics), `demoWalk` |
+| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `detectCoza`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, detect), `demoWalk` |
 | `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0 signal, 1 lab markers, 2 algorithm markers, 3–4 interval strip; hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
 | `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, `load_csv` (Physics Toolbox CSV → Walking.mat layout), `sampling_rate`, `resample`, CLI |

@@ -255,7 +255,7 @@
     const algo = selectedAlgo();
     const fx = algo.detect(A, t, p);
     const finalIdx = fx.idx, finalSet = new Set(finalIdx);
-    const algM = algo.metrics(finalIdx, t, p);
+    const algM = C.timingMetrics(finalIdx, t, { stride: p.stride });
     const weakSet = new Set(fx.weakDropped);
     S.res = { p, algo, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet };
     render();
