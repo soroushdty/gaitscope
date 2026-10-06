@@ -124,6 +124,8 @@ main { padding: 20px 28px 40px; min-width: 0; }
 .toggle input { margin: 0; accent-color: var(--note); }
 .toggle:has(input:checked) { border-color: var(--note); color: var(--note); }
 .toggle:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.toggle.iv input { accent-color: var(--algo); }
+.toggle.iv:has(input:checked) { border-color: var(--algo); color: var(--algo); }
 .note-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .note-form label { color: var(--note); font-weight: 500; }
 .note-form input { width: 18ch; padding: 4px 7px; border: 1px solid var(--note); border-radius: 5px; background: var(--surface); font-size: 13px; }

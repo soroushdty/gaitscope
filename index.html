@@ -115,6 +115,7 @@
             </div>
           </div>
           <div class="plot-tools">
+            <label class="toggle iv" title="Show the time between consecutive steps under the signal"><input type="checkbox" id="showIntervals"><span>Step intervals</span></label>
             <label class="toggle" title="Click the plot to pin a note at that time"><input type="checkbox" id="noteMode"><span>Add notes</span></label>
             <form class="note-form" id="noteForm" hidden>
               <label for="noteText" id="noteAt">Note at 0.00 s</label>
@@ -124,7 +125,7 @@
             </form>
             <span class="note-hint" id="noteHint" hidden>Click the plot where the note belongs.</span>
           </div>
-          <div id="plot" role="img" aria-label="Signal with detected steps and the time between steps"></div>
+          <div id="plot" role="img" aria-label="Signal with detected steps"></div>
           <ul class="note-list" id="noteList" hidden></ul>
         </section>
 

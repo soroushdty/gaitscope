@@ -190,7 +190,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'posSel', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -344,6 +344,7 @@
     const cd = idx => idx.map(i => [i + 1, A[i]]);
     const mid = idx => { const x = [], y = [], wd = []; for (let k = 1; k < idx.length; k++) { const a = t[idx[k - 1]], b = t[idx[k]]; x.push((a + b) / 2); y.push(b - a); wd.push((b - a) * 0.86); } return { x, y, wd }; };
     const oi = mid(origIdx), fi = mid(finalIdx);
+    const iv = $('showIntervals').checked; // interval strip under the signal, off by default
 
     const traces = [
       { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, name: 'Signal',
@@ -352,9 +353,9 @@
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
       { x: finalIdx.map(i => t[i]), y: finalIdx.map(i => A[i]), customdata: cd(finalIdx), type: 'scatter', mode: 'markers', name: S.res.algo.name,
         marker: { symbol: 'circle', size: 9, color: colors.algo, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov(S.res.algo.name + ' step') },
-      { x: fi.x, y: fi.y, width: fi.wd, type: 'bar', name: S.res.algo.name + ' interval', xaxis: 'x', yaxis: 'y2', marker: { color: colors.algo, opacity: 0.55 },
+      { x: fi.x, y: fi.y, width: fi.wd, type: 'bar', name: S.res.algo.name + ' interval', xaxis: 'x', yaxis: 'y2', visible: iv, marker: { color: colors.algo, opacity: 0.55 },
         hovertemplate: esc(S.res.algo.name) + ': %{y:.3f} s between peaks<extra></extra>' },
-      { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2', visible: showLab(),
+      { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2', visible: iv && showLab(),
         marker: { symbol: 'triangle-down', size: 7, color: colors.orig }, hovertemplate: 'Lab code: %{y:.3f} s between peaks<extra></extra>' },
     ];
     const tMax = t[t.length - 1];
@@ -365,9 +366,9 @@
       font: { family: cssVar('--font') || 'sans-serif', color: colors.muted, size: 12 },
       showlegend: false, hovermode: 'closest', dragmode: 'zoom', bargap: 0,
       hoverlabel: { font: { family: cssVar('--font') || 'sans-serif' } },
-      xaxis: { title: { text: 'Time (s)' }, range: [t[0], tMax], gridcolor: colors.line, zeroline: false, linecolor: colors.line, anchor: 'y2' },
-      yaxis: { domain: [0.3, 1], title: { text: (col ? col.label : 'magnitude (computed)') + (unit ? ' (' + unit + ')' : '') }, gridcolor: colors.line, zerolinecolor: colors.line, automargin: true },
-      yaxis2: { domain: [0, 0.22], title: { text: 'Interval (s)' }, gridcolor: colors.line, zeroline: false, rangemode: 'tozero', automargin: true },
+      xaxis: { title: { text: 'Time (s)' }, range: [t[0], tMax], gridcolor: colors.line, zeroline: false, linecolor: colors.line, anchor: iv ? 'y2' : 'y' },
+      yaxis: { domain: iv ? [0.3, 1] : [0, 1], title: { text: (col ? col.label : 'magnitude (computed)') + (unit ? ' (' + unit + ')' : '') }, gridcolor: colors.line, zerolinecolor: colors.line, automargin: true },
+      yaxis2: { visible: iv, domain: [0, 0.22], title: { text: 'Interval (s)' }, gridcolor: colors.line, zeroline: false, rangemode: 'tozero', automargin: true },
       shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: p.h, y1: p.h, line: { color: colors.muted, width: 1.2, dash: 'dash' } }]
         .concat(S.notes.map(n => ({ type: 'line', xref: 'x', x0: n.t, x1: n.t, yref: 'paper', y0: 0, y1: 1, line: { color: colors.note, width: 1.3, dash: 'dot' } }))),
       // labels in the right quarter extend leftwards so they don't run off the plot or under the toolbar
@@ -379,6 +380,7 @@
     const config = { responsive: true, displaylogo: false, scrollZoom: false,
       modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     const el = $('plot');
+    el.setAttribute('aria-label', 'Signal with detected steps' + (iv ? ' and the time between steps' : ''));
     Plotly.react(el, traces, layout, config);
     if (!el.__bound) { el.on('plotly_click', onPlotClick); el.__bound = true; }
     const name = S.file.demo ? 'Synthetic walk' : (S.varName ? S.varName : S.file.name);
@@ -556,6 +558,7 @@
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
   $('showLab').addEventListener('change', () => { $('legLab').hidden = $('wCtl').hidden = !showLab(); if (S.ch && S.res) render(); });
   showAlgo();
+  $('showIntervals').addEventListener('change', () => { if (S.ch && S.res) renderPlot(); });
   $('noteMode').addEventListener('change', () => { if (!$('noteMode').checked) closeNoteForm(); else updateNoteUi(); });
   $('noteForm').addEventListener('submit', addNote);
   $('noteCancel').addEventListener('click', closeNoteForm);
