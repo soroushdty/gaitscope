@@ -10,10 +10,13 @@ Usage (from the repo root):
     uv run python python/lab_step_det.py --col 4             # pick column 2, 3 or 4
     uv run python python/lab_step_det.py --file data/Lab1Data.mat --var Lab1Data
     uv run python python/lab_step_det.py --no-plot           # print results only
+    uv run python python/lab_step_det.py --file data/g_force_....csv --col 3 --w 60
+                                          # Physics Toolbox CSV: --col 2/3/4 = x/y/z
 
 Requirements: numpy, scipy, matplotlib (pinned in uv.lock; install with `uv sync`)
 """
 import argparse
+import re
 
 import numpy as np
 from scipy.io import loadmat
@@ -55,9 +58,114 @@ def gait_metrics(step_idx, fs=100):
     }
 
 
+# --- Physics Toolbox CSV input (the MATLAB script only reads .mat) ---------
+# Same rules as parseCsv/buildDataset in src/core.js, for the layouts the app
+# exports: '#' metadata lines, ',' or ';' (decimal comma) or tab delimiters,
+# units in headers ('ax (m/s^2)'), clock times ('13:05:10:006') and blank cells
+# where several sensors take turns.
+
+AXIS_NAMES = {  # header (unit suffix removed, lowercase) -> axis
+    "x": {"gfx", "ax", "x", "acc_x", "accx"},
+    "y": {"gfy", "ay", "y", "acc_y", "accy"},
+    "z": {"gfz", "az", "z", "acc_z", "accz"},
+}
+TIME_NAMES = {"time", "t", "elapsed", "timestamp", "seconds", "sec"}
+CLOCK = re.compile(r"^(\d{1,2}):(\d{2}):(\d{2})(?:[:.](\d+))?$")
+
+
+def _number(tok, decimal_comma):
+    """One CSV cell -> float. Blank -> NaN, clock time -> seconds, text -> None."""
+    s = tok.strip().strip('"')
+    if s == "":
+        return np.nan
+    c = CLOCK.match(s)
+    if c:
+        frac = int(c[4]) / 10 ** len(c[4]) if c[4] else 0.0
+        return int(c[1]) * 3600 + int(c[2]) * 60 + int(c[3]) + frac
+    if decimal_comma:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def load_csv(path):
+    """Read a Physics Toolbox CSV into the Walking.mat layout.
+
+    Returns (W, names): W has columns [time, x, y, z] (time starts at 0 s), so
+    MATLAB column 2/3/4 means x/y/z exactly as in Walking.mat. Rows where any
+    of the four is blank are dropped. names are the CSV headers used.
+    """
+    with open(path, encoding="utf-8-sig") as f:
+        lines = [ln.rstrip("\r\n") for ln in f]
+    lines = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+    if len(lines) < 2:
+        raise ValueError(f"{path} has fewer than 2 lines of data. "
+                         "Record for longer, or check that the export completed.")
+
+    # Delimiter: the one that splits the first lines into the same, largest number of fields.
+    sample = lines[:12]
+    delim, best = ",", 1
+    for d in ("\t", ";", ","):
+        counts = {len(ln.split(d)) for ln in sample}
+        if len(counts) == 1 and (n := counts.pop()) > best:
+            delim, best = d, n
+    decimal_comma = delim == ";" and any(re.search(r"\d,\d", ln) for ln in sample[1:])
+
+    first = lines[0].split(delim)
+    has_header = sum(_number(t, decimal_comma) is None for t in first) > len(first) / 2
+    if has_header:
+        headers = [h.strip().strip('"') for h in first]
+        body = lines[1:]
+    else:
+        headers = [f"Column {k + 1}" for k in range(len(first))]
+        body = lines
+
+    rows = []
+    for ln in body:
+        vals = [_number(t, decimal_comma) for t in ln.split(delim)]
+        vals = [np.nan if v is None else v for v in vals]
+        rows.append((vals + [np.nan] * len(headers))[:len(headers)])
+    data = np.array(rows, dtype=float)
+
+    if has_header:
+        keys = [re.sub(r"\s*\(.*\)\s*$", "", h).lower() for h in headers]
+        cols = {}
+        for role, names in [("time", TIME_NAMES), *AXIS_NAMES.items()]:
+            cols[role] = next((k for k, key in enumerate(keys) if key in names), None)
+        missing = [r for r in ("time", "x", "y", "z") if cols[r] is None]
+        if missing:
+            raise ValueError(
+                f"{path}: no {', '.join(missing)} column among the headers {headers}. "
+                "Export the G-Force Meter (gFx, gFy, gFz) or Linear Accelerometer "
+                "(ax, ay, az) from Physics Toolbox with the time column included.")
+        order = [cols["time"], cols["x"], cols["y"], cols["z"]]
+    else:
+        if data.shape[1] < 4:
+            raise ValueError(f"{path} has no header and only {data.shape[1]} columns. "
+                             "Expected time, x, y, z; export with the header row.")
+        order = [0, 1, 2, 3]  # like Walking.mat: time first, then x, y, z
+
+    W = data[:, order]
+    W = W[~np.isnan(W).any(axis=1)]
+    if len(W) < 2:
+        raise ValueError(f"{path}: fewer than 2 rows have time, x, y and z all filled in. "
+                         "Check that the accelerometer was turned on while recording.")
+    W[:, 0] -= W[0, 0]
+    return W, [headers[k] for k in order]
+
+
+def sampling_rate(t):
+    """Median sampling rate in Hz from a time column in seconds."""
+    dt = np.diff(t)
+    return 1 / np.median(dt[dt > 0])
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--file", default="data/Walking.mat")
+    p.add_argument("--file", default="data/Walking.mat",
+                   help=".mat file, or a Physics Toolbox .csv export")
     p.add_argument("--var", default="Walking", help="variable name inside the .mat")
     p.add_argument("--col", type=int, default=2,
                    help="MATLAB-style column number: 2, 3 or 4 (1 = time)")
@@ -66,7 +174,21 @@ def main():
     p.add_argument("--no-plot", action="store_true", help="skip the plot window")
     args = p.parse_args()
 
-    data = loadmat(args.file)[args.var]
+    if args.file.lower().endswith((".csv", ".txt")):
+        data, names = load_csv(args.file)
+        fs = sampling_rate(data[:, 0])
+        print(f"CSV columns:         time = {names[0]!r}, x = {names[1]!r}, "
+              f"y = {names[2]!r}, z = {names[3]!r} (--col 2/3/4)")
+        print(f"Sampling rate:       about {fs:.0f} Hz")
+        if abs(fs - 100) > 5:
+            print(f"  Warning: the lab code assumes 100 Hz (it divides by 100), so its "
+                  f"durations are off by {abs(100 / fs - 1):.0%}. Record at 100 Hz "
+                  f"(Physics Toolbox: Requested Sample Rate).")
+        if names[1].lower().startswith("ax"):
+            print("  Note: Linear Accelerometer data is in m/s^2 without gravity; "
+                  "h = 1 was chosen for G-Force Meter data (g, gravity included).")
+    else:
+        data = loadmat(args.file)[args.var]
     # MATLAB column c -> Python column c-1. If the variable is a single
     # vector (e.g. Lab1Data), use it directly.
     A = data[:, args.col - 1] if data.ndim == 2 and data.shape[1] > 1 else data.ravel()

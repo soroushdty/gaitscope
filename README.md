@@ -49,11 +49,15 @@ deploy from the `main` branch, root folder. The page will be at
 
 ## Python port
 
-`python/lab_step_det.py` is a 1:1 translation of `LabStepDet_2025.m`.
+`python/lab_step_det.py` is a 1:1 translation of `LabStepDet_2025.m`. It also reads
+Physics Toolbox CSV exports: the time, x, y and z columns are put in the Walking.mat
+layout, so `--col 2/3/4` picks x/y/z. It prints the measured sampling rate and warns
+when it is not about 100 Hz, because the lab code divides by 100 to get seconds.
 
 ```bash
 uv sync                          # once per clone: creates .venv from uv.lock (Python ≥ 3.12)
 uv run python python/lab_step_det.py --file data/Walking.mat --col 2
+uv run python python/lab_step_det.py --file data/g_force_....csv --col 2 --w 60
 uv run python python/plot_walking.py data/Walking.mat --out walking_steps.png
 ```
 
