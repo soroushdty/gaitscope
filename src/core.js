@@ -756,22 +756,32 @@
 
   /* Step detection algorithms offered in the dashboard. The lab code (detectOriginal /
      originalMetrics) is the MATLAB reference, always shown for comparison, and is not listed.
-     Each entry: tagline (one line under the dropdown), summary (shown in "How detection works"),
-     detect(A, t, p) -> {idx, weakDropped?, w?}. Metrics come from timingMetrics for every
-     algorithm. p holds h, the sampling rate fs, the lab code's w (samples) and the
-     algorithm's own options. */
+     Each entry:
+       tagline   one line under the dropdown
+       summary   shown in "How detection works"
+       usesH     whether the threshold h applies (it always applies to the lab code)
+       detect(A, t, p) -> {idx, weakDropped?, w?, markY?, guides?}
+                 idx: 0-based step samples. markY: values the markers sit on (default A).
+                 guides: up to two lines drawn with the signal, [{name, y, dash?}], where y is
+                 an array (one value per sample) or a single number (a level line).
+       settings(p, fx) -> [[name, value], ...] for the metrics export
+     Metrics come from timingMetrics for every algorithm. p holds h, the sampling rate fs,
+     the lab code's w (samples), the phone position and every algorithm's own options. */
   const ALGORITHMS = [
     {
       id: 'coza',
       name: 'Coza',
       tagline: 'The lab detector with its bugs fixed.',
       summary: 'Coza fixes the lab code\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
+      usesH: true,
       // Window in seconds, so it means the same at any sampling rate (the lab's w is samples).
       // Tied peaks are always counted once: showing the double count is the lab code's job.
       detect: (A, t, p) => {
         const w = windowSamples(p.cozaWindow, p.fs, A.length);
         return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: WEAK_RATIO }), { w });
       },
+      settings: (p, fx) => [['coza_window_s', p.cozaWindow], ['coza_window_samples', fx.w],
+        ['fix_weak_peaks', p.weak ? 'on, ' + Math.round(WEAK_RATIO * 100) + '%' : 'off']],
     },
   ];
 
