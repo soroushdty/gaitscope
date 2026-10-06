@@ -19,6 +19,7 @@ Requirements: numpy, scipy, matplotlib (pinned in uv.lock; install with `uv sync
 """
 import argparse
 import re
+import warnings
 
 import numpy as np
 from scipy.io import loadmat
@@ -221,7 +222,9 @@ def main():
     A = data[:, args.col - 1] if data.ndim == 2 and data.shape[1] > 1 else data.ravel()
 
     step_vals, step_idx = detect_steps(A, w=args.w, h=args.h)
-    m = gait_metrics(step_idx)
+    with warnings.catch_warnings():  # numpy warns on mean/std of too few intervals
+        warnings.simplefilter("ignore", RuntimeWarning)
+        m = gait_metrics(step_idx)
 
     print(f"Steps detected:      {len(step_idx)}")
     print(f"Step indices:        {step_idx.tolist()}")
@@ -229,6 +232,12 @@ def main():
     print(f"Pace:                {m['Pace']:.4f}")
     print(f"VariabilitySteps:    {m['VariabilitySteps']:.4f} samples")
     print(f"GaitAsymmetry:       {m['GaitAsymmetry']:.4f}")
+    if len(step_idx) < 3:
+        print("  Note: fewer than 3 steps, so some metrics are NaN (not enough intervals).")
+        if np.nanmax(A) <= args.h:
+            print(f"  The signal never goes above h = {args.h:g} (its maximum is "
+                  f"{np.nanmax(A):.3f}). With G-Force data, gravity adds about 1 g only "
+                  f"to the axis that points up, so try that axis or lower --h.")
 
     if args.no_plot:
         return
