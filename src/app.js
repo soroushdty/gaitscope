@@ -378,8 +378,10 @@
         text: esc(n.text), font: { color: colors.note, size: 12 }, bgcolor: colors.surface })),
     };
     if (S.notes.length) layout.margin.t = 26; // room for the note labels
-    const config = { responsive: true, displaylogo: false, scrollZoom: false,
-      modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
+    // Toolbar only while the pointer is over the plot (always shown on touch screens, which can't hover).
+    // Drag zooms and reset (or double-click) zooms out, so the +/- buttons go.
+    const config = { responsive: true, displaylogo: false, scrollZoom: false, displayModeBar: 'hover',
+      modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     const el = $('plot');
     el.setAttribute('aria-label', 'Signal with detected steps' + (iv ? ' and the time between steps' : ''));
     Plotly.react(el, traces, layout, config);
