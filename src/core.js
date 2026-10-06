@@ -718,14 +718,16 @@
 
   /* Step detection algorithms offered in the dashboard. The lab code (detectOriginal /
      originalMetrics) is the MATLAB reference, always shown for comparison, and is not listed.
-     Each entry: detect(A, t, p) -> {idx, weakDropped?, w?}; metrics(idx, t, p) -> the fields
+     Each entry: tagline (one line under the dropdown), summary (shown in "How detection works"),
+     detect(A, t, p) -> {idx, weakDropped?, w?}; metrics(idx, t, p) -> the fields
      cozaMetrics returns. p holds h, the sampling rate fs, the lab code's w (samples) and the
      algorithm's own options. */
   const ALGORITHMS = [
     {
       id: 'coza',
       name: 'Coza',
-      summary: 'The lab peak detector with its bugs fixed: tied peaks counted once, weak start/stop bumps dropped, timing from the real timestamps, cadence in steps/min.',
+      tagline: 'The lab detector with its bugs fixed.',
+      summary: 'Coza fixes the lab code\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
       // Window in seconds, so it means the same at any sampling rate (the lab's w is samples).
       // Tied peaks are always counted once: showing the double count is the lab code's job.
       detect: (A, t, p) => {
