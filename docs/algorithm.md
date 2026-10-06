@@ -116,3 +116,24 @@ sample.
 The weakness is signals with several bumps per step (the magnitude, or the vertical
 axis): each bump that crosses the moving threshold is a candidate, and similar-sized
 bumps all pass the swing rule.
+
+## Zero-crossing (`detectZeroCrossing`)
+
+Uses timing, not peak height, so it ignores how hard each step lands.
+
+1. Low-pass the signal (default 3 Hz).
+2. Subtract a slow baseline: the smoothed signal low-passed again at 0.3 Hz. This
+   removes gravity (1 g or 9.81 m/s² in G-Force data) and follows slow drift, such as
+   the phone tilting. A 2 s moving average was tried first, but at about one step per
+   second it ripples by up to a third of the signal's swing, because 2 s is not a whole
+   number of steps.
+3. Each upward crossing of zero is a step, with hysteresis: after a step, the signal must
+   fall below −0.3 SD (of signal minus baseline) before the next crossing can count, and a
+   crossing counts only once the signal goes on to rise above +0.3 SD. Noise near zero
+   then adds no crossings. The 0.3 Hz and 0.3 SD are fixed; the cut-off is a setting.
+4. Crossings closer than the minimum interval (default 0.25 s) to the last step are ignored.
+
+Markers sit where the smoothed signal crosses its baseline, a quarter of a cycle before
+the peak, so their times are earlier than the peak-based detectors' but their intervals
+are the same. At the very first step the filter smears the rise from rest, so that one
+crossing can come up to about 0.07 s early.

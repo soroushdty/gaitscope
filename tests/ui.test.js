@@ -68,7 +68,7 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(pg.d.getElementById('rIn'), null, 'weak-peak cut-off is fixed at 40%, no slider');
   assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza counts each once/);
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
-  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Threshold peaks', 'Peak-to-valley']);
+  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Threshold peaks', 'Peak-to-valley', 'Zero-crossing']);
   assert.equal(text(pg, 'legAlgo'), 'Coza');
   assert.ok(!/Signal/.test(pg.d.querySelector('.legend').textContent), 'the signal line needs no legend entry');
   assert.equal(text(pg, 'legH'), 'Threshold h = 1');
@@ -256,6 +256,26 @@ test('Peak-to-valley draws its dynamic threshold and has its own options', async
   await sleep(40);
   assert.equal(text(pg, 'pvSwingOut'), '100%');
   assert.ok(pg.plots.at(-1).traces[TR.algo].x.length < n, 'a higher minimum swing keeps fewer steps');
+});
+
+test('Zero-crossing marks crossings of its baseline and exports its settings', async () => {
+  const pg = makePage();
+  pg.d.getElementById('demoBtn').click();
+  await sleep(40);
+  const $ = id => pg.d.getElementById(id);
+  $('algoSel').value = 'zerocross'; $('algoSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  const last = pg.plots.at(-1);
+  assert.equal(last.traces[TR.guide2].name, 'Baseline (0.3 Hz)');
+  const base = last.traces[TR.guide2].y, sm = last.traces[TR.guide].y;
+  const m = last.traces[TR.algo];
+  assert.ok(m.x.length >= 14 && m.x.length <= 17, m.x.length + ' steps on the demo walk');
+  for (const [s1] of m.customdata) assert.ok(sm[s1 - 2] < base[s1 - 2] && sm[s1 - 1] >= base[s1 - 1], 'each marker is an upward crossing');
+  assert.match(text(pg, 'stepsTitle'), /Zero-crossing/);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('expMetrics').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /\nlowpass_cutoff_hz,3\nbaseline_cutoff_hz,0\.3\nhysteresis_sd,0\.3\nhysteresis_value,[\d.]+\nmin_interval_s,0\.25\n/);
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {

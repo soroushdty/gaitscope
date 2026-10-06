@@ -183,6 +183,31 @@ test('Peak-to-valley drops small swings and keeps the larger of two close steps'
   assert.deepEqual(at(all), ['1.00', '2.00', '3.00', '4.00', '4.20', '5.00']);
 });
 
+test('Zero-crossing finds every step of a known walk, at 100 Hz and 460 Hz, with or without gravity', () => {
+  for (const cfg of [{}, { fs: 460 }, { offset: 9.81, amp: 1, noise: 0.2 }, { fs: 57 }]) {
+    const w = knownWalk(cfg);
+    const r = C.detectZeroCrossing(w.A, w.t, w.fs, { cutoff: 3, minInterval: 0.25 });
+    assert.ok(matchTimes(r.idx.slice(1), w.t, w.rise.slice(1), 0.04), JSON.stringify(cfg) + ': ' + r.idx.length + ' crossings');
+    // the first rise starts abruptly from rest, which the filter smears out a little earlier
+    assert.ok(Math.abs(w.t[r.idx[0]] - w.rise[0]) < 0.1);
+  }
+});
+
+test('Zero-crossing ignores noise near zero and crossings inside the minimum interval', () => {
+  const fs = 100, t = Float64Array.from({ length: 1000 }, (_, i) => i / fs);
+  // 1 Hz walk with a fast ripple on top: the ripple crosses zero many times per cycle
+  const A = t.map(v => Math.sin(2 * Math.PI * v) + 0.4 * Math.sin(2 * Math.PI * 9 * v));
+  const unfiltered = C.detectZeroCrossing(A, t, fs, { cutoff: 50, minInterval: 0.1 });
+  assert.ok(unfiltered.idx.length >= 9 && unfiltered.idx.length <= 11, 'hysteresis alone: one per cycle, ' + unfiltered.idx.length);
+  const r = C.detectZeroCrossing(A, t, fs, { cutoff: 3, minInterval: 0.25 });
+  assert.ok(r.idx.length >= 9 && r.idx.length <= 11, r.idx.length + ' crossings');
+  // 2 Hz with a 0.6 s minimum interval: every other crossing is too soon
+  const fast = t.map(v => Math.sin(2 * Math.PI * 2 * v));
+  const n2 = C.detectZeroCrossing(fast, t, fs, { cutoff: 5, minInterval: 0.25 }).idx.length;
+  const n6 = C.detectZeroCrossing(fast, t, fs, { cutoff: 5, minInterval: 0.6 }).idx.length;
+  assert.ok(n2 >= 19 && Math.abs(n6 - n2 / 2) <= 1, n2 + ' vs ' + n6);
+});
+
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);

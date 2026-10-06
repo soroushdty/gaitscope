@@ -803,6 +803,33 @@
     return { idx: kept.map(c => c.pk), smooth: s, threshold, medSwing, candidates: cycles.length };
   }
 
+  /* Zero-crossing detection: timing, not height. The smoothed signal minus a slow baseline
+     (the signal low-passed at 0.3 Hz, which removes gravity and follows slow drift, such as
+     the phone tilting) crosses zero upwards once per step. A hysteresis band of ±0.3 SD of that difference stops noise
+     near zero from adding crossings: after a crossing has counted, the signal must drop
+     below −band before the next one can, and a crossing counts only once the signal goes
+     on to rise above +band. Crossings closer than minInterval seconds to the last step are
+     ignored. opts: {cutoff, minInterval} */
+  const ZC_BASELINE = 0.3, ZC_BAND = 0.3; // baseline cut-off (Hz), hysteresis (× SD)
+  function detectZeroCrossing(A, t, fs, opts) {
+    const s = lowpass(A, fs, opts.cutoff), n = s.length;
+    const baseline = lowpass(s, fs, ZC_BASELINE);
+    const d = new Float64Array(n);
+    for (let i = 0; i < n; i++) d[i] = s[i] - baseline[i];
+    const band = ZC_BAND * std(d);
+    const idx = [];
+    let armed = true, cross = -1, last = -Infinity;
+    for (let i = 1; i < n; i++) {
+      if (d[i] < -band) { armed = true; cross = -1; }
+      if (armed && d[i - 1] < 0 && d[i] >= 0) cross = i;
+      if (armed && cross >= 0 && d[i] > band) {
+        if (t[cross] - last >= opts.minInterval) { idx.push(cross); last = t[cross]; }
+        armed = false; cross = -1;
+      }
+    }
+    return { idx, smooth: s, baseline, band };
+  }
+
   // A window given in seconds, as a whole number of samples at fs (at least 1, and short
   // enough that the detection loop still visits some samples).
   function windowSamples(seconds, fs, n) {
@@ -865,6 +892,20 @@
       settings: (p, fx) => [['lowpass_cutoff_hz', PV_CUTOFF], ['window_s', p.pvWindow], ['min_swing_pct_of_median', p.pvSwing],
         ['median_swing', Number.isFinite(fx.medSwing) ? +fx.medSwing.toFixed(6) : ''], ['min_interval_s', p.pvMinInterval]],
     },
+    {
+      id: 'zerocross',
+      name: 'Zero-crossing',
+      tagline: 'Upward crossings of the smoothed signal through its baseline.',
+      summary: 'Zero-crossing uses timing, not peak height. The signal is low-pass filtered and a slow baseline (the signal low-passed at 0.3 Hz) is subtracted, which also removes gravity; each upward crossing of zero is a step. A hysteresis band (\u00b10.3 SD) stops noise near zero from adding crossings, and crossings closer than the minimum interval are ignored. Markers sit where the smoothed signal crosses its baseline, not on a peak. It does not use h.',
+      usesH: false,
+      detect: (A, t, p) => {
+        const r = detectZeroCrossing(A, t, p.fs, { cutoff: p.zcCutoff, minInterval: p.zcMinInterval });
+        return { idx: r.idx, markY: r.smooth, band: r.band,
+          guides: [{ name: 'Smoothed (' + p.zcCutoff + ' Hz)', y: r.smooth }, { name: 'Baseline (' + ZC_BASELINE + ' Hz)', y: r.baseline, dash: true }] };
+      },
+      settings: (p, fx) => [['lowpass_cutoff_hz', p.zcCutoff], ['baseline_cutoff_hz', ZC_BASELINE], ['hysteresis_sd', ZC_BAND],
+        ['hysteresis_value', +fx.band.toFixed(6)], ['min_interval_s', p.zcMinInterval]],
+    },
   ];
 
   /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
@@ -890,7 +931,7 @@
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
-    lowpass, dynamicThreshold, detectThresholdPeaks, detectPeakToValley,
+    lowpass, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
