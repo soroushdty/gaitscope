@@ -12,6 +12,8 @@ Usage (from the repo root):
     uv run python python/lab_step_det.py --no-plot           # print results only
     uv run python python/lab_step_det.py --file data/g_force_....csv --col 3 --w 60
                                           # Physics Toolbox CSV: --col 2/3/4 = x/y/z
+    uv run python python/lab_step_det.py --file data/g_force_....csv --resample 100
+                                          # phone recorded at ~460 Hz -> 100 Hz first
 
 Requirements: numpy, scipy, matplotlib (pinned in uv.lock; install with `uv sync`)
 """
@@ -162,6 +164,21 @@ def sampling_rate(t):
     return 1 / np.median(dt[dt > 0])
 
 
+def resample(W, fs):
+    """Put every column of W (column 0 = time in s) on a uniform grid
+    t = 0, 1/fs, 2/fs, ... by linear interpolation.
+
+    For phone recordings that are not at the 100 Hz the lab code assumes.
+    MATLAB equivalent: t2 = (0:1/fs:t(end)-t(1))'; A2 = interp1(t-t(1), A, t2);
+    """
+    t = W[:, 0] - W[0, 0]
+    if np.any(np.diff(t) < 0):
+        raise ValueError("The time column goes backwards, so the data cannot be resampled. "
+                         "Check that the file holds a single recording.")
+    t2 = np.arange(int(np.floor(t[-1] * fs + 1e-9)) + 1) / fs
+    return np.column_stack([t2] + [np.interp(t2, t, W[:, c]) for c in range(1, W.shape[1])])
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--file", default="data/Walking.mat",
@@ -171,6 +188,9 @@ def main():
                    help="MATLAB-style column number: 2, 3 or 4 (1 = time)")
     p.add_argument("--w", type=int, default=30, help="half-window in samples")
     p.add_argument("--h", type=float, default=1, help="peak threshold")
+    p.add_argument("--resample", type=float, metavar="HZ",
+                   help="resample to HZ (e.g. 100) by linear interpolation first; "
+                        "needs time in column 1")
     p.add_argument("--no-plot", action="store_true", help="skip the plot window")
     args = p.parse_args()
 
@@ -180,15 +200,22 @@ def main():
         print(f"CSV columns:         time = {names[0]!r}, x = {names[1]!r}, "
               f"y = {names[2]!r}, z = {names[3]!r} (--col 2/3/4)")
         print(f"Sampling rate:       about {fs:.0f} Hz")
-        if abs(fs - 100) > 5:
+        if abs(fs - 100) > 5 and not args.resample:
             print(f"  Warning: the lab code assumes 100 Hz (it divides by 100), so its "
-                  f"durations are off by {abs(100 / fs - 1):.0%}. Record at 100 Hz "
-                  f"(Physics Toolbox: Requested Sample Rate).")
+                  f"durations are off by {abs(100 / fs - 1):.0%}. Record at 100 Hz, "
+                  f"or add --resample 100.")
         if names[1].lower().startswith("ax"):
             print("  Note: Linear Accelerometer data is in m/s^2 without gravity; "
                   "h = 1 was chosen for G-Force Meter data (g, gravity included).")
     else:
         data = loadmat(args.file)[args.var]
+    if args.resample:
+        if data.ndim != 2 or data.shape[1] < 2:
+            p.error("--resample needs a time column in column 1 and data after it.")
+        before = sampling_rate(data[:, 0])
+        data = resample(data, args.resample)
+        print(f"Resampled:           about {before:.0f} Hz -> {args.resample:g} Hz "
+              f"(linear interpolation, like MATLAB interp1), {len(data)} samples")
     # MATLAB column c -> Python column c-1. If the variable is a single
     # vector (e.g. Lab1Data), use it directly.
     A = data[:, args.col - 1] if data.ndim == 2 and data.shape[1] > 1 else data.ravel()

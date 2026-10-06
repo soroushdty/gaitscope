@@ -53,11 +53,16 @@ deploy from the `main` branch, root folder. The page will be at
 Physics Toolbox CSV exports: the time, x, y and z columns are put in the Walking.mat
 layout, so `--col 2/3/4` picks x/y/z. It prints the measured sampling rate and warns
 when it is not about 100 Hz, because the lab code divides by 100 to get seconds.
+Physics Toolbox only lets you choose the rate in the paid version, and the free version
+records at about 460 Hz. `--resample 100` linearly interpolates the recording onto a
+100 Hz grid first (MATLAB: `interp1(t, A, 0:0.01:t(end))`). The detector itself is
+unchanged.
 
 ```bash
 uv sync                          # once per clone: creates .venv from uv.lock (Python ≥ 3.12)
 uv run python python/lab_step_det.py --file data/Walking.mat --col 2
 uv run python python/lab_step_det.py --file data/g_force_....csv --col 2 --w 60
+uv run python python/lab_step_det.py --file data/g_force_....csv --col 2 --w 60 --resample 100
 uv run python python/plot_walking.py data/Walking.mat --out walking_steps.png
 ```
 

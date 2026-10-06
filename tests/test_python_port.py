@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
-from lab_step_det import detect_steps, gait_metrics, load_csv, sampling_rate  # noqa: E402
+from lab_step_det import detect_steps, gait_metrics, load_csv, resample, sampling_rate  # noqa: E402
 
 FIX = os.path.join(ROOT, "tests", "fixtures")
 WALKING = os.path.join(ROOT, "data", "Walking.mat")
@@ -112,3 +112,28 @@ def test_csv_errors_say_what_and_how_to_fix(name, what, fix):
     with pytest.raises(ValueError, match=what) as e:
         load_csv(os.path.join(FIX, name))
     assert fix in str(e.value)
+
+
+# --- --resample: phones without a 100 Hz setting record at ~460 Hz
+
+def test_resample_keeps_uniform_100hz_data():
+    t = np.arange(500) / 100
+    W = np.column_stack([t, np.sin(t), np.cos(t)])
+    assert np.allclose(resample(W, 100), W)
+
+
+def test_resample_460hz_peaks_land_on_100hz_samples():
+    t = np.cumsum(np.full(4600, 1 / 460) * (1 + 0.01 * np.sin(np.arange(4600))))  # jittery 460 Hz
+    peaks = [1.5, 2.6, 3.7, 4.8, 5.9, 7.0, 8.1]                                  # seconds
+    a = 1 + 0.5 * sum(np.exp(-((t - p) / 0.05) ** 2) for p in peaks)
+    R = resample(np.column_stack([t, a]), 100)
+    assert sampling_rate(R[:, 0]) == pytest.approx(100)
+    _, idx = detect_steps(R[:, 1], w=60, h=1)
+    assert idx.tolist() == [round((p - t[0]) * 100) + 1 for p in peaks]  # 1-based, like MATLAB
+    assert gait_metrics(idx)["AverageStepDuration"] == pytest.approx(1.1)
+
+
+def test_resample_refuses_backwards_time():
+    W = np.array([[0.0, 1], [0.01, 2], [0.005, 3]])
+    with pytest.raises(ValueError, match="goes backwards.*single recording"):
+        resample(W, 100)
