@@ -49,7 +49,7 @@ entries in `ALGORITHMS` in `src/core.js`, and the lab code stays alongside each 
 as the MATLAB reference.
 
 Tied peaks are always counted once; the lab code, drawn alongside, shows the double
-count. The weak-peak and stride options can be switched under Advanced.
+count. Weak-peak removal can be switched off under Advanced.
 Threshold `h` is shared with the original. The window is not: the lab code keeps `w` in
 samples, as in MATLAB, and Coza has its own window in seconds.
 
@@ -60,7 +60,7 @@ samples, as in MATLAB, and Coza has its own window in seconds.
 | Weak peaks | Peak strength is `A(i) − h`. A peak is dropped when its strength is below 40% of the median strength. The cut-off is fixed, not a setting: it keeps the real first step in `Walking.mat` (strength 0.83) and drops the stop bump (0.13), with a wide margin on both sides. |
 | Real timing | Intervals come from the timestamps, not `samples / 100`. |
 | Cadence | `60 / mean step interval`, in steps/min. |
-| Strides (optional) | Each peak counts as 2 steps; cadence doubles. Asymmetry is not reported, because it needs single steps. |
+| Strides | With Phone position set to *One leg*, each peak counts as 2 steps; cadence doubles. Asymmetry is not reported, because it needs single steps. |
 
 Variability is reported as the standard deviation of intervals in ms, plus the
 coefficient of variation.

@@ -35,7 +35,7 @@
 
   /* ------------------------------------------------------------ loading */
   function resetAll() {
-    $('fxStride').checked = false;
+    $('posSel').value = 'hand'; updatePosHint();
     showPass = false;
     S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.res = null;
     S.notes = []; closeNoteForm();
@@ -190,7 +190,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'fxStride', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'posSel', 'noteMode', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -224,6 +224,9 @@
     $('wIn').value = '30'; $('cwIn').value = '0.3'; syncH(1); updateWOut(); updateCwOut();
     if (run !== false && S.ch) recompute();
   }
+  function updatePosHint() {
+    $('posHint').textContent = $('posSel').value === 'leg' ? 'Each peak is a stride: a left plus a right step.' : 'Each peak is one step.';
+  }
   function selectedAlgo() { return C.ALGORITHMS.find(a => a.id === $('algoSel').value) || C.ALGORITHMS[0]; }
   function showAlgo() {
     const a = selectedAlgo();
@@ -236,7 +239,7 @@
       w: Number($('wIn').value), h: Number($('hNum').value), fs: S.ch ? S.ch.fs : 100,
       cozaWindow: Number($('cwIn').value),
       weak: $('fxWeak').checked,
-      stride: $('fxStride').checked,
+      stride: $('posSel').value === 'leg', // a peak per stride: left plus right step
     };
   }
 
@@ -271,7 +274,7 @@
     }
     if (finalIdx.length >= 3 && !p.stride) {
       const iv = S.res.algM.stepInterval;
-      if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Peaks may be strides', detail: 'Peaks are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; turn on "Each peak is a stride" under Advanced.' });
+      if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Peaks may be strides', detail: 'Peaks are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; set Phone position to "One leg" under Recording.' });
     }
     return out;
   }
@@ -509,7 +512,7 @@
       csvRow(['threshold_h', p.h]),
       csvRow(['sampling_rate_hz', n(S.ch.fs)]),
       csvRow(['fix_weak_peaks', p.weak ? 'on, ' + Math.round(C.WEAK_RATIO * 100) + '%' : 'off']),
-      csvRow(['each_peak_is_stride', p.stride ? 'yes' : 'no']),
+      csvRow(['phone_position', p.stride ? 'one leg (each peak is a stride)' : 'hand or waist (each peak is a step)']),
     ];
     if (S.notes.length) L.push('', csvRow(['note_time_s', 'note']), ...S.notes.map(n => csvRow([n.t.toFixed(3), n.text])));
     save(baseName() + '_metrics.csv', L.join('\n') + '\n');
@@ -541,7 +544,8 @@
   $('cwIn').addEventListener('input', () => { updateCwOut(); schedule(); });
   $('hIn').addEventListener('input', e => { $('hNum').value = e.target.value; schedule(); });
   $('hNum').addEventListener('input', e => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value !== '') { $('hIn').value = String(v); schedule(); } });
-  for (const id of ['fxWeak', 'fxStride']) $(id).addEventListener('change', schedule);
+  for (const id of ['fxWeak', 'posSel']) $(id).addEventListener('change', schedule);
+  $('posSel').addEventListener('change', updatePosHint);
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
   showAlgo();
