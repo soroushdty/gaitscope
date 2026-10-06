@@ -186,7 +186,8 @@
   function showFileChip() {
     const chip = $('fileChip');
     chip.hidden = false;
-    chip.innerHTML = '<strong>' + esc(S.file.name) + '</strong>' + (S.file.size ? '<br>' + (S.file.size < 1048576 ? (S.file.size / 1024).toFixed(1) + ' KB' : (S.file.size / 1048576).toFixed(1) + ' MB') : '');
+    $('subtitle').hidden = true; // the empty state explains this; once a file is in, the plot needs the room
+    chip.innerHTML = '<strong title="' + esc(S.file.name) + '">' + esc(S.file.name) + '</strong>' + (S.file.size ? '<br>' + (S.file.size < 1048576 ? (S.file.size / 1024).toFixed(1) + ' KB' : (S.file.size / 1048576).toFixed(1) + ' MB') : '');
   }
 
   function setControlsEnabled(on) {
