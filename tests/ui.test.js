@@ -68,7 +68,7 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(pg.d.getElementById('rIn'), null, 'weak-peak cut-off is fixed at 40%, no slider');
   assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza counts each once/);
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
-  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Threshold peaks']);
+  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Threshold peaks', 'Peak-to-valley']);
   assert.equal(text(pg, 'legAlgo'), 'Coza');
   assert.ok(!/Signal/.test(pg.d.querySelector('.legend').textContent), 'the signal line needs no legend entry');
   assert.equal(text(pg, 'legH'), 'Threshold h = 1');
@@ -235,6 +235,27 @@ test('Threshold peaks draws its smoothed signal and threshold, and does not use 
   assert.match(csv, /\nalgorithm,Threshold peaks\n/);
   assert.match(csv, /\nlowpass_cutoff_hz,3\nthreshold_k,0\.5\nthreshold_value,-?[\d.]+\nmin_interval_s,0\.25\n/);
   assert.ok(!/coza_window/.test(csv));
+});
+
+test('Peak-to-valley draws its dynamic threshold and has its own options', async () => {
+  const pg = makePage();
+  pg.d.getElementById('demoBtn').click();
+  await sleep(40);
+  const $ = id => pg.d.getElementById(id);
+  $('algoSel').value = 'peakvalley'; $('algoSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  const last = pg.plots.at(-1);
+  assert.equal(last.traces[TR.guide2].name, 'Dynamic threshold');
+  assert.equal(last.traces[TR.guide2].y.length, last.traces[TR.signal].y.length, 'one threshold value per sample');
+  assert.equal($('advDetails').querySelector('[data-algo="peakvalley"]').hidden, false);
+  assert.equal(text(pg, 'pvSwingOut'), '40%');
+  const n = last.traces[TR.algo].x.length;
+  assert.ok(n >= 14 && n <= 17, n + ' steps on the demo walk');
+  const sw = $('pvSwingIn');
+  sw.value = '100'; sw.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.equal(text(pg, 'pvSwingOut'), '100%');
+  assert.ok(pg.plots.at(-1).traces[TR.algo].x.length < n, 'a higher minimum swing keeps fewer steps');
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {

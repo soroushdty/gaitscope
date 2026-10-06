@@ -768,6 +768,41 @@
     return { idx: cand.filter((_, k) => keep[k]), smooth: s, threshold };
   }
 
+  /* Peak-to-valley (min-max) detection, after Zhao (2010, Analog Devices pedometer note).
+     The threshold follows the signal: the midpoint of the sliding max and min over a
+     window (default 1 s, centred). The smoothed signal alternates between runs above and
+     below it; each run above followed by a run below is one candidate step, marked at
+     its peak. The swing (peak minus the valley after it) must reach minSwing × the median
+     swing, which drops the small wiggles of standing still. Of two steps closer than
+     minInterval seconds, the larger swing is kept. opts: {window, minSwing, minInterval} */
+  const PV_CUTOFF = 5; // light smoothing (Hz): enough to stop noise splitting a run in two
+  function detectPeakToValley(A, t, fs, opts) {
+    const s = lowpass(A, fs, PV_CUTOFF), n = s.length;
+    const threshold = dynamicThreshold(s, Math.max(1, Math.round(opts.window * fs / 2))).mid;
+    const runs = [];
+    for (let i = 0, start = 0; i < n; i++) {
+      const above = s[i] >= threshold[i];
+      if (i === n - 1 || (s[i + 1] >= threshold[i + 1]) !== above) { runs.push({ above, start, end: i }); start = i + 1; }
+    }
+    const cycles = [];
+    for (let r = 0; r + 1 < runs.length; r++) {
+      if (!runs[r].above) continue;
+      let pk = runs[r].start, vl = runs[r + 1].start;
+      for (let i = runs[r].start; i <= runs[r].end; i++) if (s[i] > s[pk]) pk = i;
+      for (let i = runs[r + 1].start; i <= runs[r + 1].end; i++) if (s[i] < s[vl]) vl = i;
+      cycles.push({ pk, swing: s[pk] - s[vl] });
+    }
+    const medSwing = median(cycles.map(c => c.swing));
+    const kept = [];
+    for (const c of cycles) {
+      if (c.swing < opts.minSwing * medSwing) continue;
+      const last = kept[kept.length - 1];
+      if (last && t[c.pk] - t[last.pk] < opts.minInterval) { if (c.swing > last.swing) kept[kept.length - 1] = c; continue; }
+      kept.push(c);
+    }
+    return { idx: kept.map(c => c.pk), smooth: s, threshold, medSwing, candidates: cycles.length };
+  }
+
   // A window given in seconds, as a whole number of samples at fs (at least 1, and short
   // enough that the detection loop still visits some samples).
   function windowSamples(seconds, fs, n) {
@@ -816,6 +851,20 @@
       },
       settings: (p, fx) => [['lowpass_cutoff_hz', p.tpCutoff], ['threshold_k', p.tpK], ['threshold_value', +fx.threshold.toFixed(6)], ['min_interval_s', p.tpMinInterval]],
     },
+    {
+      id: 'peakvalley',
+      name: 'Peak-to-valley',
+      tagline: 'A peak followed by a valley, around a threshold that follows the signal.',
+      summary: 'Peak-to-valley (min-max) uses a threshold that moves with the signal: the midpoint of the highest and lowest smoothed values within a sliding window. Each rise above it followed by a fall below it is a step, marked at its peak, when the peak-to-valley swing is at least a set share of the typical (median) swing. Steps closer than the minimum interval keep the larger swing. It does not use h.',
+      usesH: false,
+      detect: (A, t, p) => {
+        const r = detectPeakToValley(A, t, p.fs, { window: p.pvWindow, minSwing: p.pvSwing / 100, minInterval: p.pvMinInterval });
+        return { idx: r.idx, markY: r.smooth, medSwing: r.medSwing,
+          guides: [{ name: 'Smoothed (' + PV_CUTOFF + ' Hz)', y: r.smooth }, { name: 'Dynamic threshold', y: r.threshold, dash: true }] };
+      },
+      settings: (p, fx) => [['lowpass_cutoff_hz', PV_CUTOFF], ['window_s', p.pvWindow], ['min_swing_pct_of_median', p.pvSwing],
+        ['median_swing', Number.isFinite(fx.medSwing) ? +fx.medSwing.toFixed(6) : ''], ['min_interval_s', p.pvMinInterval]],
+    },
   ];
 
   /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
@@ -841,7 +890,7 @@
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
-    lowpass, dynamicThreshold, detectThresholdPeaks,
+    lowpass, dynamicThreshold, detectThresholdPeaks, detectPeakToValley,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

@@ -93,3 +93,26 @@ Coza's fixes.
 Markers sit on the smoothed signal, which is drawn with the threshold. The weakness is
 the global threshold: a long rest pulls the mean and SD down, so noise at rest can clear
 it.
+
+## Peak-to-valley (`detectPeakToValley`)
+
+Min-max detection with a threshold that moves with the signal, after
+[Zhao (2010, Analog Devices)](https://www.analog.com/en/resources/analog-dialogue/articles/pedometer-design-3-axis-digital-acceler.html).
+Coza's threshold `h` is fixed for the whole recording; here it is recomputed at every
+sample.
+
+1. Low-pass the signal lightly (5 Hz, fixed), so noise does not split one rise in two.
+2. Threshold = (max + min) / 2 of the smoothed signal over a centred sliding window
+   (default 1 s). Zhao updates it every 50 samples from the previous block; a centred
+   window is possible here because the whole recording is available.
+3. The smoothed signal alternates between runs above and below the threshold. Each run
+   above followed by a run below is a candidate step, marked at its peak.
+4. Swing = peak − the lowest point of the run below. A candidate counts when its swing is
+   at least 40% of the median swing (a setting). This drops the small wiggles of standing
+   still, in any units. Zhao uses a fixed swing instead, which depends on the units.
+5. Of two steps closer than the minimum interval (default 0.25 s), the one with the
+   larger swing is kept.
+
+The weakness is signals with several bumps per step (the magnitude, or the vertical
+axis): each bump that crosses the moving threshold is a candidate, and similar-sized
+bumps all pass the swing rule.
