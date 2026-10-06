@@ -50,6 +50,7 @@ test('loads a MAT file, compares versions and exports', async () => {
   const lab = last.traces[1].x.length, fixed = last.traces[2].x.length;
   assert.ok(lab > fixed, 'Coza drops the tied duplicate');
   assert.equal(pg.d.getElementById('fxTies'), null, 'tied peaks are always counted once, no option');
+  assert.equal(pg.d.getElementById('rIn'), null, 'weak-peak cut-off is fixed at 40%, no slider');
   assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza counts each once/);
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
   assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza']);
@@ -120,6 +121,15 @@ test('notes are pinned to the plot, listed, exported and deleted, without changi
   $('noteList').querySelector('button').click();
   assert.equal($('noteList').hidden, true);
   assert.equal(pg.plots.at(-1).layout.annotations.length, 0);
+});
+
+test('the demo walk drops its start and stop bumps as weak peaks', async () => {
+  const pg = makePage();
+  pg.d.getElementById('demoBtn').click();
+  await sleep(40);
+  assert.match(text(pg, 'valList'), /2 weak peaks dropped.*less than 40% as far above h/);
+  const last = pg.plots.at(-1);
+  assert.equal(last.traces[1].x.length - last.traces[2].x.length, 2);
 });
 
 test('shows a fix for an unreadable file', async () => {

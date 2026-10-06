@@ -190,7 +190,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'rIn', 'fxStride', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'fxStride', 'noteMode', 'resetParams']) $(id).disabled = !on;
     updateExportButtons();
   }
 
@@ -235,7 +235,7 @@
     return {
       w: Number($('wIn').value), h: Number($('hNum').value), fs: S.ch ? S.ch.fs : 100,
       cozaWindow: Number($('cwIn').value),
-      weak: $('fxWeak').checked, weakRatio: Number($('rIn').value) / 100,
+      weak: $('fxWeak').checked,
       stride: $('fxStride').checked,
     };
   }
@@ -267,7 +267,7 @@
       out.push({ level: 'warn', title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (S.res.algo.id === 'coza' ? ' Coza counts each once.' : '') });
     }
     if (p.weak && fx.weakDropped.length) {
-      out.push({ level: 'info', title: fx.weakDropped.length + ' weak peak' + (fx.weakDropped.length > 1 ? 's' : '') + ' dropped', detail: 'At ' + fx.weakDropped.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(p.weakRatio * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
+      out.push({ level: 'info', title: fx.weakDropped.length + ' weak peak' + (fx.weakDropped.length > 1 ? 's' : '') + ' dropped', detail: 'At ' + fx.weakDropped.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(C.WEAK_RATIO * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
     }
     if (finalIdx.length >= 3 && !p.stride) {
       const iv = S.res.algM.stepInterval;
@@ -508,7 +508,7 @@
       csvRow(['coza_window_samples', S.res.fx.w]),
       csvRow(['threshold_h', p.h]),
       csvRow(['sampling_rate_hz', n(S.ch.fs)]),
-      csvRow(['fix_weak_peaks', p.weak ? 'on, ' + Math.round(p.weakRatio * 100) + '%' : 'off']),
+      csvRow(['fix_weak_peaks', p.weak ? 'on, ' + Math.round(C.WEAK_RATIO * 100) + '%' : 'off']),
       csvRow(['each_peak_is_stride', p.stride ? 'yes' : 'no']),
     ];
     if (S.notes.length) L.push('', csvRow(['note_time_s', 'note']), ...S.notes.map(n => csvRow([n.t.toFixed(3), n.text])));
@@ -541,9 +541,7 @@
   $('cwIn').addEventListener('input', () => { updateCwOut(); schedule(); });
   $('hIn').addEventListener('input', e => { $('hNum').value = e.target.value; schedule(); });
   $('hNum').addEventListener('input', e => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value !== '') { $('hIn').value = String(v); schedule(); } });
-  $('rIn').addEventListener('input', e => { $('rOut').textContent = e.target.value + '%'; schedule(); });
   for (const id of ['fxWeak', 'fxStride']) $(id).addEventListener('change', schedule);
-  $('fxWeak').addEventListener('change', e => { $('rIn').disabled = !e.target.checked || !S.ch; });
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
   showAlgo();
