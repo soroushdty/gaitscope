@@ -12,7 +12,7 @@ students to skip MATLAB and use an AI tool to run the code instead. This repo ho
 1. `python/lab_step_det.py`: a faithful Python port of the MATLAB script.
 2. A static browser dashboard (`index.html` + `src/`) that validates an uploaded
    `.mat` or Physics Toolbox `.csv` file, runs the lab algorithm, and compares it with
-   a corrected version. Features: interactive sliders, an algorithm dropdown, notes pinned to the plot,
+   a corrected version. Features: interactive sliders, filter and algorithm dropdowns, notes pinned to the plot,
    CSV export.
 
 The owner does not know MATLAB and works in Python. Explain MATLAB-specific
@@ -85,6 +85,9 @@ unless the course file is present in `data/`.
   as Coza on `Walking.mat` column 2. They disagree on the other channels and on the phone
   recordings, which have no known step count (table in `docs/algorithm.md`).
   `lowpass` matches scipy's `filtfilt(butter(2, …))` to 1e-13.
+- The signal filters (#12) match scipy's `iirfilter` + `sosfiltfilt` within 1e-9 for
+  Butterworth, Chebyshev I and II, orders 2–6, at 57, 100 and 460 Hz
+  (`tests/fixtures/filters.json`). The lab code never sees the filtered signal.
 
 ## Findings about the lab code (see docs/algorithm.md)
 
@@ -110,6 +113,6 @@ unless the course file is present in `data/`.
 
 | File | Key parts |
 |---|---|
-| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `lowpass` (zero-phase Butterworth), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, usesH, detect → idx/markY/guides, settings for the export), `demoWalk` |
-| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0 signal, 1–2 algorithm guide lines, 3 lab markers, 4 algorithm markers, 5–6 interval strip; hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), `hUsed()` (h control and line only for the lab code or algorithms with `usesH`), algorithm options (`.algo-opts input[data-param]` → `params()`, reset to their HTML `value`), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
+| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `designFilter` (Butterworth / Chebyshev I / II as second-order sections, like scipy `iirfilter`), `sosfiltfilt` (zero-phase, like scipy), `lowpass` (algorithms' internal 2nd-order Butterworth), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, usesH, detect → idx/markY/guides, settings for the export), `FILTERS` + `applyFilter` (filter for the algorithm only; resamples uneven timing onto an even grid), `filterLabel`, `interpAt`, `demoWalk` |
+| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0 recorded signal (faded when filtered), 1 filtered signal, 2–3 algorithm guide lines, 4 lab markers, 5 algorithm markers, 6–7 interval strip; hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), `hUsed()` (h control and line only for the lab code or algorithms with `usesH`), options under Advanced (`#advSec input[data-param]` → `params()`, reset to their HTML `value`), `showFilter()`, notes (`onPlotClick`, `addNote`, `renderNotes`), export |
 | `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, `load_csv` (Physics Toolbox CSV → Walking.mat layout), `sampling_rate`, `resample`, CLI |

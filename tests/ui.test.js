@@ -41,7 +41,7 @@ async function upload(pg, file) {
   await sleep(60);
 }
 // Plot trace order (src/app.js renderPlot): hidden traces stay in place so these never move.
-const TR = { signal: 0, guide: 1, guide2: 2, lab: 3, algo: 4, algoIv: 5, labIv: 6 };
+const TR = { signal: 0, filtered: 1, guide: 2, guide2: 3, lab: 4, algo: 5, algoIv: 6, labIv: 7 };
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
 test('loads a MAT file, compares versions and exports', async () => {
@@ -276,6 +276,65 @@ test('Zero-crossing marks crossings of its baseline and exports its settings', a
   $('expMetrics').click();
   const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
   assert.match(csv, /\nlowpass_cutoff_hz,3\nbaseline_cutoff_hz,0\.3\nhysteresis_sd,0\.3\nhysteresis_value,[\d.]+\nmin_interval_s,0\.25\n/);
+});
+
+test('a filter feeds the algorithm, not the lab code, and is drawn over the faded recording', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Chebyshev I', 'Chebyshev II']);
+  assert.equal($('filterSel').value, 'none', 'off by default');
+  assert.equal($('filterOpts').hidden, true);
+  let last = pg.plots.at(-1);
+  assert.equal(last.traces[TR.filtered].visible, false); assert.equal(last.traces[TR.signal].opacity, 1);
+  const labBefore = last.traces[TR.lab].x.join();
+  // the walk fixture runs at about 100 Hz: the low-pass slider stops below 50 Hz
+  assert.equal($('fLowIn').max, '20');
+
+  $('filterSel').value = 'cheby1'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  last = pg.plots.at(-1);
+  assert.match(text(pg, 'filterDesc'), /ripple in the passband/);
+  assert.equal($('filterOpts').hidden, false);
+  assert.equal($('filterOpts').querySelector('[data-only="cheby1"]').hidden, false, 'ripple shown');
+  assert.equal($('filterOpts').querySelector('[data-only="cheby2"]').hidden, true, 'attenuation hidden');
+  assert.equal(text(pg, 'fOrderOut'), '4th order'); assert.equal(text(pg, 'fHighOut'), 'off');
+  assert.equal(last.traces[TR.filtered].visible, true); assert.equal(last.traces[TR.signal].opacity, 0.35);
+  assert.equal($('legFilter').hidden, false);
+  assert.equal(last.traces[TR.lab].x.join(), labBefore, 'the lab code still runs on the recorded signal');
+  const filtered = last.traces[TR.filtered].y, m = last.traces[TR.algo];
+  assert.ok(m.y.every((y, k) => y === filtered[m.customdata[k][0] - 1]), 'Coza markers sit on the filtered signal');
+  assert.equal($('labFilterNote').hidden, false);
+  assert.match(text(pg, 'valList'), /Resampled for filtering.*even \d+\.\d Hz grid/, 'the fixture has phone-like timing');
+
+  const hp = $('fHighIn');
+  hp.value = '0.3'; hp.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.equal(text(pg, 'fHighOut'), '0.30 Hz');
+  assert.match(text(pg, 'valList'), /h applies to the filtered signal/);
+
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('expMetrics').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /\nfilter,"Chebyshev I, 4th order, 0\.3–3\.0 Hz band-pass, 0\.5 dB ripple"\nfilter_resampled,yes\n/);
+
+  $('resetParams').click();
+  assert.equal(hp.value, '0'); assert.equal(text(pg, 'fHighOut'), 'off');
+});
+
+test('impossible filter settings are reported, not applied', async () => {
+  const pg = makePage();
+  pg.d.getElementById('demoBtn').click();
+  await sleep(40);
+  const $ = id => pg.d.getElementById(id);
+  $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+  const lp = $('fLowIn'), hp = $('fHighIn');
+  lp.value = '0.5'; lp.dispatchEvent(new pg.w.Event('input'));
+  hp.value = '0.8'; hp.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.match(text(pg, 'valList'), /Filter not applied.*high-pass cut-off must be below the low-pass.*To fix: Change the filter settings under Advanced/);
+  assert.equal(pg.plots.at(-1).traces[TR.filtered].visible, false);
+  assert.equal($('legFilter').hidden, true);
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {
