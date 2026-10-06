@@ -33,6 +33,11 @@
       <div id="dataControls" hidden>
         <label class="field" id="varRow">Variable<select id="varSel"></select></label>
         <label class="field">Signal to analyse<select id="chanSel"></select></label>
+        <label class="field">Phone position<select id="posSel">
+          <option value="hand">Hand or waist</option>
+          <option value="leg">One leg (pocket, ankle)</option>
+        </select></label>
+        <p class="hint" id="posHint">Each peak is one step.</p>
         <label class="field" id="fsRow" hidden>Sampling rate (Hz)<input type="number" id="fsIn" value="100" min="1" max="10000" step="1"></label>
       </div>
     </section>
@@ -67,8 +72,6 @@
       </div>
       <label class="check"><input type="checkbox" id="fxWeak" checked><span>Drop weak peaks</span>
         <small>Ignore peaks that rise less than 40% as far above h as a typical peak, such as the bump when you stop walking.</small></label>
-      <label class="check"><input type="checkbox" id="fxStride"><span>Each peak is a stride</span>
-        <small>Turn on if one peak covers a left and a right step (for example, phone in one pocket). Doubles steps and cadence.</small></label>
       </div>
       </details>
     </section>

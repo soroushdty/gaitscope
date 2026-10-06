@@ -130,6 +130,19 @@ test('the demo walk drops its start and stop bumps as weak peaks', async () => {
   assert.match(text(pg, 'valList'), /2 weak peaks dropped.*less than 40% as far above h/);
   const last = pg.plots.at(-1);
   assert.equal(last.traces[1].x.length - last.traces[2].x.length, 2);
+
+  // Phone position: on one leg, each peak is a stride (2 steps)
+  const pos = pg.d.getElementById('posSel');
+  assert.equal(pos.value, 'hand');
+  const steps = () => pg.d.querySelector('#metricsTable tbody tr td:nth-child(3)').textContent;
+  assert.equal(steps(), '15');
+  pos.value = 'leg'; pos.dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  assert.match(steps(), /^30\s*15 strides × 2$/);
+  assert.match(text(pg, 'posHint'), /stride/);
+  pg.d.getElementById('demoBtn').click();
+  await sleep(40);
+  assert.equal(pos.value, 'hand', 'a new recording starts as hand or waist');
 });
 
 test('shows a fix for an unreadable file', async () => {

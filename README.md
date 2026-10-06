@@ -21,8 +21,8 @@ fix individual steps by hand, and export the results.
 - **Live sliders** for the window `w` and threshold `h`.
 - **Lab code vs Coza**, compared on the same plot and metrics table. Coza, picked from
   the Algorithm dropdown, is the lab detector with its bugs fixed: it counts tied peaks
-  once, drops start/stop artefacts, uses real timestamps, and reports cadence; it can
-  also treat each peak as a stride.
+  once, drops start/stop artefacts, uses real timestamps, and reports cadence. Set
+  Phone position to *One leg* and it counts each peak as a stride.
   See [docs/algorithm.md](docs/algorithm.md).
 - **Notes on the plot.** Pin a short note to a moment in the recording ("turned
   around", "stairs"). Notes are listed under the plot and included in the metrics
