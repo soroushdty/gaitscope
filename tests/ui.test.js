@@ -34,6 +34,8 @@ async function upload(pg, file) {
   input.dispatchEvent(new pg.w.Event('change'));
   await sleep(60);
 }
+// Plot trace order (src/app.js renderPlot): hidden traces stay in place so these never move.
+const TR = { signal: 0, guide: 1, guide2: 2, lab: 3, algo: 4, algoIv: 5, labIv: 6 };
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
 test('loads a MAT file, compares versions and exports', async () => {
@@ -52,8 +54,10 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(pg.d.getElementById('advDetails').open, false, 'advanced options start closed');
   assert.equal(pg.d.getElementById('chanSel').value, '1', 'defaults to column 2 like the lab code');
   const last = pg.plots.at(-1);
-  const lab = last.traces[1].x.length, fixed = last.traces[2].x.length;
+  const lab = last.traces[TR.lab].x.length, fixed = last.traces[TR.algo].x.length;
   assert.ok(lab > fixed, 'Coza drops the tied duplicate');
+  assert.equal(last.traces[TR.guide].visible, false, 'Coza draws no guide lines');
+  assert.equal(text(pg, 'legGuides'), '');
   assert.equal(pg.d.getElementById('fxTies'), null, 'tied peaks are always counted once, no option');
   assert.equal(pg.d.getElementById('rIn'), null, 'weak-peak cut-off is fixed at 40%, no slider');
   assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza counts each once/);
@@ -78,8 +82,8 @@ test('loads a MAT file, compares versions and exports', async () => {
   const wIn = pg.d.getElementById('wIn');
   wIn.value = '150'; wIn.dispatchEvent(new pg.w.Event('input'));
   await sleep(40);
-  assert.equal(pg.plots.at(-1).traces[2].x.length, fixed, 'Coza unchanged by the lab w');
-  assert.notEqual(pg.plots.at(-1).traces[1].x.length, lab, 'the lab code follows w');
+  assert.equal(pg.plots.at(-1).traces[TR.algo].x.length, fixed, 'Coza unchanged by the lab w');
+  assert.notEqual(pg.plots.at(-1).traces[TR.lab].x.length, lab, 'the lab code follows w');
   const cw = pg.d.getElementById('cwIn');
   cw.value = '0.6'; cw.dispatchEvent(new pg.w.Event('input'));
   await sleep(40);
@@ -135,6 +139,7 @@ test('notes are pinned to the plot, listed, exported and deleted, without changi
   $('expMetrics').click();
   const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
   assert.match(csv, /note_time_s,note\n3\.250,turned <around>\n/);
+  assert.match(csv, /\ncoza_window_s,0\.3\ncoza_window_samples,30\nfix_weak_peaks,"on, 40%"\n/, 'the algorithm lists its own settings');
 
   $('noteList').querySelector('button').click();
   assert.equal($('noteList').hidden, true);
@@ -147,12 +152,12 @@ test('the interval strip is off by default and can be turned on', async () => {
   const $ = id => pg.d.getElementById(id);
   let { traces, layout } = pg.plots.at(-1);
   assert.equal($('showIntervals').checked, false);
-  assert.equal(traces[3].visible, false); assert.equal(traces[4].visible, false);
+  assert.equal(traces[TR.algoIv].visible, false); assert.equal(traces[TR.labIv].visible, false);
   assert.deepEqual([...layout.yaxis.domain], [0, 1], 'the signal takes the full height');
   assert.equal(layout.yaxis2.visible, false); assert.equal(layout.xaxis.anchor, 'y');
   $('showIntervals').checked = true; $('showIntervals').dispatchEvent(new pg.w.Event('change'));
   ({ traces, layout } = pg.plots.at(-1));
-  assert.equal(traces[3].visible, true); assert.equal(traces[4].visible, true);
+  assert.equal(traces[TR.algoIv].visible, true); assert.equal(traces[TR.labIv].visible, true);
   assert.deepEqual([...layout.yaxis.domain], [0.3, 1]);
   assert.equal(layout.yaxis2.visible, true); assert.equal(layout.xaxis.anchor, 'y2');
   assert.match($('plot').getAttribute('aria-label'), /time between steps/);
@@ -167,18 +172,20 @@ test('the lab code comparison can be hidden', async () => {
   assert.match(text(pg, 'valList'), /Lab code counts 1 peak twice/);
   $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
   const last = pg.plots.at(-1);
-  assert.equal(last.traces[1].visible, false, 'lab markers hidden');
-  assert.equal(last.traces[4].visible, false, 'lab interval triangles hidden');
-  assert.equal(last.traces[2].visible, undefined, 'Coza still drawn');
+  assert.equal(last.traces[TR.lab].visible, false, 'lab markers hidden');
+  assert.equal(last.traces[TR.labIv].visible, false, 'lab interval triangles hidden');
+  assert.equal(last.traces[TR.algo].visible, undefined, 'Coza still drawn');
   assert.deepEqual(heads(), ['Metric', 'Coza']);
   assert.ok(!/Pace \(lab formula\)/.test(text(pg, 'metricsTable')), 'lab-only rows go too');
   assert.equal($('labNote').hidden, true);
   assert.equal($('legLab').hidden, true);
   assert.equal($('wCtl').hidden, true, 'the lab window slider goes with it');
+  assert.equal($('hCtl').hidden, false, 'Coza still uses h');
+  assert.equal(last.layout.shapes.length, 1, 'so the h line stays');
   assert.ok(!/Lab code/.test(text(pg, 'valList')), 'lab-only checks hidden');
   $('showLab').checked = true; $('showLab').dispatchEvent(new pg.w.Event('change'));
   assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza']);
-  assert.equal(pg.plots.at(-1).traces[1].visible, true);
+  assert.equal(pg.plots.at(-1).traces[TR.lab].visible, true);
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {
@@ -187,7 +194,7 @@ test('the demo walk drops its start and stop bumps as weak peaks', async () => {
   await sleep(40);
   assert.match(text(pg, 'valList'), /2 weak peaks dropped.*less than 40% as far above h/);
   const last = pg.plots.at(-1);
-  assert.equal(last.traces[1].x.length - last.traces[2].x.length, 2);
+  assert.equal(last.traces[TR.lab].x.length - last.traces[TR.algo].x.length, 2);
 
   // Phone position: on one leg, each peak is a stride (2 steps)
   const pos = pg.d.getElementById('posSel');

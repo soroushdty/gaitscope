@@ -191,7 +191,8 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'cwIn', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const el of optionInputs()) el.disabled = !on;
     updateExportButtons();
   }
 
@@ -221,8 +222,17 @@
     const s = Number($('cwIn').value);
     $('cwOut').textContent = fmt(s, 2) + ' s' + (S.ch ? ' (' + C.windowSamples(s, S.ch.fs, S.ch.A.length) + ' samples)' : '');
   }
+  // Each algorithm's sliders under Advanced carry data-param (their key in params()). An
+  // <output for=…> with data-unit shows the value with data-dec decimals.
+  const optionInputs = () => document.querySelectorAll('.algo-opts input[data-param]');
+  function updateOptionOut(el) {
+    const out = document.querySelector('output[for="' + el.id + '"][data-unit]');
+    if (out) out.textContent = fmt(Number(el.value), Number(out.dataset.dec || 0)) + (out.dataset.unit === '%' ? '%' : ' ' + out.dataset.unit);
+  }
   function resetParams(run) {
-    $('wIn').value = '30'; $('cwIn').value = '0.3'; syncH(1); updateWOut(); updateCwOut();
+    $('wIn').value = '30'; syncH(1);
+    for (const el of optionInputs()) { el.value = el.defaultValue; updateOptionOut(el); }
+    updateWOut(); updateCwOut();
     if (run !== false && S.ch) recompute();
   }
   function updatePosHint() {
@@ -235,14 +245,19 @@
     $('algoDetail').textContent = a.summary;
     $('legAlgo').textContent = a.name;
     for (const el of document.querySelectorAll('.algo-opts')) el.hidden = el.dataset.algo !== a.id;
+    showH();
   }
+  // h only matters to the lab code and to algorithms that use it
+  const hUsed = () => showLab() || selectedAlgo().usesH;
+  function showH() { $('hCtl').hidden = $('legHItem').hidden = !hUsed(); }
   function params() {
-    return {
+    const p = {
       w: Number($('wIn').value), h: Number($('hNum').value), fs: S.ch ? S.ch.fs : 100,
-      cozaWindow: Number($('cwIn').value),
       weak: $('fxWeak').checked,
       stride: $('posSel').value === 'leg', // a peak per stride: left plus right step
     };
+    for (const el of optionInputs()) p[el.dataset.param] = Number(el.value);
+    return p;
   }
 
   /* ------------------------------------------------------------ compute */
@@ -268,7 +283,11 @@
     if (!S.res) return out;
     const { p, orig, origIdx, fx, finalIdx } = S.res;
     if (!origIdx.length) {
-      out.push({ level: 'warn', title: 'No steps found at h = ' + p.h, detail: 'No sample rises above the threshold as a window peak. If the data is in g, walking peaks can stay below 1; lower h or check the units.' });
+      const both = S.res.algo.usesH;
+      out.push({ level: 'warn', lab: !both, title: (both ? 'No steps found' : 'Lab code finds no steps') + ' at h = ' + p.h, detail: 'No sample rises above the threshold as a window peak. If the data is in g, walking peaks can stay below 1; lower h or check the units.' });
+    }
+    if (!finalIdx.length && !S.res.algo.usesH) {
+      out.push({ level: 'warn', title: S.res.algo.name + ' finds no steps', detail: 'Check its settings under Advanced, and that the signal shows walking.' });
     }
     if (orig.tiedPairs) {
       out.push({ level: 'warn', lab: true, title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (S.res.algo.id === 'coza' ? ' Coza counts each once.' : '') });
@@ -328,14 +347,21 @@
   function codeify(s) { return esc(s).replace(/([A-Za-z_][\w.]*\([^)]*\);?(?:\s*save\([^)]*\);?)?)/g, '<code>$1</code>'); }
   function setValOpen(open) { $('valToggle').setAttribute('aria-expanded', String(open)); $('valList').hidden = !open; }
 
+  function renderGuideLegend() {
+    const sw = dash => '<svg width="18" height="10"><path d="M1 5 H17" stroke="var(--algo)" stroke-width="1.5"' + (dash ? ' stroke-dasharray="3 2"' : '') + '/></svg>';
+    $('legGuides').innerHTML = (S.res.fx.guides || []).map(g => '<span>' + sw(g.dash) + esc(g.name) + '</span>').join('');
+  }
+
   function renderPlot() {
     $('legH').textContent = 'Threshold h = ' + +S.res.p.h.toFixed(4);
+    renderGuideLegend();
     if (typeof Plotly === 'undefined') {
       $('plot').innerHTML = '<p class="note" style="padding:20px">The plotting library did not load. Check your internet connection and reload the page.</p>';
       return;
     }
     const { A, t } = S.ch;
-    const { p, origIdx, finalIdx } = S.res;
+    const { p, origIdx, finalIdx, fx } = S.res;
+    const markY = fx.markY || A;
     const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), algo: cssVar('--algo'), note: cssVar('--note'),
       ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'), surface: cssVar('--surface') };
     let mn = Infinity, mx = -Infinity; for (const v of A) { if (v < mn) mn = v; if (v > mx) mx = v; }
@@ -348,15 +374,24 @@
     const oi = mid(origIdx), fi = mid(finalIdx);
     const iv = $('showIntervals').checked; // interval strip under the signal, off by default
 
+    // 1–2: the algorithm's guide lines (e.g. the smoothed signal and its threshold), under the markers
+    const guides = fx.guides || [];
+    const guide = g => {
+      const gd = guides[g], level = gd && typeof gd.y === 'number';
+      return { x: !gd ? [] : level ? [t[0], t[t.length - 1]] : t, y: !gd ? [] : level ? [gd.y, gd.y] : gd.y, type: 'scatter', mode: 'lines', name: gd ? gd.name : '', visible: !!gd,
+        line: { color: colors.algo, width: gd && gd.dash ? 1.2 : 1.5, dash: gd && gd.dash ? 'dash' : 'solid' }, opacity: 0.85,
+        hovertemplate: gd ? esc(gd.name) + '<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' : '' };
+    };
     const traces = [
       { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, name: 'Signal',
         hovertemplate: '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      guide(0), guide(1),
       { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code', visible: showLab(),
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
-      { x: finalIdx.map(i => t[i]), y: finalIdx.map(i => A[i]), customdata: cd(finalIdx), type: 'scatter', mode: 'markers', name: S.res.algo.name,
+      { x: finalIdx.map(i => t[i]), y: finalIdx.map(i => markY[i]), customdata: cd(finalIdx), type: 'scatter', mode: 'markers', name: S.res.algo.name,
         marker: { symbol: 'circle', size: 9, color: colors.algo, line: { color: colors.surface, width: 1.2 } }, hovertemplate: hov(S.res.algo.name + ' step') },
       { x: fi.x, y: fi.y, width: fi.wd, type: 'bar', name: S.res.algo.name + ' interval', xaxis: 'x', yaxis: 'y2', visible: iv, marker: { color: colors.algo, opacity: 0.55 },
-        hovertemplate: esc(S.res.algo.name) + ': %{y:.3f} s between peaks<extra></extra>' },
+        hovertemplate: esc(S.res.algo.name) + ': %{y:.3f} s between steps<extra></extra>' },
       { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2', visible: iv && showLab(),
         marker: { symbol: 'triangle-down', size: 7, color: colors.orig }, hovertemplate: 'Lab code: %{y:.3f} s between peaks<extra></extra>' },
     ];
@@ -371,7 +406,7 @@
       xaxis: { title: { text: 'Time (s)' }, range: [t[0], tMax], gridcolor: colors.line, zeroline: false, linecolor: colors.line, anchor: iv ? 'y2' : 'y' },
       yaxis: { domain: iv ? [0.3, 1] : [0, 1], title: { text: (col ? col.label : 'magnitude (computed)') + (unit ? ' (' + unit + ')' : '') }, gridcolor: colors.line, zerolinecolor: colors.line, automargin: true },
       yaxis2: { visible: iv, domain: [0, 0.22], title: { text: 'Interval (s)' }, gridcolor: colors.line, zeroline: false, rangemode: 'tozero', automargin: true },
-      shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: p.h, y1: p.h, line: { color: colors.muted, width: 1.2, dash: 'dash' } }]
+      shapes: (hUsed() ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: p.h, y1: p.h, line: { color: colors.muted, width: 1.2, dash: 'dash' } }] : [])
         .concat(S.notes.map(n => ({ type: 'line', xref: 'x', x0: n.t, x1: n.t, yref: 'paper', y0: 0, y1: 1, line: { color: colors.note, width: 1.3, dash: 'dot' } }))),
       // labels in the right quarter extend leftwards so they don't run off the plot or under the toolbar
       annotations: S.notes.map(n => ({ x: n.t, xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', showarrow: false,
@@ -476,7 +511,7 @@
       if (inF) why = 'kept';
       else if (weakSet.has(i)) why = 'weak peak';
       else if (inO && i - prevOrig <= S.res.p.w) why = 'tied peak';
-      else why = 'not a ' + S.res.algo.name + ' peak';
+      else why = 'not found by ' + S.res.algo.name;
       if (inO) prevOrig = i;
       return { i, inO, inF, why };
     });
@@ -529,11 +564,9 @@
       csvRow(['variable', S.varName || '']),
       csvRow(['signal', col]),
       csvRow(['window_w_samples', p.w]),
-      csvRow(['coza_window_s', p.cozaWindow]),
-      csvRow(['coza_window_samples', S.res.fx.w]),
       csvRow(['threshold_h', p.h]),
       csvRow(['sampling_rate_hz', n(S.ch.fs)]),
-      csvRow(['fix_weak_peaks', p.weak ? 'on, ' + Math.round(C.WEAK_RATIO * 100) + '%' : 'off']),
+      ...S.res.algo.settings(p, S.res.fx).map(csvRow),
       csvRow(['phone_position', p.stride ? 'one leg (each peak is a stride)' : 'hand or waist (each peak is a step)']),
     ];
     if (S.notes.length) L.push('', csvRow(['note_time_s', 'note']), ...S.notes.map(n => csvRow([n.t.toFixed(3), n.text])));
@@ -563,14 +596,14 @@
   $('chanSel').addEventListener('change', e => selectChannel(e.target.value));
   $('fsIn').addEventListener('change', () => { if (S.ds && !S.ds.t) selectChannel(S.chanKey); });
   $('wIn').addEventListener('input', () => { updateWOut(); schedule(); });
-  $('cwIn').addEventListener('input', () => { updateCwOut(); schedule(); });
+  for (const el of optionInputs()) el.addEventListener('input', () => { updateOptionOut(el); if (el.id === 'cwIn') updateCwOut(); schedule(); });
   $('hIn').addEventListener('input', e => { $('hNum').value = e.target.value; schedule(); });
   $('hNum').addEventListener('input', e => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value !== '') { $('hIn').value = String(v); schedule(); } });
   for (const id of ['fxWeak', 'posSel']) $(id).addEventListener('change', schedule);
   $('posSel').addEventListener('change', updatePosHint);
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
-  $('showLab').addEventListener('change', () => { $('legLab').hidden = $('wCtl').hidden = !showLab(); if (S.ch && S.res) render(); });
+  $('showLab').addEventListener('change', () => { $('legLab').hidden = $('wCtl').hidden = !showLab(); showH(); if (S.ch && S.res) render(); });
   showAlgo();
   $('showIntervals').addEventListener('change', () => { if (S.ch && S.res) renderPlot(); });
   $('noteMode').addEventListener('change', () => { if (!$('noteMode').checked) closeNoteForm(); else updateNoteUi(); });
