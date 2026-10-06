@@ -125,6 +125,23 @@ test('notes are pinned to the plot, listed, exported and deleted, without changi
   assert.equal(pg.plots.at(-1).layout.annotations.length, 0);
 });
 
+test('the interval strip is off by default and can be turned on', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  let { traces, layout } = pg.plots.at(-1);
+  assert.equal($('showIntervals').checked, false);
+  assert.equal(traces[3].visible, false); assert.equal(traces[4].visible, false);
+  assert.deepEqual([...layout.yaxis.domain], [0, 1], 'the signal takes the full height');
+  assert.equal(layout.yaxis2.visible, false); assert.equal(layout.xaxis.anchor, 'y');
+  $('showIntervals').checked = true; $('showIntervals').dispatchEvent(new pg.w.Event('change'));
+  ({ traces, layout } = pg.plots.at(-1));
+  assert.equal(traces[3].visible, true); assert.equal(traces[4].visible, true);
+  assert.deepEqual([...layout.yaxis.domain], [0.3, 1]);
+  assert.equal(layout.yaxis2.visible, true); assert.equal(layout.xaxis.anchor, 'y2');
+  assert.match($('plot').getAttribute('aria-label'), /time between steps/);
+});
+
 test('the lab code comparison can be hidden', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
