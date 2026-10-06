@@ -58,6 +58,11 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(text(pg, 'algoDesc'), 'The lab detector with its bugs fixed.', 'one line under the dropdown');
   assert.match(text(pg, 'algoDetail'), /tied peaks are counted once/, 'the full list is under How detection works');
   assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
+  const names = [...pg.d.querySelectorAll('#metricsTable td .tip')];
+  assert.equal(names.length, 7);
+  assert.ok(names.every(n => n.title.length > 20), 'every metric explains itself in a tooltip');
+  assert.equal(pg.d.querySelectorAll('#metricsTable small').length, 0, 'no grey explanations under the values');
+  assert.ok([...pg.d.querySelectorAll('#metricsTable td')].filter(td => td.textContent.startsWith('—')).every(td => td.textContent === '—'));
   assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
   assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza, ' + lab + ' lab code'));
 
