@@ -705,16 +705,27 @@
     };
   }
 
+  // A window given in seconds, as a whole number of samples at fs (at least 1, and short
+  // enough that the detection loop still visits some samples).
+  function windowSamples(seconds, fs, n) {
+    return Math.max(1, Math.min(Math.round(seconds * fs), Math.floor((n - 1) / 2) - 1));
+  }
+
   /* Step detection algorithms offered in the dashboard. The lab code (detectOriginal /
      originalMetrics) is the MATLAB reference, always shown for comparison, and is not listed.
-     Each entry: detect(A, t, p) -> {idx, weakDropped?}; metrics(idx, t, p) -> the fields
-     cozaMetrics returns. p holds the shared w and h plus the algorithm's own options. */
+     Each entry: detect(A, t, p) -> {idx, weakDropped?, w?}; metrics(idx, t, p) -> the fields
+     cozaMetrics returns. p holds h, the sampling rate fs, the lab code's w (samples) and the
+     algorithm's own options. */
   const ALGORITHMS = [
     {
       id: 'coza',
       name: 'Coza',
       summary: 'The lab peak detector with its bugs fixed: tied peaks counted once, weak start/stop bumps dropped, timing from the real timestamps, cadence in steps/min.',
-      detect: (A, t, p) => detectCoza(A, p.w, p.h, { ties: p.ties, weak: p.weak, weakRatio: p.weakRatio }),
+      // Window in seconds, so it means the same at any sampling rate (the lab's w is samples).
+      detect: (A, t, p) => {
+        const w = windowSamples(p.cozaWindow, p.fs, A.length);
+        return Object.assign(detectCoza(A, w, p.h, { ties: p.ties, weak: p.weak, weakRatio: p.weakRatio }), { w });
+      },
       metrics: (idx, t, p) => cozaMetrics(idx, t, { stride: p.stride }),
     },
   ];
@@ -741,7 +752,7 @@
   }
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
-    prepareChannel, detectOriginal, originalMetrics, detectCoza, cozaMetrics, ALGORITHMS, windowExtreme,
+    prepareChannel, detectOriginal, originalMetrics, detectCoza, cozaMetrics, ALGORITHMS, windowExtreme, windowSamples,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

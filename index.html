@@ -42,17 +42,17 @@
       <label class="field">Algorithm<select id="algoSel"></select></label>
       <p class="hint" id="algoDesc"></p>
       <div class="ctl">
-        <div class="ctl-head"><label for="wIn">Window w</label><output id="wOut" for="wIn">30 samples</output></div>
+        <div class="ctl-head"><label for="wIn">Lab code window w</label><output id="wOut" for="wIn">30 samples</output></div>
         <input type="range" id="wIn" min="1" max="200" value="30" step="1">
       </div>
       <div class="ctl">
         <div class="ctl-head"><label for="hIn">Threshold h</label><input type="number" id="hNum" value="1" step="0.1" aria-label="Threshold h value"></div>
         <input type="range" id="hIn" min="-5" max="15" value="1" step="0.05">
       </div>
-      <p class="hint"><button class="link" id="resetParams" type="button">Reset to lab defaults (w = 30, h = 1)</button></p>
+      <p class="hint"><button class="link" id="resetParams" type="button" title="w = 30 samples, h = 1, Coza window 0.3 s">Reset to defaults</button></p>
       <details class="howto">
         <summary>How detection works</summary>
-        <p>A sample is a step when it is the highest point within w samples on each side and is above h. Both versions use these settings.</p>
+        <p>A sample is a step when it is the highest point within a window on each side and is above h. The lab code counts its window w in samples, as in the MATLAB script, so its length in seconds depends on the sampling rate. Coza's window is set in seconds under Advanced. Both use h.</p>
       </details>
     </section>
 
@@ -61,6 +61,10 @@
         <summary><h2>Advanced</h2></summary>
       <div class="algo-opts" data-algo="coza">
       <h3>Coza</h3>
+      <div class="ctl">
+        <div class="ctl-head"><label for="cwIn">Window</label><output id="cwOut" for="cwIn">0.30 s</output></div>
+        <input type="range" id="cwIn" min="0.05" max="1.5" value="0.3" step="0.01">
+      </div>
       <label class="check"><input type="checkbox" id="fxTies" checked><span>Count tied peaks once</span>
         <small>When two neighbouring samples share the peak value, count one step instead of two.</small></label>
       <label class="check"><input type="checkbox" id="fxWeak" checked><span>Drop weak peaks</span>
