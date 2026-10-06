@@ -1,9 +1,11 @@
 name: tests
-# Push only: a pull_request trigger would run the same commit a second time. With
-# rebase-only merges and "branch must be up to date" on main, the pushed branch head
-# is exactly what lands on main, so its push run is the check the PR needs.
+# Branch pushes only. A pull_request trigger would test the same commit a second
+# time. A push run on main would also repeat work: "Rebase and merge" rewrites the
+# commits (new committer, new SHA), but "branch must be up to date" means the files
+# that land on main are exactly the files the branch run tested.
 on:
   push:
+    branches-ignore: [main]
 jobs:
   node:
     runs-on: ubuntu-latest
