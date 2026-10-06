@@ -748,6 +748,26 @@
     };
   }
 
+  /* Threshold peaks: the textbook peak detector, with the parts Coza lacks. The signal is
+     low-pass filtered, the threshold comes from the signal (mean + k·SD of the smoothed
+     signal) instead of a fixed h, and of two peaks closer than minInterval seconds only the
+     taller is kept (tallest first, like scipy's find_peaks distance). opts: {cutoff, k, minInterval} */
+  function detectThresholdPeaks(A, t, fs, opts) {
+    const s = lowpass(A, fs, opts.cutoff);
+    const threshold = mean(s) + opts.k * std(s);
+    const cand = [];
+    for (let i = 1; i < s.length - 1; i++) if (s[i] > threshold && s[i] > s[i - 1] && s[i] >= s[i + 1]) cand.push(i);
+    const order = cand.map((_, k) => k).sort((a, b) => (s[cand[b]] - s[cand[a]]) || (a - b));
+    const out = new Uint8Array(cand.length), keep = new Uint8Array(cand.length);
+    for (const k of order) {
+      if (out[k]) continue;
+      keep[k] = 1;
+      for (let j = k - 1; j >= 0 && t[cand[k]] - t[cand[j]] < opts.minInterval; j--) out[j] = 1;
+      for (let j = k + 1; j < cand.length && t[cand[j]] - t[cand[k]] < opts.minInterval; j++) out[j] = 1;
+    }
+    return { idx: cand.filter((_, k) => keep[k]), smooth: s, threshold };
+  }
+
   // A window given in seconds, as a whole number of samples at fs (at least 1, and short
   // enough that the detection loop still visits some samples).
   function windowSamples(seconds, fs, n) {
@@ -783,6 +803,19 @@
       settings: (p, fx) => [['coza_window_s', p.cozaWindow], ['coza_window_samples', fx.w],
         ['fix_weak_peaks', p.weak ? 'on, ' + Math.round(WEAK_RATIO * 100) + '%' : 'off']],
     },
+    {
+      id: 'threshold',
+      name: 'Threshold peaks',
+      tagline: 'Peaks of the smoothed signal above mean + k\u00b7SD.',
+      summary: 'Threshold peaks is the textbook peak detector, with what Coza lacks: the signal is low-pass filtered first, the threshold is set from the signal itself (mean + k \u00d7 SD of the smoothed signal) instead of h, and of two peaks closer than the minimum interval only the taller one counts. Markers sit on the smoothed signal.',
+      usesH: false,
+      detect: (A, t, p) => {
+        const r = detectThresholdPeaks(A, t, p.fs, { cutoff: p.tpCutoff, k: p.tpK, minInterval: p.tpMinInterval });
+        return { idx: r.idx, markY: r.smooth, threshold: r.threshold,
+          guides: [{ name: 'Smoothed (' + p.tpCutoff + ' Hz)', y: r.smooth }, { name: 'Mean + k\u00b7SD = ' + fmt(r.threshold, 2), y: r.threshold, dash: true }] };
+      },
+      settings: (p, fx) => [['lowpass_cutoff_hz', p.tpCutoff], ['threshold_k', p.tpK], ['threshold_value', +fx.threshold.toFixed(6)], ['min_interval_s', p.tpMinInterval]],
+    },
   ];
 
   /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
@@ -808,7 +841,7 @@
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
-    lowpass, dynamicThreshold,
+    lowpass, dynamicThreshold, detectThresholdPeaks,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

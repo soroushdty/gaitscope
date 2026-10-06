@@ -1,4 +1,4 @@
-# Step detection: the lab code and Coza
+# Step detection: the lab code and our algorithms
 
 ## Original (lab code)
 
@@ -68,3 +68,28 @@ coefficient of variation.
 Every algorithm's metrics come from the same function, `timingMetrics`, which works
 only from the step times. Algorithms differ in which samples they call steps, never in
 how the metrics are computed, so their results compare directly.
+
+## Shared building blocks
+
+| Function | What it does |
+|---|---|
+| `lowpass(A, fs, fc)` | 2nd-order Butterworth low-pass run forwards and backwards (MATLAB `filtfilt`, scipy `filtfilt`), so peaks keep their timing. Gain ½ at the cut-off `fc`. Same output as scipy to 1e-13. Uses the median sampling rate; phone timing jitter is small next to a cut-off of a few Hz. |
+| `dynamicThreshold(A, half)` | Sliding max and min and their midpoint. |
+
+## Threshold peaks (`detectThresholdPeaks`)
+
+The textbook peak detector. Coza is already a threshold-based peak detector, so this
+one is not a copy: it adds exactly the parts Coza lacks, to test whether they beat
+Coza's fixes.
+
+1. Low-pass the signal (default 3 Hz).
+2. Threshold = mean + k × SD of the smoothed signal (default k = 0.5). It follows the
+   signal's units and offset, so it needs no `h`: the same k works in g, in m/s², with
+   or without gravity.
+3. Local maxima of the smoothed signal above the threshold are candidate steps.
+4. Of two candidates closer than the minimum interval (default 0.25 s), only the taller
+   counts. Taller peaks are placed first, as in scipy's `find_peaks(distance=…)`.
+
+Markers sit on the smoothed signal, which is drawn with the threshold. The weakness is
+the global threshold: a long rest pulls the mean and SD down, so noise at rest can clear
+it.

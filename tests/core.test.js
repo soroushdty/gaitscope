@@ -124,6 +124,44 @@ test('dynamicThreshold matches brute force', () => {
   }
 });
 
+/* ----------------------------------------- algorithms on a known walk */
+// Rest, then n steps as one sine cycle each with uneven timing, then rest; noise on top.
+// Step k rises through the baseline at rise[k] and peaks a quarter cycle later at peak[k].
+function knownWalk({ fs = 100, n = 20, amp = 2, offset = 0, noise = 0.3, rest = 2 } = {}) {
+  const iv = Array.from({ length: n }, (_, k) => 0.5 + 0.06 * Math.sin(1.7 * k));
+  const rise = [], peak = [];
+  let t0 = rest;
+  for (const d of iv) { rise.push(t0); peak.push(t0 + d / 4); t0 += d; }
+  const end = t0, N = Math.round((end + rest) * fs);
+  let seed = 3;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+  const t = Float64Array.from({ length: N }, (_, i) => i / fs);
+  const A = t.map(v => {
+    let x = 0;
+    if (v >= rest && v < end) { let k = 0; while (k + 1 < n && rise[k + 1] <= v) k++; x = amp * Math.sin(2 * Math.PI * (v - rise[k]) / iv[k]); }
+    return offset + x + noise * rnd();
+  });
+  return { A, t, fs, rise, peak };
+}
+const matchTimes = (idx, t, want, tol) => idx.length === want.length && idx.every((i, k) => Math.abs(t[i] - want[k]) < tol);
+
+test('Threshold peaks finds every step of a known walk, at 100 Hz and 460 Hz, with or without gravity', () => {
+  for (const cfg of [{}, { fs: 460 }, { offset: 9.81, amp: 1, noise: 0.2 }, { fs: 57 }]) {
+    const w = knownWalk(cfg);
+    const r = C.detectThresholdPeaks(w.A, w.t, w.fs, { cutoff: 3, k: 0.5, minInterval: 0.25 });
+    assert.ok(matchTimes(r.idx, w.t, w.peak, 0.04), JSON.stringify(cfg) + ': ' + r.idx.length + ' peaks');
+  }
+});
+
+test('Threshold peaks keeps the taller of two peaks inside the minimum interval', () => {
+  const t = Float64Array.from({ length: 300 }, (_, i) => i / 100);
+  const A = t.map(v => Math.exp(-((v - 1) ** 2) / 0.002) + 2 * Math.exp(-((v - 1.15) ** 2) / 0.002) + Math.exp(-((v - 2) ** 2) / 0.002));
+  const r = C.detectThresholdPeaks(A, t, 100, { cutoff: 20, k: 0, minInterval: 0.25 });
+  assert.deepEqual(r.idx.map(i => t[i].toFixed(2)), ['1.15', '2.00']);
+  const all = C.detectThresholdPeaks(A, t, 100, { cutoff: 20, k: 0, minInterval: 0.1 });
+  assert.equal(all.idx.length, 3);
+});
+
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
