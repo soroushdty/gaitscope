@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
-from lab_step_det import detect_steps, gait_metrics  # noqa: E402
+from lab_step_det import detect_steps, gait_metrics, load_csv, sampling_rate  # noqa: E402
 
 FIX = os.path.join(ROOT, "tests", "fixtures")
 WALKING = os.path.join(ROOT, "data", "Walking.mat")
@@ -64,3 +64,51 @@ def test_tied_peak_is_counted_twice_like_matlab():
 def test_std_uses_n_minus_1():
     m = gait_metrics(np.array([1, 11, 31]))
     assert m["VariabilitySteps"] == pytest.approx(np.std([10, 20], ddof=1))
+
+
+# --- Physics Toolbox CSV input. The fixtures are written from walk.mat by
+# scripts/make_fixtures.py, so each CSV must give back walk.mat's time, x, y, z.
+
+def _walk():
+    W = loadmat(os.path.join(FIX, "walk.mat"))["Walking"][:, :4]
+    return np.column_stack([W[:, 0] - W[0, 0], W[:, 1:]])
+
+
+@pytest.mark.parametrize("name, time_tol", [
+    ("ptb_metadata_units.csv", 1e-6),    # '#' metadata lines, 'ax (m/s^2)' headers
+    ("ptb_linacc_semicolon.csv", 1e-4),  # ';' delimiter, decimal comma
+    ("ptb_clock_time.csv", 1e-3),        # 13:05:10:010 clock times
+    ("plain_noheader.csv", 1e-5),        # no header: time, x, y, z like Walking.mat
+])
+def test_csv_gives_walking_layout(name, time_tol):
+    D, _ = load_csv(os.path.join(FIX, name))
+    W = _walk()
+    assert D.shape == W.shape
+    assert np.allclose(D[:, 0], W[:, 0], atol=time_tol)
+    assert np.array_equal(D[:, 1:], W[:, 1:])
+    for c in (1, 2, 3):
+        assert detect_steps(D[:, c])[1].tolist() == detect_steps(W[:, c])[1].tolist()
+
+
+def test_csv_gforce_columns_and_rate():
+    D, names = load_csv(os.path.join(FIX, "ptb_gforce.csv"))
+    assert names == ["time", "gFx", "gFy", "gFz"]  # TgF is not used as an axis
+    assert np.allclose(D[:, 1], _walk()[:, 1] / 9.81, atol=1e-3)
+    assert sampling_rate(D[:, 0]) == pytest.approx(100, rel=0.1)
+
+
+def test_csv_multi_sensor_rows_keep_only_accelerometer_rows():
+    D, names = load_csv(os.path.join(FIX, "ptb_multi_record.csv"))
+    single, _ = load_csv(os.path.join(FIX, "ptb_gforce.csv"))
+    assert names == ["time", "gFx", "gFy", "gFz"]
+    assert np.array_equal(D, single)  # gyroscope rows (blank gF cells) dropped
+
+
+@pytest.mark.parametrize("name, what, fix", [
+    ("bad_empty.csv", "fewer than 2 lines", "Record for longer"),
+    ("bad_backwards_time.csv", "no y, z column", "Export the G-Force Meter"),
+])
+def test_csv_errors_say_what_and_how_to_fix(name, what, fix):
+    with pytest.raises(ValueError, match=what) as e:
+        load_csv(os.path.join(FIX, name))
+    assert fix in str(e.value)
