@@ -55,6 +55,8 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
   assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza']);
   assert.equal(text(pg, 'legAlgo'), 'Coza');
+  assert.equal(text(pg, 'algoDesc'), 'The lab detector with its bugs fixed.', 'one line under the dropdown');
+  assert.match(text(pg, 'algoDetail'), /tied peaks are counted once/, 'the full list is under How detection works');
   assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
   assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
   assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza, ' + lab + ' lab code'));

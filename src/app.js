@@ -230,7 +230,8 @@
   function selectedAlgo() { return C.ALGORITHMS.find(a => a.id === $('algoSel').value) || C.ALGORITHMS[0]; }
   function showAlgo() {
     const a = selectedAlgo();
-    $('algoDesc').textContent = a.summary;
+    $('algoDesc').textContent = a.tagline;
+    $('algoDetail').textContent = a.summary;
     $('legAlgo').textContent = a.name;
     for (const el of document.querySelectorAll('.algo-opts')) el.hidden = el.dataset.algo !== a.id;
   }
