@@ -69,11 +69,18 @@ unless the course file is present in `data/`.
   files, structs, int16, and transposed matrices. It rejects v4 and v7.3 (HDF5) with
   re-save instructions.
 - The dashboard was rendered in headless Chromium in light, dark and mobile layouts.
+  Two traps with headless screenshots: the window can't be narrower than 500 px (a
+  "390 px" shot is a cropped 500 px layout; render the page in a 390 px iframe instead),
+  and it reports no hover, so Plotly's hover-only toolbar shows permanently.
 - Real Physics Toolbox exports from the owner's phone (2026-09-23, G-Force Meter at
   ~460 Hz and Linear Accelerometer at ~57 Hz) load correctly. Newer exports start with
   `# key: value` metadata lines and put units in headers (`ax (m/s^2)`); both are handled.
   At 460 Hz the lab code (`w = 30` samples = ±65 ms, TgF rounded to 0.01) finds 193
   "steps" in 6.6 s, so it only makes sense near 100 Hz.
+- Free Physics Toolbox can't set the sample rate (a Pro feature), so phone recordings
+  come in at ~460 Hz. `lab_step_det.py --resample 100` interpolates to 100 Hz before
+  the lab code (MATLAB `interp1`); Coza's window is in seconds, so it needs no resampling.
+- phyphox exports (zip with `Raw Data.csv` + `meta/`) are not supported yet: issue #15.
 
 ## Findings about the lab code (see docs/algorithm.md)
 
@@ -89,7 +96,7 @@ unless the course file is present in `data/`.
 
 - [ ] Ask the instructor: is a Python version acceptable for submissions? Is "Pace"
       intended? Are the peaks steps or strides?
-- [ ] Enable GitHub Pages (Settings → Pages → main / root).
+- [x] GitHub Pages is enabled (main / root).
 - [ ] Maybe: support MAT v7.3 via h5wasm (large WebAssembly download; probably not
       worth it), batch processing of several files, overlaying x/y/z channels.
 
@@ -97,6 +104,6 @@ unless the course file is present in `data/`.
 
 | File | Key parts |
 |---|---|
-| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `detectCoza`, `cozaMetrics`, `ALGORITHMS` (algorithm registry), `demoWalk` |
-| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0 signal, 1 lab markers, 2 algorithm markers, 3–4 interval strip; notes are shapes + annotations), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
-| `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, CLI |
+| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `detectCoza`, `cozaMetrics`, `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, detect, metrics), `demoWalk` |
+| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0 signal, 1 lab markers, 2 algorithm markers, 3–4 interval strip; hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
+| `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, `load_csv` (Physics Toolbox CSV → Walking.mat layout), `sampling_rate`, `resample`, CLI |
