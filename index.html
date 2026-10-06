@@ -58,7 +58,7 @@
       <p class="hint"><button class="link" id="resetParams" type="button" title="Lab code w = 30 samples and h = 1, and every algorithm's own defaults">Reset to defaults</button></p>
       <details class="howto">
         <summary>How detection works</summary>
-        <p>A sample is a step when it is the highest point within a window on each side and is above h. The lab code counts its window w in samples, as in the MATLAB script, so its length in seconds depends on the sampling rate. Coza's window is set in seconds under Advanced. Both use h.</p>
+        <p>The lab code marks a sample as a step when it is the highest point within w samples on each side and is above h. Its window counts samples, as in the MATLAB script, so its length in seconds depends on the sampling rate. Each algorithm's own settings are under Advanced.</p>
         <p id="algoDetail"></p>
       </details>
     </section>

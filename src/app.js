@@ -297,7 +297,7 @@
     }
     if (finalIdx.length >= 3 && !p.stride) {
       const iv = S.res.algM.stepInterval;
-      if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Peaks may be strides', detail: 'Peaks are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; set Phone position to "One leg" under Recording.' });
+      if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Steps may be strides', detail: 'Detected steps are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; set Phone position to "One leg" under Recording.' });
     }
     return out;
   }
@@ -475,15 +475,15 @@
     const f = (v, d, u) => Number.isFinite(v) ? v.toFixed(d) + (u ? ' ' + u : '') : '—';
     // tip: how each value is computed, shown as a tooltip on the metric name
     const rows = [
-      { name: 'Steps', tip: 'Detected peaks. With Phone position set to One leg, ' + name + ' counts each peak as two steps.',
+      { name: 'Steps', tip: 'Steps detected. With Phone position set to One leg, ' + name + ' counts each one as two steps (a stride).',
         lab: String(orig.steps), algo: p.stride ? algM.steps + '<small>' + algM.peaks + ' strides × 2</small>' : String(algM.steps) },
-      { name: 'Average step duration', tip: 'Mean time between peaks. Lab code: samples ÷ 100, which assumes 100 Hz. ' + name + ': from the timestamps.',
+      { name: 'Average step duration', tip: 'Mean time between detected steps. Lab code: samples ÷ 100, which assumes 100 Hz. ' + name + ': from the timestamps.',
         lab: f(orig.avgStepDuration, 3, 's'), algo: f(algM.stepInterval, 3, 's') },
       { name: 'Cadence', tip: 'Steps per minute: 60 ÷ average step duration. The lab code does not compute it.',
         lab: '—', algo: f(algM.cadence, 1, 'steps/min') },
       { name: 'Pace (lab formula)', labOnly: true, tip: 'The lab code\u2019s Pace is average step duration × 60. Its comment calls it steps/min, but that would be 60 ÷ duration, so ' + name + ' reports cadence instead.',
         lab: f(orig.pace, 2), algo: '—' },
-      { name: p.stride ? 'Stride-time variability' : 'Step-time variability', tip: 'Standard deviation of the intervals between peaks (N−1, like MATLAB). Lab code: in samples. ' + name + ': in ms, with the coefficient of variation (CV = SD ÷ mean interval).',
+      { name: p.stride ? 'Stride-time variability' : 'Step-time variability', tip: 'Standard deviation of the intervals between detected steps (N−1, like MATLAB). Lab code: in samples. ' + name + ': in ms, with the coefficient of variation (CV = SD ÷ mean interval).',
         lab: f(orig.variabilitySamples, 1, 'samples'), algo: f(algM.variabilityMs, 0, 'ms') + (Number.isFinite(algM.cv) ? ', CV ' + algM.cv.toFixed(1) + '%' : '') },
       { name: 'Gait asymmetry', tip: 'Mean of the even intervals ÷ mean of the odd intervals; 1.000 is symmetric.' + (p.stride ? ' Not reported for strides, because it needs single steps.' : ''),
         lab: f(orig.asymmetry, 3), algo: p.stride ? '—' : f(algM.asymmetry, 3) },

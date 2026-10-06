@@ -111,4 +111,4 @@ without any error.
 | Selected algorithm finds no steps (algorithms without `h`) | warn: points to its settings under Advanced. |
 | Lab code counts tied peaks twice | warn: explains the effect on variability and asymmetry. |
 | Weak peaks dropped by Coza | info: lists their times. |
-| Peaks 0.85–1.6 s apart | info: suggests they may be strides rather than steps, and to set Phone position to *One leg*. |
+| Steps 0.85–1.6 s apart | info: suggests they may be strides rather than steps, and to set Phone position to *One leg*. |
