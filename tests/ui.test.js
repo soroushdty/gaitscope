@@ -19,7 +19,7 @@ function makePage() {
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
     w.pako = pako; w.TextDecoder = TextDecoder;
     w.matchMedia = () => ({ matches: false, addEventListener() {} });
-    w.Plotly = { react(el, traces, layout) { plots.push({ traces, layout }); el.on = (ev, fn) => { el._click = fn; }; } };
+    w.Plotly = { react(el, traces, layout, config) { plots.push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
     w.URL.createObjectURL = b => { blobs.push(b); return 'blob:x'; }; w.URL.revokeObjectURL = () => {};
   } });
   return { w: dom.window, d: dom.window.document, plots, blobs };
@@ -41,6 +41,9 @@ test('loads a MAT file, compares versions and exports', async () => {
   await upload(pg, path.join(FIX, 'walk.mat'));
   assert.match(text(pg, 'valTitle'), /^Valid/);
   assert.equal(pg.d.getElementById('subtitle').hidden, true, 'subtitle goes once a file is loaded');
+  const cfg = pg.plots.at(-1).config;
+  assert.equal(cfg.displayModeBar, 'hover');
+  assert.ok(['zoomIn2d', 'zoomOut2d'].every(b => cfg.modeBarButtonsToRemove.includes(b)), 'no +/- zoom buttons');
   assert.equal(pg.d.querySelector('#fileChip strong').title, 'walk.mat', 'full name in a tooltip');
   assert.equal(pg.d.getElementById('valList').hidden, true, 'checks start collapsed when the file is valid');
   pg.d.getElementById('valToggle').click();
