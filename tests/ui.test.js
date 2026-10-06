@@ -40,6 +40,8 @@ test('loads a MAT file, compares versions and exports', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   assert.match(text(pg, 'valTitle'), /^Valid/);
+  assert.equal(pg.d.getElementById('subtitle').hidden, true, 'subtitle goes once a file is loaded');
+  assert.equal(pg.d.querySelector('#fileChip strong').title, 'walk.mat', 'full name in a tooltip');
   assert.equal(pg.d.getElementById('valList').hidden, true, 'checks start collapsed when the file is valid');
   pg.d.getElementById('valToggle').click();
   assert.equal(pg.d.getElementById('valList').hidden, false, 'and open on click');
