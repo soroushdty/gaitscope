@@ -3,11 +3,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 const pako = require('pako');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures');
+
+// Errors thrown inside the page (event handlers, animation frames) fail the test that caused them.
+const pageErrors = [];
+test.afterEach(() => assert.deepEqual(pageErrors.splice(0), [], 'uncaught error in the page'));
 
 function makePage() {
   let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')
@@ -16,7 +20,9 @@ function makePage() {
     .replace('<script src="src/core.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/core.js'), 'utf8') + '</script>')
     .replace('<script src="src/app.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8') + '</script>');
   const plots = [], blobs = [];
-  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
+  const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
     w.pako = pako; w.TextDecoder = TextDecoder;
     w.matchMedia = () => ({ matches: false, addEventListener() {} });
     w.Plotly = { react(el, traces, layout, config) { plots.push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
