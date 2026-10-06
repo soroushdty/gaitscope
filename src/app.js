@@ -191,7 +191,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['filterSel', 'algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
     for (const el of optionInputs()) el.disabled = !on;
     updateExportButtons();
   }
@@ -211,6 +211,11 @@
     h.step = String(step);
     $('hNum').step = String(step);
     syncH(Number($('hNum').value));
+    // the low-pass cut-off must stay below half the sampling rate (largest 0.5 Hz step under it)
+    const fLow = $('fLowIn');
+    fLow.max = String(Math.max(0.5, Math.min(20, (Math.ceil(S.ch.fs / 2 / 0.5) - 1) * 0.5)));
+    if (Number(fLow.value) > Number(fLow.max)) fLow.value = fLow.max;
+    for (const el of optionInputs()) updateOptionOut(el);
     updateWOut(); updateCwOut();
   }
   function syncH(v) { $('hNum').value = String(v); $('hIn').value = String(v); }
@@ -224,10 +229,15 @@
   }
   // Each algorithm's sliders under Advanced carry data-param (their key in params()). An
   // <output for=…> with data-unit shows the value with data-dec decimals.
-  const optionInputs = () => document.querySelectorAll('.algo-opts input[data-param]');
+  // data-zero: text shown for 0 (e.g. "off"); data-unit="order": "4th order".
+  const optionInputs = () => document.querySelectorAll('#advSec input[data-param]');
+  const ordinal = n => n + ([, 'st', 'nd', 'rd'][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10] || 'th');
   function updateOptionOut(el) {
     const out = document.querySelector('output[for="' + el.id + '"][data-unit]');
-    if (out) out.textContent = fmt(Number(el.value), Number(out.dataset.dec || 0)) + (out.dataset.unit === '%' ? '%' : ' ' + out.dataset.unit);
+    if (!out) return;
+    const v = Number(el.value), u = out.dataset.unit;
+    out.textContent = v === 0 && out.dataset.zero ? out.dataset.zero : u === 'order' ? ordinal(v) + ' order'
+      : fmt(v, Number(out.dataset.dec || 0)) + (u === '%' ? '%' : ' ' + u);
   }
   function resetParams(run) {
     $('wIn').value = '30'; syncH(1);
@@ -237,6 +247,12 @@
   }
   function updatePosHint() {
     $('posHint').textContent = $('posSel').value === 'leg' ? 'Each peak is a stride: a left plus a right step.' : 'Each peak is one step.';
+  }
+  function showFilter() {
+    const f = $('filterSel').value;
+    $('filterDesc').textContent = C.FILTERS.find(x => x.id === f).tagline;
+    $('filterOpts').hidden = f === 'none';
+    for (const el of $('filterOpts').querySelectorAll('[data-only]')) el.hidden = el.dataset.only !== f;
   }
   function selectedAlgo() { return C.ALGORITHMS.find(a => a.id === $('algoSel').value) || C.ALGORITHMS[0]; }
   function showAlgo() {
@@ -254,6 +270,7 @@
     const p = {
       w: Number($('wIn').value), h: Number($('hNum').value), fs: S.ch ? S.ch.fs : 100,
       weak: $('fxWeak').checked,
+      filter: $('filterSel').value,
       stride: $('posSel').value === 'leg', // a peak per stride: left plus right step
     };
     for (const el of optionInputs()) p[el.dataset.param] = Number(el.value);
@@ -268,11 +285,13 @@
     const origIdx = C.detectOriginal(A, p.w, p.h);
     const orig = C.originalMetrics(origIdx, p.w);
     const algo = selectedAlgo();
-    const fx = algo.detect(A, t, p);
+    // the filter feeds the algorithm only; the lab code above stays on the recorded signal
+    const filt = C.applyFilter(A, t, S.ch.fs, p);
+    const fx = algo.detect(filt.A, t, p);
     const finalIdx = fx.idx, finalSet = new Set(finalIdx);
     const algM = C.timingMetrics(finalIdx, t, { stride: p.stride });
     const weakSet = new Set(fx.weakDropped);
-    S.res = { p, algo, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet };
+    S.res = { p, algo, filt, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet };
     render();
   }
 
@@ -281,7 +300,11 @@
   function derivedChecks() {
     const out = [];
     if (!S.res) return out;
-    const { p, orig, origIdx, fx, finalIdx } = S.res;
+    const { p, orig, origIdx, fx, finalIdx, filt } = S.res;
+    out.push(...filt.checks);
+    if (filt.applied && p.fHigh > 0 && S.res.algo.usesH) {
+      out.push({ level: 'info', title: 'h applies to the filtered signal', detail: 'The band-pass centres the signal on zero, so ' + S.res.algo.name + ' compares h = ' + p.h + ' with the filtered values. The lab code still uses the recorded signal.' });
+    }
     if (!origIdx.length) {
       const both = S.res.algo.usesH;
       out.push({ level: 'warn', lab: !both, title: (both ? 'No steps found' : 'Lab code finds no steps') + ' at h = ' + p.h, detail: 'No sample rises above the threshold as a window peak. If the data is in g, walking peaks can stay below 1; lower h or check the units.' });
@@ -355,13 +378,14 @@
   function renderPlot() {
     $('legH').textContent = 'Threshold h = ' + +S.res.p.h.toFixed(4);
     renderGuideLegend();
+    $('legFilter').hidden = !S.res.filt.applied;
     if (typeof Plotly === 'undefined') {
       $('plot').innerHTML = '<p class="note" style="padding:20px">The plotting library did not load. Check your internet connection and reload the page.</p>';
       return;
     }
     const { A, t } = S.ch;
-    const { p, origIdx, finalIdx, fx } = S.res;
-    const markY = fx.markY || A;
+    const { p, origIdx, finalIdx, fx, filt } = S.res;
+    const markY = fx.markY || filt.A;
     const colors = { signal: cssVar('--signal'), orig: cssVar('--orig'), algo: cssVar('--algo'), note: cssVar('--note'),
       ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'), surface: cssVar('--surface') };
     let mn = Infinity, mx = -Infinity; for (const v of A) { if (v < mn) mn = v; if (v > mx) mx = v; }
@@ -374,7 +398,7 @@
     const oi = mid(origIdx), fi = mid(finalIdx);
     const iv = $('showIntervals').checked; // interval strip under the signal, off by default
 
-    // 1–2: the algorithm's guide lines (e.g. the smoothed signal and its threshold), under the markers
+    // 2–3: the algorithm's guide lines (e.g. the smoothed signal and its threshold), under the markers
     const guides = fx.guides || [];
     const guide = g => {
       const gd = guides[g], level = gd && typeof gd.y === 'number';
@@ -383,8 +407,11 @@
         hovertemplate: gd ? esc(gd.name) + '<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' : '' };
     };
     const traces = [
-      { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, name: 'Signal',
-        hovertemplate: '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      // 0: the recorded signal, faded when 1, the filtered signal the algorithm sees, is drawn on it
+      { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, opacity: filt.applied ? 0.35 : 1, name: 'Signal',
+        hovertemplate: (filt.applied ? 'Recorded<br>' : '') + '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      { x: filt.applied ? t : [], y: filt.applied ? filt.A : [], type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.6 }, name: 'Filtered', visible: filt.applied,
+        hovertemplate: 'Filtered<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       guide(0), guide(1),
       { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code', visible: showLab(),
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
@@ -491,6 +518,7 @@
     ];
     const lab = showLab();
     $('labNote').hidden = !lab;
+    $('labFilterNote').hidden = !S.res.filt.applied;
     const plain = v => v.split('<')[0];
     $('metricsTable').innerHTML = '<thead><tr><th>Metric</th>' + (lab ? '<th class="num col-orig">Lab code</th>' : '') + '<th class="num col-algo">' + esc(name) + '</th></tr></thead><tbody>' +
       rows.filter(r => lab || !r.labOnly).map(r => {
@@ -566,6 +594,8 @@
       csvRow(['window_w_samples', p.w]),
       csvRow(['threshold_h', p.h]),
       csvRow(['sampling_rate_hz', n(S.ch.fs)]),
+      csvRow(['filter', C.filterLabel(p) + (S.res.filt.applied ? '' : p.filter !== 'none' ? ' (not applied)' : '')]),
+      csvRow(['filter_resampled', S.res.filt.resampled ? 'yes' : 'no']),
       ...S.res.algo.settings(p, S.res.fx).map(csvRow),
       csvRow(['phone_position', p.stride ? 'one leg (each peak is a stride)' : 'hand or waist (each peak is a step)']),
     ];
@@ -601,6 +631,9 @@
   $('hNum').addEventListener('input', e => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value !== '') { $('hIn').value = String(v); schedule(); } });
   for (const id of ['fxWeak', 'posSel']) $(id).addEventListener('change', schedule);
   $('posSel').addEventListener('change', updatePosHint);
+  $('filterSel').innerHTML = C.FILTERS.map(f => '<option value="' + esc(f.id) + '">' + esc(f.name) + '</option>').join('');
+  $('filterSel').addEventListener('change', () => { showFilter(); schedule(); });
+  showFilter();
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
   $('showLab').addEventListener('change', () => { $('legLab').hidden = $('wCtl').hidden = !showLab(); showH(); if (S.ch && S.res) render(); });

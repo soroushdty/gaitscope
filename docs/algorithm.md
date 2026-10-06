@@ -76,6 +76,49 @@ how the metrics are computed, so their results compare directly.
 | `lowpass(A, fs, fc)` | 2nd-order Butterworth low-pass run forwards and backwards (MATLAB `filtfilt`, scipy `filtfilt`), so peaks keep their timing. Gain ½ at the cut-off `fc`. Same output as scipy to 1e-13. Uses the median sampling rate; phone timing jitter is small next to a cut-off of a few Hz. |
 | `dynamicThreshold(A, half)` | Sliding max and min and their midpoint. |
 
+## Signal filters (`FILTERS`, `applyFilter`)
+
+A **Filter** dropdown, above Algorithm, picks a filter for the signal the selected
+algorithm runs on. The default is None. The lab code always runs on the recorded
+signal, so it stays exact. The plot draws the recorded signal faded and the filtered
+one over it.
+
+| Filter | Passband | Stopband | Trade-off |
+|---|---|---|---|
+| Butterworth | Flat | Gentlest roll-off | Least change to the shape of each step |
+| Chebyshev I | Ripple (default 0.5 dB) | Steeper roll-off | Ripple slightly reshapes peaks. The cut-off is where the ripple band ends. |
+| Chebyshev II | Flat | Ripple, at least the set attenuation (default 40 dB) | The cut-off is where the stopband starts, so the passband ends lower. |
+
+Settings, under Advanced: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
+kept below half the sampling rate), and an optional high-pass cut-off (default off). A
+high-pass removes gravity and drift and turns the filter into a band-pass of twice the
+order, as in scipy. The centred signal then needs a different `h` for Coza.
+
+How it is built (`designFilter`, `sosfiltfilt`):
+
+* The design follows scipy's `iirfilter`: analog prototype poles and zeros (`buttap`,
+  `cheb1ap`, `cheb2ap`), pre-warped low-pass or band-pass transform, bilinear transform,
+  and second-order sections. Sections stay numerically stable at the low cut-off to
+  sampling-rate ratios of phone data (0.3 Hz at 460 Hz).
+* Filtering runs forwards and backwards like scipy's `sosfiltfilt`, with the same odd
+  padding and steady-state start, so steps keep their timing. The two passes square the
+  magnitude response: the gain at a Butterworth cut-off is ½, and a Chebyshev ripple of
+  0.5 dB becomes 1 dB.
+* `scripts/make_fixtures.py` writes scipy's frequency responses and outputs for every
+  type, orders 2–6, at 57, 100 and 460 Hz, low-pass and band-pass
+  (`tests/fixtures/filters.json`). The JS versions match within 1e-9. The pairing of poles
+  into sections differs from scipy's, which does not change the filter.
+* IIR filters assume even spacing. When timestamps vary by more than 1%, the signal is
+  interpolated onto an even grid at the median rate,
+  filtered, and read back at the original timestamps. The algorithm still sees one value
+  per recorded sample, and a check says it happened. Of the owner's phone exports, the
+  Linear Accelerometer file (36% variation) is resampled; the G-Force file (0.5%) is not.
+
+On a known walk with a 25 Hz vibration and a 60 Hz hum added, each filter brings every
+algorithm back to the steps it finds on the clean walk (`tests/core.test.js`). The
+algorithms that smooth internally (Threshold peaks, Peak-to-valley, Zero-crossing) still
+apply their own low-pass on top of the filter.
+
 ## Threshold peaks (`detectThresholdPeaks`)
 
 The textbook peak detector. Coza is already a threshold-based peak detector, so this
