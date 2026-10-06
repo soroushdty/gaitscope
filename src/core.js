@@ -722,9 +722,10 @@
       name: 'Coza',
       summary: 'The lab peak detector with its bugs fixed: tied peaks counted once, weak start/stop bumps dropped, timing from the real timestamps, cadence in steps/min.',
       // Window in seconds, so it means the same at any sampling rate (the lab's w is samples).
+      // Tied peaks are always counted once: showing the double count is the lab code's job.
       detect: (A, t, p) => {
         const w = windowSamples(p.cozaWindow, p.fs, A.length);
-        return Object.assign(detectCoza(A, w, p.h, { ties: p.ties, weak: p.weak, weakRatio: p.weakRatio }), { w });
+        return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: p.weakRatio }), { w });
       },
       metrics: (idx, t, p) => cozaMetrics(idx, t, { stride: p.stride }),
     },
