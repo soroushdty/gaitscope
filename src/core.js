@@ -662,6 +662,11 @@
     };
   }
 
+  // A weak peak rises less than this fraction as far above h as the median peak. 40% keeps
+  // the real first step in Walking.mat (0.83) and drops the stop bump (0.13), with a wide
+  // margin on both sides, so it is fixed rather than a setting.
+  const WEAK_RATIO = 0.4;
+
   // Coza: the lab detector with its bugs fixed. opts: {ties, weak, weakRatio}
   function detectCoza(A, w, h, opts) {
     const M = windowExtreme(A, w, w, true);
@@ -725,7 +730,7 @@
       // Tied peaks are always counted once: showing the double count is the lab code's job.
       detect: (A, t, p) => {
         const w = windowSamples(p.cozaWindow, p.fs, A.length);
-        return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: p.weakRatio }), { w });
+        return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: WEAK_RATIO }), { w });
       },
       metrics: (idx, t, p) => cozaMetrics(idx, t, { stride: p.stride }),
     },
@@ -753,7 +758,7 @@
   }
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
-    prepareChannel, detectOriginal, originalMetrics, detectCoza, cozaMetrics, ALGORITHMS, windowExtreme, windowSamples,
+    prepareChannel, detectOriginal, originalMetrics, detectCoza, cozaMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

@@ -57,7 +57,7 @@ samples, as in MATLAB, and Coza has its own window in seconds.
 |---|---|
 | Window in seconds | Default 0.3 s, which is the lab's `w = 30` at 100 Hz. It is turned into `round(seconds × fs)` samples, so the window covers the same time at any sampling rate. In samples, `w = 30` is only ±0.065 s at 460 Hz (free Physics Toolbox), where the lab code finds many noise peaks. |
 | Tied peaks once | A sample must also be strictly greater than every earlier sample in its window, so on a plateau only the first sample counts. |
-| Weak peaks | Peak strength is `A(i) − h`. A peak is dropped when its strength is below *r* × the median strength (default *r* = 40%). This keeps the real first step in `Walking.mat` (strength 0.83) and drops the stop bump (0.13). |
+| Weak peaks | Peak strength is `A(i) − h`. A peak is dropped when its strength is below 40% of the median strength. The cut-off is fixed, not a setting: it keeps the real first step in `Walking.mat` (strength 0.83) and drops the stop bump (0.13), with a wide margin on both sides. |
 | Real timing | Intervals come from the timestamps, not `samples / 100`. |
 | Cadence | `60 / mean step interval`, in steps/min. |
 | Strides (optional) | Each peak counts as 2 steps; cadence doubles. Asymmetry is not reported, because it needs single steps. |
