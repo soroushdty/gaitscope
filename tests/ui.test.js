@@ -68,7 +68,7 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(pg.d.getElementById('rIn'), null, 'weak-peak cut-off is fixed at 40%, no slider');
   assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza counts each once/);
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
-  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza']);
+  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Threshold peaks']);
   assert.equal(text(pg, 'legAlgo'), 'Coza');
   assert.ok(!/Signal/.test(pg.d.querySelector('.legend').textContent), 'the signal line needs no legend entry');
   assert.equal(text(pg, 'legH'), 'Threshold h = 1');
@@ -192,6 +192,49 @@ test('the lab code comparison can be hidden', async () => {
   $('showLab').checked = true; $('showLab').dispatchEvent(new pg.w.Event('change'));
   assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza']);
   assert.equal(pg.plots.at(-1).traces[TR.lab].visible, true);
+});
+
+test('Threshold peaks draws its smoothed signal and threshold, and does not use h', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  const algo = $('algoSel');
+  algo.value = 'threshold'; algo.dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  let last = pg.plots.at(-1);
+  assert.equal(text(pg, 'legAlgo'), 'Threshold peaks');
+  assert.match(text(pg, 'algoDesc'), /mean \+ k·SD/);
+  assert.equal($('advDetails').querySelector('[data-algo="coza"]').hidden, true, 'Coza options hide');
+  assert.equal($('advDetails').querySelector('[data-algo="threshold"]').hidden, false);
+  assert.equal(last.traces[TR.guide].visible, true); assert.equal(last.traces[TR.guide].name, 'Smoothed (3 Hz)');
+  assert.equal(last.traces[TR.guide2].line.dash, 'dash');
+  assert.match(text(pg, 'legGuides'), /^Smoothed \(3 Hz\)Mean \+ k·SD = -?\d+\.\d\d$/, 'not confused with h');
+  const smooth = last.traces[TR.guide].y, markers = last.traces[TR.algo];
+  assert.ok(markers.x.length >= 10, 'finds the walk');
+  assert.ok(markers.y.every((y, k) => y === smooth[markers.customdata[k][0] - 1]), 'markers sit on the smoothed signal');
+  assert.equal($('hCtl').hidden, false, 'h still shown while the lab code is compared');
+
+  $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
+  last = pg.plots.at(-1);
+  assert.equal($('hCtl').hidden, true, 'h hides when nothing uses it');
+  assert.equal($('legHItem').hidden, true);
+  assert.equal(last.layout.shapes.length, 0, 'no h line');
+
+  const k = $('tpKIn');
+  k.value = '1.5'; k.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.equal(text(pg, 'tpKOut'), '1.50 SD');
+  assert.ok(pg.plots.at(-1).traces[TR.guide2].y[0] > last.traces[TR.guide2].y[0], 'threshold moves with k');
+  $('resetParams').click();
+  assert.equal(k.value, '0.5'); assert.equal(text(pg, 'tpKOut'), '0.50 SD');
+
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('expMetrics').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /^metric,lab_code,threshold,/);
+  assert.match(csv, /\nalgorithm,Threshold peaks\n/);
+  assert.match(csv, /\nlowpass_cutoff_hz,3\nthreshold_k,0\.5\nthreshold_value,-?[\d.]+\nmin_interval_s,0\.25\n/);
+  assert.ok(!/coza_window/.test(csv));
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {

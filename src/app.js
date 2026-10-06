@@ -292,7 +292,7 @@
     if (orig.tiedPairs) {
       out.push({ level: 'warn', lab: true, title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (S.res.algo.id === 'coza' ? ' Coza counts each once.' : '') });
     }
-    if (p.weak && fx.weakDropped.length) {
+    if (p.weak && fx.weakDropped && fx.weakDropped.length) {
       out.push({ level: 'info', title: fx.weakDropped.length + ' weak peak' + (fx.weakDropped.length > 1 ? 's' : '') + ' dropped', detail: 'At ' + fx.weakDropped.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(C.WEAK_RATIO * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
     }
     if (finalIdx.length >= 3 && !p.stride) {
