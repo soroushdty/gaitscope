@@ -162,6 +162,27 @@ test('Threshold peaks keeps the taller of two peaks inside the minimum interval'
   assert.equal(all.idx.length, 3);
 });
 
+test('Peak-to-valley finds every step of a known walk, at 100 Hz and 460 Hz, with or without gravity', () => {
+  for (const cfg of [{}, { fs: 460 }, { offset: 9.81, amp: 1, noise: 0.2 }, { fs: 57 }]) {
+    const w = knownWalk(cfg);
+    const r = C.detectPeakToValley(w.A, w.t, w.fs, { window: 1, minSwing: 0.4, minInterval: 0.25 });
+    assert.ok(matchTimes(r.idx, w.t, w.peak, 0.04), JSON.stringify(cfg) + ': ' + r.idx.length + ' steps');
+    assert.ok(r.candidates > r.idx.length, 'standing still makes small swings, which are dropped');
+  }
+});
+
+test('Peak-to-valley drops small swings and keeps the larger of two close steps', () => {
+  const t = Float64Array.from({ length: 600 }, (_, i) => i / 100);
+  const bump = (c, a) => v => a * Math.exp(-((v - c) ** 2) / 0.002);
+  const parts = [bump(1, 2), bump(2, 2), bump(3, 0.3), bump(4, 2), bump(4.2, 2.6), bump(5, 2)];
+  const A = t.map(v => parts.reduce((x, f) => x + f(v), 0));
+  const at = r => r.idx.map(i => t[i].toFixed(2));
+  const r = C.detectPeakToValley(A, t, 100, { window: 1, minSwing: 0.4, minInterval: 0.25 });
+  assert.deepEqual(at(r), ['1.00', '2.00', '4.20', '5.00'], 'the 0.3 bump goes; 4.2 (larger) replaces 4.0');
+  const all = C.detectPeakToValley(A, t, 100, { window: 1, minSwing: 0.1, minInterval: 0.1 });
+  assert.deepEqual(at(all), ['1.00', '2.00', '3.00', '4.00', '4.20', '5.00']);
+});
+
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);

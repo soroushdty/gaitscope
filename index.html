@@ -90,6 +90,21 @@
         <input type="range" id="tpMinIn" data-param="tpMinInterval" min="0.1" max="1" value="0.25" step="0.05">
       </div>
       </div>
+      <div class="algo-opts" data-algo="peakvalley" hidden>
+      <h3>Peak-to-valley</h3>
+      <div class="ctl">
+        <div class="ctl-head"><label for="pvWinIn">Threshold window</label><output id="pvWinOut" for="pvWinIn" data-unit="s" data-dec="1">1.0 s</output></div>
+        <input type="range" id="pvWinIn" data-param="pvWindow" min="0.3" max="3" value="1" step="0.1">
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><label for="pvSwingIn">Minimum swing, of the median</label><output id="pvSwingOut" for="pvSwingIn" data-unit="%" data-dec="0">40%</output></div>
+        <input type="range" id="pvSwingIn" data-param="pvSwing" min="0" max="100" value="40" step="5">
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><label for="pvMinIn">Minimum interval</label><output id="pvMinOut" for="pvMinIn" data-unit="s" data-dec="2">0.25 s</output></div>
+        <input type="range" id="pvMinIn" data-param="pvMinInterval" min="0.1" max="1" value="0.25" step="0.05">
+      </div>
+      </div>
       </details>
     </section>
   </aside>
