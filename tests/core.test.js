@@ -91,6 +91,39 @@ test('windowExtreme matches a brute-force sliding max/min', () => {
   }
 });
 
+/* ------------------------------------------------- signal helpers */
+const sine = (n, fs, f, amp = 1, off = 0) => Float64Array.from({ length: n }, (_, i) => off + amp * Math.sin(2 * Math.PI * f * i / fs));
+const rangeOf = (a, lo, hi) => { let mx = -Infinity, mn = Infinity; for (let i = lo; i < hi; i++) { mx = Math.max(mx, a[i]); mn = Math.min(mn, a[i]); } return (mx - mn) / 2; };
+
+test('lowpass keeps slow motion, removes fast noise and does not shift peaks', () => {
+  const fs = 100, n = 2000;
+  // forwards + backwards: gain |H|^2 = 1 / (1 + (f/fc)^4)
+  const slow = C.lowpass(sine(n, fs, 1), fs, 3);
+  assert.ok(close(rangeOf(slow, 500, 1500), 1 / (1 + (1 / 3) ** 4), 2e-3), '1 Hz passes');
+  assert.ok(close(rangeOf(C.lowpass(sine(n, fs, 3), fs, 3), 500, 1500), 0.5, 2e-3), 'half gain at the cut-off');
+  assert.ok(rangeOf(C.lowpass(sine(n, fs, 20), fs, 3), 500, 1500) < 1e-3, '20 Hz is removed');
+  // zero phase: the 1 Hz peaks stay at samples 25, 125, ...
+  for (let k = 5; k < 15; k++) {
+    let best = k * 100 + 25 - 10;
+    for (let i = best; i <= k * 100 + 35; i++) if (slow[i] > slow[best]) best = i;
+    assert.equal(best, k * 100 + 25);
+  }
+  // starts settled: an offset signal does not ring at the ends
+  const off = C.lowpass(sine(n, fs, 1, 0.1, 9.81), fs, 3);
+  assert.ok(Math.abs(off[0] - 9.81) < 0.02 && Math.abs(off[n - 1] - 9.81) < 0.02);
+  assert.deepEqual(C.lowpass(Float64Array.of(1, 2, 3), 100, 60), Float64Array.of(1, 2, 3), 'cut-off above fs/2: unchanged');
+});
+
+test('dynamicThreshold matches brute force', () => {
+  const A = Float64Array.from({ length: 200 }, (_, i) => Math.sin(i / 5) * 4 + (i % 7));
+  const dt = C.dynamicThreshold(A, 6);
+  for (let i = 0; i < A.length; i++) {
+    const w = A.slice(Math.max(0, i - 6), Math.min(A.length, i + 7));
+    assert.equal(dt.upper[i], Math.max(...w)); assert.equal(dt.lower[i], Math.min(...w));
+    assert.equal(dt.mid[i], (Math.max(...w) + Math.min(...w)) / 2);
+  }
+});
+
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
