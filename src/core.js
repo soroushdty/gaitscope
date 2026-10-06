@@ -689,7 +689,8 @@
     return { idx, weakDropped, medAmp };
   }
 
-  function cozaMetrics(idx, t, opts) {
+  // Timing metrics from step times, shared by every algorithm so their results compare.
+  function timingMetrics(idx, t, opts) {
     const d = [];
     for (let k = 1; k < idx.length; k++) d.push(t[idx[k]] - t[idx[k - 1]]);
     const perPeak = opts.stride ? 2 : 1;
@@ -719,8 +720,8 @@
   /* Step detection algorithms offered in the dashboard. The lab code (detectOriginal /
      originalMetrics) is the MATLAB reference, always shown for comparison, and is not listed.
      Each entry: tagline (one line under the dropdown), summary (shown in "How detection works"),
-     detect(A, t, p) -> {idx, weakDropped?, w?}; metrics(idx, t, p) -> the fields
-     cozaMetrics returns. p holds h, the sampling rate fs, the lab code's w (samples) and the
+     detect(A, t, p) -> {idx, weakDropped?, w?}. Metrics come from timingMetrics for every
+     algorithm. p holds h, the sampling rate fs, the lab code's w (samples) and the
      algorithm's own options. */
   const ALGORITHMS = [
     {
@@ -734,7 +735,6 @@
         const w = windowSamples(p.cozaWindow, p.fs, A.length);
         return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: WEAK_RATIO }), { w });
       },
-      metrics: (idx, t, p) => cozaMetrics(idx, t, { stride: p.stride }),
     },
   ];
 
@@ -760,7 +760,7 @@
   }
 
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
-    prepareChannel, detectOriginal, originalMetrics, detectCoza, cozaMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
+    prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

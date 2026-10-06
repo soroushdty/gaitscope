@@ -105,12 +105,12 @@ test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz
   assert.equal(C.windowSamples(0.3, 100, 20), 8, 'clamped to the signal length');
 });
 
-test('fixed metrics use timestamps and report cadence', () => {
+test('timing metrics use timestamps and report cadence', () => {
   const t = Float64Array.from({ length: 1000 }, (_, i) => i * 0.02); // 50 Hz
   const idx = [0, 25, 50, 75, 100]; // every 0.5 s
-  const m = C.cozaMetrics(idx, t, { stride: false });
+  const m = C.timingMetrics(idx, t, { stride: false });
   assert.ok(close(m.stepInterval, 0.5)); assert.ok(close(m.cadence, 120));
-  const s = C.cozaMetrics(idx, t, { stride: true });
+  const s = C.timingMetrics(idx, t, { stride: true });
   assert.equal(s.steps, 10); assert.ok(close(s.cadence, 240)); assert.ok(Number.isNaN(s.asymmetry));
 });
 

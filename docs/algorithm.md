@@ -41,7 +41,7 @@ original script run in GNU Octave, for columns 2, 3 and 4
    1.14 s, which is slow for single steps (normally 0.45–0.7 s). If the phone rode
    on one leg, each peak is a left plus a right step.
 
-## Coza (`detectCoza`, `cozaMetrics`)
+## Coza (`detectCoza`)
 
 Coza is the dashboard's first step detection algorithm: the lab code with the problems
 above fixed. It is picked from the **Algorithm** dropdown; later algorithms are added as
@@ -64,3 +64,7 @@ samples, as in MATLAB, and Coza has its own window in seconds.
 
 Variability is reported as the standard deviation of intervals in ms, plus the
 coefficient of variation.
+
+Every algorithm's metrics come from the same function, `timingMetrics`, which works
+only from the step times. Algorithms differ in which samples they call steps, never in
+how the metrics are computed, so their results compare directly.
