@@ -121,7 +121,7 @@ error.
 
 | Check | Level | Why |
 |---|---|---|
-| Rate measured as 1 / median interval | pass | Phone apps do not sample evenly. |
+| Rate measured from the typical interval: the mean of the intervals within half to 1.5× the median | pass | Phone apps do not sample evenly, and some round their times. Firefox on Android gives whole milliseconds: a 57.4 Hz recording has intervals of 16, 17 and 18 ms, and the median alone reads 58.8 Hz. Dropped samples and pauses are left out, so they don't lower the rate. The Python port measures it the same way. |
 | Rate more than 5% away from 100 Hz | warn, while a Coza is on the plot | Coza divides by 100 and counts its window `w` in samples, so its durations are off by that much. With Resample on, the rate checked is the one Coza receives after resampling. |
 | Rate below 10 Hz | warn | Too slow to resolve steps. |
 | Repeated timestamps | warn | Common when sensors are interleaved. |
