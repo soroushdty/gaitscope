@@ -52,8 +52,12 @@ deploy from the `main` branch, root folder. The page will be at
 ## Python port
 
 `python/lab_step_det.py` is a 1:1 translation of `LabStepDet_2025.m`. It also reads
-Physics Toolbox CSV exports: the time, x, y and z columns are put in the Walking.mat
-layout, so `--col 2/3/4` picks x/y/z. It warns when the data reaching the lab code is not
+Physics Toolbox CSV exports and phyphox export zips (or the `Raw Data.csv` inside): the
+time, x, y and z columns are put in the Walking.mat layout, so `--col 2/3/4` picks x/y/z.
+For a zip it also prints the phone, sensor chip, start time and length from `meta/`, and
+warns if the recording was paused (phyphox's time leaves pauses out, so the stretches are
+joined with no gap). phyphox records in m/s², while the lab's `h = 1` assumes g:
+`--to-g` divides x, y and z by 9.80665 first. It warns when the data reaching the lab code is not
 within 5% of 100 Hz, because the lab code divides by 100 to get seconds and counts its
 window `w` in samples. The rate comes from the time column of CSV exports and of `.mat`
 files in the Walking.mat layout, after any `--resample` (so `--resample 50` warns too).
@@ -68,6 +72,7 @@ uv sync                          # once per clone: creates .venv from uv.lock (P
 uv run python python/lab_step_det.py --file data/Walking.mat --col 2
 uv run python python/lab_step_det.py --file data/g_force_....csv --col 2 --w 60
 uv run python python/lab_step_det.py --file data/g_force_....csv --col 2 --w 60 --resample 100
+uv run python python/lab_step_det.py --file "data/Data from phyphox.zip" --col 4 --resample 100 --to-g
 uv run python python/plot_walking.py data/Walking.mat --out walking_steps.png
 ```
 
