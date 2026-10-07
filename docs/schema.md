@@ -180,7 +180,7 @@ the lab code always runs on the recorded signal.
 | No steps above `h` | warn: suggests checking units or lowering `h`. Shown only with the lab code when the selected algorithm does not use `h`. |
 | Selected algorithm finds no steps (algorithms without `h`) | warn: points to its settings under Advanced. |
 | Lab code counts tied peaks twice | warn: explains the effect on variability and asymmetry. |
-| Weak peaks dropped by Coza | info: lists their times. |
+| Weak peaks dropped by Coza (modified) | info: lists their times. |
 | Steps 0.85–1.6 s apart | info: suggests they may be strides rather than steps, and to set Phone position to *One leg*. |
 | The file says how many steps were counted by hand (`# steps_counted:` from the recorder) | info: the selected algorithm's step count against it, as a difference and a percentage, and the lab code's peaks; with Phone position *One leg*, each peak counts as 2 steps. The count is also in the metrics export (`steps_counted_by_hand`). |
 | No clear walking peak in the spectrum (nothing in 0.5–3.5 Hz at least 5× the band's median) | info: Cadence (spectrum) is left empty; short or irregular walks, or mostly standing, do this. |

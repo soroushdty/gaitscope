@@ -30,10 +30,12 @@ fix individual steps by hand, and export the results.
   optional anti-aliasing low-pass. It matches the Python port's `--resample` bit for bit,
   so the lab code finds the same steps in both.
 - **Live sliders** for the window `w` and threshold `h`.
-- **Lab code vs Coza**, compared on the same plot and metrics table. Coza, picked from
-  the Algorithm dropdown, is the lab detector with its bugs fixed: it counts tied peaks
-  once, drops start/stop artefacts, uses real timestamps, and reports cadence. Set
-  Phone position to *One leg* and it counts each peak as a stride.
+- **Lab code vs an algorithm**, compared on the same plot and metrics table. The
+  Algorithm dropdown has **Coza**, the lab detector exactly as written, bugs included,
+  and **Coza (modified)**, the same detector with its bugs fixed: it counts tied peaks
+  once, drops start/stop artefacts, uses real timestamps, and reports cadence. Set Phone
+  position to *One leg* and it counts each peak as a stride. Three textbook detectors
+  follow them in the list.
   See [docs/algorithm.md](docs/algorithm.md).
 - **Notes on the plot.** Pin a short note to a moment in the recording ("turned
   around", "stairs"). Notes are listed under the plot and included in the metrics

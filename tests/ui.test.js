@@ -75,22 +75,22 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.equal(text(pg, 'legGuides'), '');
   assert.equal(pg.d.getElementById('fxTies'), null, 'tied peaks are always counted once, no option');
   assert.equal(pg.d.getElementById('rIn'), null, 'weak-peak cut-off is fixed at 40%, no slider');
-  assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza counts each once/);
+  assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza \(modified\) counts each once/);
   assert.equal(pg.d.getElementById('algoSel').value, 'coza');
-  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Threshold peaks', 'Peak-to-valley', 'Zero-crossing']);
-  assert.equal(text(pg, 'legAlgo'), 'Coza');
+  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Coza (modified)', 'Threshold peaks', 'Peak-to-valley', 'Zero-crossing']);
+  assert.equal(text(pg, 'legAlgo'), 'Coza (modified)', 'opens on the modified one');
   assert.ok(!/Signal/.test(pg.d.querySelector('.legend').textContent), 'the signal line needs no legend entry');
   assert.equal(text(pg, 'legH'), 'Threshold h = 1');
   assert.equal(text(pg, 'algoDesc'), 'The lab detector with its bugs fixed.', 'one line under the dropdown');
   assert.match(text(pg, 'algoDetail'), /tied peaks are counted once/, 'the full list is under How detection works');
-  assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
+  assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza (modified)');
   const names = [...pg.d.querySelectorAll('#metricsTable td .tip')];
   assert.equal(names.length, 9);
   assert.ok(names.every(n => n.title.length > 20), 'every metric explains itself in a tooltip');
   assert.equal(pg.d.querySelectorAll('#metricsTable small').length, 0, 'no grey explanations under the values');
   assert.ok([...pg.d.querySelectorAll('#metricsTable td')].filter(td => td.textContent.startsWith('—')).every(td => td.textContent === '—'));
   assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
-  assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza, ' + lab + ' lab code'));
+  assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza \\(modified\\), ' + lab + ' lab code'));
 
   // the lab code's w (samples) no longer moves Coza, which has its own window in seconds
   assert.match(text(pg, 'cwOut'), /^0\.30 s \(30 samples\)$/);
@@ -188,14 +188,14 @@ test('the lab code comparison can be hidden', async () => {
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
   const heads = () => [...pg.d.querySelectorAll('#metricsTable th')].map(th => th.textContent);
-  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza']);
+  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza (modified)']);
   assert.match(text(pg, 'valList'), /Lab code counts 1 peak twice/);
   $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
   const last = pg.plots.at(-1);
   assert.equal(last.traces[TR.lab].visible, false, 'lab markers hidden');
   assert.equal(last.traces[TR.labIv].visible, false, 'lab interval triangles hidden');
   assert.equal(last.traces[TR.algo].visible, undefined, 'Coza still drawn');
-  assert.deepEqual(heads(), ['Metric', 'Coza']);
+  assert.deepEqual(heads(), ['Metric', 'Coza (modified)']);
   assert.ok(!/Pace \(lab formula\)/.test(text(pg, 'metricsTable')), 'lab-only rows go too');
   assert.equal($('labNote').hidden, true);
   assert.equal($('legLab').hidden, true);
@@ -204,8 +204,33 @@ test('the lab code comparison can be hidden', async () => {
   assert.equal(last.layout.shapes.length, 1, 'so the h line stays');
   assert.ok(!/Lab code/.test(text(pg, 'valList')), 'lab-only checks hidden');
   $('showLab').checked = true; $('showLab').dispatchEvent(new pg.w.Event('change'));
-  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza']);
+  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza (modified)']);
   assert.equal(pg.plots.at(-1).traces[TR.lab].visible, true);
+});
+
+test('Coza is the lab rule as written: the lab code\'s steps, its w and h, ties kept', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  const pick = async (id, v) => { $(id).value = v; $(id).dispatchEvent(new pg.w.Event(id === 'wIn' ? 'input' : 'change')); await sleep(40); };
+  await pick('algoSel', 'coza_original');
+  assert.equal(text(pg, 'legAlgo'), 'Coza'); assert.equal(text(pg, 'algoDesc'), 'The lab detector exactly as written, bugs included.');
+  assert.match(text(pg, 'algoDetail'), /tied peaks count twice and the stop bump counts as a step/);
+  assert.equal($('advDetails').querySelector('[data-algo="coza"]').hidden, true, 'no options of its own');
+  const same = () => { const tr = pg.plots.at(-1).traces; return tr[TR.algo].x.join() === tr[TR.lab].x.join(); };
+  assert.ok(same(), 'the lab code\'s steps, tied peak included');
+  assert.doesNotMatch(text(pg, 'valList'), /weak peak|counts each once/);
+  const heads = [...pg.d.querySelectorAll('#metricsTable th')].map(th => th.textContent);
+  assert.deepEqual(heads, ['Metric', 'Lab code', 'Coza']);
+  const stepsRow = [...pg.d.querySelectorAll('#metricsTable tbody tr')][0].textContent;
+  const n = pg.plots.at(-1).traces[TR.lab].x.length;
+  assert.equal(stepsRow, 'Steps' + n + n, 'same count in both columns');
+  await pick('wIn', '50'); assert.ok(same(), 'follows the lab code\'s w');
+  await pick('hNum', '2'); $('hNum').dispatchEvent(new pg.w.Event('input')); await sleep(40); assert.ok(same(), 'and h');
+  $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
+  assert.equal($('wCtl').hidden, false, 'w stays: Coza uses it'); assert.equal($('hCtl').hidden, false);
+  await pick('algoSel', 'coza');
+  assert.equal($('wCtl').hidden, true, 'Coza (modified) has its own window in seconds');
 });
 
 test('Threshold peaks draws its smoothed signal and threshold, and does not use h', async () => {
@@ -725,7 +750,7 @@ test('records a walk from motion events, loads it like a file, and downloads wha
   $('chanSel').value = '2'; $('chanSel').dispatchEvent(new pg.w.Event('change')); await sleep(40); // gFy carries gravity
   assert.ok(pg.plots.at(-1).traces[TR.algo].x.length >= 6, 'the walk is found');
   const peaks = pg.plots.at(-1).traces[TR.algo].x.length, labPeaks = pg.plots.at(-1).traces[TR.lab].x.length;
-  assert.match(text(pg, 'valList'), new RegExp('You counted 14 steps; Coza finds ' + 2 * peaks + '.*Each peak counts as 2 steps \\(Phone position: one leg\\)\\. The lab code marks ' + labPeaks + ' peaks, each a stride, so about ' + 2 * labPeaks + ' steps\\.'));
+  assert.match(text(pg, 'valList'), new RegExp('You counted 14 steps; Coza \\(modified\\) finds ' + 2 * peaks + '.*Each peak counts as 2 steps \\(Phone position: one leg\\)\\. The lab code marks ' + labPeaks + ' peaks, each a stride, so about ' + 2 * labPeaks + ' steps\\.'));
 
   assert.equal($('saveRec').hidden, false);
   pg.w.HTMLAnchorElement.prototype.click = function () {};
@@ -752,7 +777,7 @@ test('records a walk from motion events, loads it like a file, and downloads wha
   await upload(pg, tmp); fs.unlinkSync(tmp);
   assert.match(text(pg, 'valList'), /iPhone axis signs not yet checked.*don’t depend on the sign/);
   await upload(pg, path.join(FIX, 'recorder.csv')); // a saved recording, uploaded again
-  assert.match(text(pg, 'valList'), /Recorded in the browser.*Recorded with: 12 steps counted by hand, phone in the hand\..*You counted 12 steps; Coza finds/);
+  assert.match(text(pg, 'valList'), /Recorded in the browser.*Recorded with: 12 steps counted by hand, phone in the hand\..*You counted 12 steps; Coza \(modified\) finds/);
 });
 
 test('recorder: hold to stop, too short, page hidden mid-recording', async () => {
