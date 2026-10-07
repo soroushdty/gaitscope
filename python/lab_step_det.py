@@ -333,9 +333,9 @@ def to_g(data):
 
 
 def rate_warning(data, w=30):
-    """Warning text when the data reaching the lab code is not at about 100 Hz, else None.
+    """Warning text when the data reaching Coza's algorithm is not at about 100 Hz, else None.
 
-    The lab code divides sample counts by 100 to get seconds and counts its window w in
+    Coza's algorithm divides sample counts by 100 to get seconds and counts its window w in
     samples, so both are only right at 100 Hz. The rate is measured from column 1 when it
     is a strictly increasing time column (Walking.mat layout, CSV exports, resampled data);
     a single vector with no time column (e.g. Lab1Data) gives no warning, since its rate
@@ -346,7 +346,7 @@ def rate_warning(data, w=30):
     fs = sampling_rate(data[:, 0])
     if abs(fs - 100) <= 0.05 * 100:
         return None
-    return (f"Warning: the data reaching the lab code is at about {fs:.0f} Hz, but the lab code "
+    return (f"Warning: the data reaching Coza's algorithm is at about {fs:.0f} Hz, but Coza's algorithm "
             f"assumes 100 Hz. It divides by 100 to get seconds, so its durations are off by "
             f"{abs(100 / fs - 1):.0%}, and its window w = {w} samples covers +/-{w / fs:.3g} s "
             f"instead of +/-{w / 100:.3g} s. Add --resample 100 to put the data on a 100 Hz grid first.")
@@ -389,7 +389,7 @@ def resample(W, fs, method="linear", antialias=False):
     """Put every column of W (column 0 = time in s) on a uniform grid
     t = 0, 1/fs, 2/fs, ... by interpolation.
 
-    For phone recordings that are not at the rate an analysis assumes (the lab code: 100 Hz).
+    For phone recordings that are not at the rate an analysis assumes (Coza's algorithm: 100 Hz).
     method: "linear" (MATLAB interp1, the default) or "pchip" (monotone cubic, MATLAB
     interp1(..., 'pchip')). Samples sharing a timestamp are averaged first.
     antialias: when going down in rate, low-pass the signal below the new Nyquist frequency
@@ -424,24 +424,50 @@ def gaps(t, factor=5):
     return len(long), (long.max() if len(long) else 0.0)
 
 
-# --- export (#53): the dashboard's content model, lab code only (docs/export.md) ----------
+# --- export (#53): the dashboard's content model, Coza only (docs/export.md) ---------------
 
 VERSION = "0.1.0"  # as in package.json, pyproject.toml and src/core.js
-EXPORT_FORMAT_VERSION = 1
-TEXT_COLUMNS = {"algorithm_status", "metric", "unit_lab_code", "unit_algorithm", "text"}
-BOOL_COLUMNS = {"in_lab_code", "in_algorithm"}
-TABLES, RECORDS = ("signals", "recorded", "steps", "metrics", "notes"), ("about", "settings", "params")
+EXPORT_FORMAT_VERSION = 2
+TEXT_COLUMNS = {"metric", "unit", "text", "id", "kind", "type", "name", "source", "color", "params", "settings"}
+TABLES = ("indicators", "signals", "recorded", "steps", "metrics", "notes")
+RECORDS = ("about", "settings", "params", "spectrum")
 
 
-def export_model(t, A, idx, about, settings):
-    """The export model for the lab code's result: about, settings, signals (time_s, signal),
-    steps (time_s, sample_matlab 1-based, value, in_lab_code), metrics (lab_code column) and
-    an empty notes table. Same layout as buildExport in src/core.js without an algorithm."""
+def _timing(t, idx):
+    """timingMetrics in src/core.js (one step per peak): intervals from the timestamps."""
+    d = np.diff(np.asarray(t, float)[idx - 1])
+    m = lambda a: a.mean() if len(a) else np.nan
+    interval = m(d)
+    sd = d.std(ddof=1) if len(d) > 1 else np.nan
+    return {"steps": len(idx), "peaks": len(idx), "step_interval": interval, "cadence": 60 / interval,
+            "variability_ms": sd * 1000, "cv": sd / interval * 100,
+            "asymmetry": m(d[1::2]) / m(d[0::2]) if len(d[1::2]) and len(d[0::2]) else np.nan,
+            "span": t[idx[-1] - 1] - t[idx[0] - 1] if len(idx) > 1 else np.nan}
+
+
+def export_model(t, A, idx, about, settings, w=30, h=1):
+    """The export model (format 2) for Coza's result: about, settings, one indicator (coza),
+    signals (time_s, signal), steps (time_s, sample_matlab 1-based, value, coza), metrics
+    (metric, unit, coza) and an empty notes table. Same layout as buildExport in
+    src/core.js; the timing rows come from the timestamps, the coza_ rows from the .m file's
+    formulas (gait_metrics). The harmonic ratio isn't ported, so it is NaN here."""
     with warnings.catch_warnings():  # mean/std of too few intervals
         warnings.simplefilter("ignore", RuntimeWarning)
-        m = gait_metrics(idx)
+        g = gait_metrics(idx)
+        tm = _timing(t, idx)
     d = np.diff(idx)
-    asym = m["GaitAsymmetry"] if len(d[1::2]) and len(d[0::2]) else np.nan
+    script_asym = g["GaitAsymmetry"] if len(d[1::2]) and len(d[0::2]) else np.nan
+    rows = [
+        ("steps", "count", tm["steps"]), ("peaks", "count", tm["peaks"]), ("step_interval", "s (timestamps)", tm["step_interval"]),
+        ("cadence", "steps/min", tm["cadence"]), ("step_time_variability", "ms (SD)", tm["variability_ms"]),
+        ("coefficient_of_variation", "%", tm["cv"]), ("gait_asymmetry", "even/odd intervals", tm["asymmetry"]), ("walking_span", "s", tm["span"]),
+        ("harmonic_ratio", "even/odd harmonics per stride", np.nan),
+        ("coza_average_step_duration", "s (samples/100, Coza\u2019s formula)", g["AverageStepDuration"]),
+        ("coza_pace", "duration*60 (Coza\u2019s formula)", g["Pace"]),
+        ("coza_variability", "samples (SD, Coza\u2019s formula)", g["VariabilitySteps"] if len(d) > 1 else np.nan),
+        ("coza_gait_asymmetry", "even/odd sample intervals (Coza\u2019s formula)", script_asym),
+    ]
+    import json
     from datetime import datetime, timezone
     return {
         "about": {"format": "gaitscope-export", "format_version": EXPORT_FORMAT_VERSION, "generator": "gaitscope python port",
@@ -449,16 +475,13 @@ def export_model(t, A, idx, about, settings):
                   "sample_numbers": "1-based, like MATLAB (sample_matlab)", "time": "s from the first sample of the recording", **about},
         "settings": settings,
         "params": {},
+        "indicators": {"id": ["coza"], "kind": ["detector"], "type": ["coza_original"], "name": ["Coza"], "source": ["recorded"],
+                       "color": ["c1"], "params": [json.dumps({"w": w, "h": h})], "settings": ["{}"]},
         "signals": {"time_s": np.asarray(t, float), "signal": np.asarray(A, float)},
         "steps": {"time_s": np.asarray(t, float)[idx - 1], "sample_matlab": idx.astype(float),
-                  "value": np.asarray(A, float)[idx - 1], "in_lab_code": np.ones(len(idx), bool)},
-        "metrics": {
-            "metric": ["steps", "average_step_duration", "cadence", "pace_lab_formula", "step_time_variability",
-                       "coefficient_of_variation", "gait_asymmetry", "cadence_spectrum", "harmonic_ratio"],
-            "lab_code": np.array([len(idx), m["AverageStepDuration"], np.nan, m["Pace"], m["VariabilitySteps"] if len(d) > 1 else np.nan,
-                                  np.nan, asym, np.nan, np.nan]),
-            "unit_lab_code": ["count", "s (samples/100)", "", "duration*60", "samples (SD)", "", "even/odd intervals", "", ""],
-        },
+                  "value": np.asarray(A, float)[idx - 1], "coza": ["step"] * len(idx)},
+        "metrics": {"metric": [r[0] for r in rows], "unit": [r[1] for r in rows],
+                    "coza": np.array([float(r[2]) if np.isfinite(r[2]) else np.nan for r in rows])},
         "notes": {"time_s": np.zeros(0), "text": []},
     }
 
@@ -478,10 +501,19 @@ def _plain(v):
     return v
 
 
-def _column(name, values):
+def _kind(name, values):
+    """'str', 'bool' or 'f8', as columnKind in src/core.js: by name, else by the values."""
     if name in TEXT_COLUMNS:
+        return "str"
+    first = next((v for v in values if v is not None and not (isinstance(v, float) and np.isnan(v))), None)
+    return "str" if isinstance(first, str) else "bool" if isinstance(first, (bool, np.bool_)) else "f8"
+
+
+def _column(name, values):
+    kind = _kind(name, values)
+    if kind == "str":
         return np.array(list(values), dtype=str) if len(values) else np.array([], dtype="<U1")
-    if name in BOOL_COLUMNS:
+    if kind == "bool":
         return np.asarray(values, bool)
     return np.asarray(values, float)
 
@@ -513,7 +545,7 @@ def write_export(model, path):
             if k in RECORDS:
                 out[k] = {f: ("" if v is None else v) for f, v in model[k].items()}
             else:  # columns n x 1; text as a cell array
-                out[k] = {c: (np.array(list(v), dtype=object).reshape(-1, 1) if c in TEXT_COLUMNS else _column(c, v).reshape(-1, 1))
+                out[k] = {c: (np.array(list(v), dtype=object).reshape(-1, 1) if _kind(c, v) == "str" else _column(c, v).reshape(-1, 1))
                           for c, v in model[k].items()}
         savemat(path, {"gaitscope": out})
     elif ext == "npz":
@@ -634,7 +666,7 @@ def main():
     if args.to_g:
         data = to_g(data)
         print(f"Converted:           m/s^2 -> g (divided by {STANDARD_GRAVITY})")
-    # checked on what the lab code actually gets: after resampling, and for .mat files too
+    # checked on what Coza's algorithm actually gets: after resampling, and for .mat files too
     warning = rate_warning(data, args.w)
     if warning:
         print("  " + warning)
@@ -658,13 +690,12 @@ def main():
         t = data[:, 0] - data[0, 0] if timed else np.arange(len(A)) / 100
         about = {"file": os.path.basename(args.file), "variable": args.var if not names else "",
                  "signal": f"column {args.col}", "signal_name": names[args.col - 1] if names else f"Column {args.col}", "unit": ""}
-        settings = {"algorithm": "lab code", "window_w_samples": args.w, "threshold_h": args.h,
-                    "resample": f"{args.resample:g} Hz, {args.resample_method}" + (", anti-aliased" if args.antialias else "") if args.resample else "off",
+        settings = {"resample": f"{args.resample:g} Hz, {args.resample_method}" + (", anti-aliased" if args.antialias else "") if args.resample else "off",
                     "to_g": bool(args.to_g)}
         if timed:
             settings["sampling_rate_hz"] = float(sampling_rate(data[:, 0]))
         try:
-            write_export(export_model(t, A, step_idx, about, settings), args.export)
+            write_export(export_model(t, A, step_idx, about, settings, w=args.w, h=args.h), args.export)
         except ValueError as e:
             p.error(str(e))
         print(f"Exported:            {args.export}")

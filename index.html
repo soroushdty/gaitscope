@@ -15,7 +15,7 @@
 <header class="top">
   <div>
     <h1>Step detector</h1>
-    <p id="subtitle">Upload a walking recording from MATLAB (.mat), Physics Toolbox (.csv) or phyphox (.zip), or record one with your phone, tune the Lab 1 peak detector, and compare it with a corrected version.</p>
+    <p id="subtitle">Upload a walking recording from MATLAB (.mat), Physics Toolbox (.csv) or phyphox (.zip), or record one with your phone, and compare step detectors on it: Coza’s peak detector from Lab 1, its modified version, and textbook methods.</p>
   </div>
   <div class="filechip" id="fileChip" hidden></div>
 </header>
@@ -53,28 +53,19 @@
       </select></label>
       <div id="rsRateRow" hidden>
         <label class="field">Rate (Hz)<input type="number" id="rsRate" min="1" max="10000" step="any" placeholder="Type a rate"></label>
-        <p class="hint">Preset: <button class="link" type="button" data-rs-rate="100">100 Hz, what the Lab 1 code assumes</button></p>
+        <p class="hint">Preset: <button class="link" type="button" data-rs-rate="100">100 Hz, what Coza assumes</button></p>
       </div>
       <p class="hint" id="rsDesc"></p>
       <label class="field">Filter<select id="filterSel"></select></label>
       <p class="hint" id="filterDesc"></p>
-      <label class="field">Algorithm<select id="algoSel"></select></label>
-      <p class="hint" id="algoDesc"></p>
-      <label class="check"><input type="checkbox" id="showLab" checked><span>Compare with lab code</span></label>
-      <div class="ctl" id="wCtl">
-        <div class="ctl-head"><label for="wIn">Lab code window w</label><output id="wOut" for="wIn">30 samples</output></div>
-        <input type="range" id="wIn" min="1" max="200" value="30" step="1">
-      </div>
-      <div class="ctl" id="hCtl">
-        <div class="ctl-head"><label for="hIn">Threshold h</label><input type="number" id="hNum" value="1" step="0.1" aria-label="Threshold h value"></div>
-        <input type="range" id="hIn" min="-5" max="15" value="1" step="0.05">
-      </div>
-      <p class="hint"><button class="link" id="resetParams" type="button" title="Lab code w = 30 samples and h = 1, and every algorithm's own defaults">Reset to defaults</button></p>
-      <details class="howto">
-        <summary>How detection works</summary>
-        <p>The lab code marks a sample as a step when it is the highest point within w samples on each side and is above h. Its window counts samples, as in the MATLAB script, so its length in seconds depends on the sampling rate. Each algorithm's own settings are under Advanced.</p>
-        <p id="algoDetail"></p>
-      </details>
+      <h3>Step detectors</h3>
+      <p class="hint" id="detNone" hidden>None on the plot: add one below.</p>
+      <ul class="ind-list" id="detList"></ul>
+      <label class="field add"><span class="sr">Add a step detector</span><select id="detAdd"></select></label>
+      <h3>Envelopes and bands</h3>
+      <ul class="ind-list" id="envList" hidden></ul>
+      <label class="field add"><span class="sr">Add an envelope or band</span><select id="envAdd"></select></label>
+      <p class="hint">Like a chart’s indicators: add any number, in any mix. Click a name for its settings; ◉ hides it, × removes it. Envelopes are a view and never change the steps.</p>
     </section>
 
     <section id="advSec">
@@ -88,36 +79,6 @@
       </select></label>
       <label class="check"><input type="checkbox" id="rsAA"><span>Anti-aliasing</span>
         <small>When going down in rate, low-pass below half the new rate first, so faster motion can’t fold back in as slower motion. Off by default: walking has almost nothing that fast, and the filter rounds off sharp peaks.</small></label>
-      </div>
-      <div class="env-opts" data-env="sliding dynamic meansd percentile" hidden>
-      <h3>Envelope</h3>
-      <div class="ctl">
-        <div class="ctl-head"><label for="envWinIn">Window</label><output id="envWinOut" for="envWinIn" data-unit="s" data-dec="1">1.0 s</output></div>
-        <input type="range" id="envWinIn" data-param="envWindow" min="0.2" max="3" value="1" step="0.1">
-      </div>
-      </div>
-      <div class="env-opts" data-env="meansd" hidden>
-      <div class="ctl">
-        <div class="ctl-head"><label for="envKIn">k (standard deviations)</label><output id="envKOut" for="envKIn" data-unit="SD" data-dec="2">1.00 SD</output></div>
-        <input type="range" id="envKIn" data-param="envK" min="0.25" max="3" value="1" step="0.25">
-      </div>
-      <p class="hint">k = 1: activity (RMS around the mean). k = 0.5: Threshold peaks’ cut-off, following the signal.</p>
-      </div>
-      <div class="env-opts" data-env="percentile" hidden>
-      <div class="ctl">
-        <div class="ctl-head"><label for="envPctIn">Lower percentile (upper is 100 minus it)</label><output id="envPctOut" for="envPctIn" data-unit="ordinal">10th</output></div>
-        <input type="range" id="envPctIn" data-param="envPct" min="1" max="25" value="10" step="1">
-      </div>
-      </div>
-      <div class="env-opts" data-env="peaktrough" hidden>
-      <h3>Envelope</h3>
-      <div class="ctl">
-        <div class="ctl-head"><label for="envPeakIn">Peak window</label><output id="envPeakOut" for="envPeakIn" data-unit="s" data-dec="2">0.30 s</output></div>
-        <input type="range" id="envPeakIn" data-param="envPeakWindow" min="0.1" max="1" value="0.3" step="0.05">
-      </div>
-      <p class="hint">A peak is the highest point within this window; the same for troughs.</p>
-      <label class="check"><input type="checkbox" id="envSmoothIn" data-param="envSmooth"><span>Smooth joins</span>
-        <small>A monotone cubic through the peaks instead of straight lines. It never overshoots between them.</small></label>
       </div>
       <div class="filter-opts" id="filterOpts" hidden>
       <h3>Filter</h3>
@@ -194,56 +155,7 @@
       </div>
       <p class="hint">With Step intervals on, a line in the strip shows how long the spectrum’s main rhythm takes, in windows of this length every 0.5 s.</p>
       </div>
-      <div class="algo-opts" data-algo="coza">
-      <h3>Coza (modified)</h3>
-      <div class="ctl">
-        <div class="ctl-head"><label for="cwIn">Window</label><output id="cwOut" for="cwIn">0.30 s</output></div>
-        <input type="range" id="cwIn" data-param="cozaWindow" min="0.05" max="1.5" value="0.3" step="0.01">
-      </div>
-      <label class="check"><input type="checkbox" id="fxWeak" checked><span>Drop weak peaks</span>
-        <small>Ignore peaks that rise less than 40% as far above h as a typical peak, such as the bump when you stop walking.</small></label>
-      </div>
-      <div class="algo-opts" data-algo="threshold" hidden>
-      <h3>Threshold peaks</h3>
-      <div class="ctl">
-        <div class="ctl-head"><label for="tpCutIn">Low-pass cut-off</label><output id="tpCutOut" for="tpCutIn" data-unit="Hz" data-dec="1">3.0 Hz</output></div>
-        <input type="range" id="tpCutIn" data-param="tpCutoff" min="1" max="10" value="3" step="0.5">
-      </div>
-      <div class="ctl">
-        <div class="ctl-head"><label for="tpKIn">Threshold: mean + k × SD, k</label><output id="tpKOut" for="tpKIn" data-unit="SD" data-dec="2">0.50 SD</output></div>
-        <input type="range" id="tpKIn" data-param="tpK" min="-1" max="2" value="0.5" step="0.05">
-      </div>
-      <div class="ctl">
-        <div class="ctl-head"><label for="tpMinIn">Minimum interval</label><output id="tpMinOut" for="tpMinIn" data-unit="s" data-dec="2">0.25 s</output></div>
-        <input type="range" id="tpMinIn" data-param="tpMinInterval" min="0.1" max="1" value="0.25" step="0.05">
-      </div>
-      </div>
-      <div class="algo-opts" data-algo="peakvalley" hidden>
-      <h3>Peak-to-valley</h3>
-      <div class="ctl">
-        <div class="ctl-head"><label for="pvWinIn">Threshold window</label><output id="pvWinOut" for="pvWinIn" data-unit="s" data-dec="1">1.0 s</output></div>
-        <input type="range" id="pvWinIn" data-param="pvWindow" min="0.3" max="3" value="1" step="0.1">
-      </div>
-      <div class="ctl">
-        <div class="ctl-head"><label for="pvSwingIn">Minimum swing, of the median</label><output id="pvSwingOut" for="pvSwingIn" data-unit="%" data-dec="0">40%</output></div>
-        <input type="range" id="pvSwingIn" data-param="pvSwing" min="0" max="100" value="40" step="5">
-      </div>
-      <div class="ctl">
-        <div class="ctl-head"><label for="pvMinIn">Minimum interval</label><output id="pvMinOut" for="pvMinIn" data-unit="s" data-dec="2">0.25 s</output></div>
-        <input type="range" id="pvMinIn" data-param="pvMinInterval" min="0.1" max="1" value="0.25" step="0.05">
-      </div>
-      </div>
-      <div class="algo-opts" data-algo="zerocross" hidden>
-      <h3>Zero-crossing</h3>
-      <div class="ctl">
-        <div class="ctl-head"><label for="zcCutIn">Low-pass cut-off</label><output id="zcCutOut" for="zcCutIn" data-unit="Hz" data-dec="1">3.0 Hz</output></div>
-        <input type="range" id="zcCutIn" data-param="zcCutoff" min="1" max="10" value="3" step="0.5">
-      </div>
-      <div class="ctl">
-        <div class="ctl-head"><label for="zcMinIn">Minimum interval</label><output id="zcMinOut" for="zcMinIn" data-unit="s" data-dec="2">0.25 s</output></div>
-        <input type="range" id="zcMinIn" data-param="zcMinInterval" min="0.1" max="1" value="0.25" step="0.05">
-      </div>
-      </div>
+      <p class="hint"><button class="link" id="resetParams" type="button" title="The filter and spectrum options above">Reset these options</button></p>
       </details>
     </section>
   </aside>
@@ -259,7 +171,7 @@
       </div>
       <p class="hint" id="recHint">To record a walk with the phone’s own sensors, open this page on your phone.</p>
       <div class="formats">
-        <p><b>MATLAB .mat</b> files saved by MATLAB or Octave (v5 to v7, and v7.3, which loads a 41 KB reader the first time), like the lab's Walking.mat. Any variable name works. Samples should run down the rows; a time column first is optional.</p>
+        <p><b>MATLAB .mat</b> files saved by MATLAB or Octave (v5 to v7, and v7.3, which loads a 41 KB reader the first time), like the course’s Walking.mat. Any variable name works. Samples should run down the rows; a time column first is optional.</p>
         <p><b>Physics Toolbox .csv</b> exports from the G-Force Meter, Linear Accelerometer, Gyroscope or Multi Record, with elapsed or clock time, comma or semicolon separated.</p>
         <p><b>phyphox .zip</b> exports (Export data → CSV) of Acceleration with g or without g, as phyphox saves them, or the <i>Raw Data.csv</i> inside. The phone, sensor and start time from its <i>meta</i> folder are listed with the checks.</p>
         <p><b>Other CSV files</b> with numbers in columns, with or without a header row.</p>
@@ -281,21 +193,15 @@
           <div class="plot-head">
             <h2 id="plotTitle">Signal</h2>
             <div class="legend" aria-label="Legend">
-              <span id="legLab"><svg width="12" height="10"><path d="M1 1 H11 L6 9 Z" fill="var(--orig)"/></svg>Lab code (original)</span>
+              <span id="legInd"></span>
               <span id="legFilter" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="2"/></svg>Filtered<svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="1.3" opacity=".35"/></svg><span id="legFilterBase">Recorded</span></span>
               <span id="legResample" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--muted)" stroke-width="1" opacity=".6"/></svg>Recorded, before resampling</span>
-              <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--algo)"/></svg><span id="legAlgo">Coza (modified)</span></span>
               <span id="legNotes" hidden><svg width="10" height="12"><path d="M5 1 V11" stroke="var(--note)" stroke-width="1.5" stroke-dasharray="2 2"/></svg>Your notes</span>
-              <span id="legGuides"></span>
-              <span id="legEnv" hidden><svg width="18" height="10"><rect x="1" y="1" width="16" height="8" fill="var(--env)" opacity=".18" stroke="var(--env)" stroke-width="1"/></svg><span id="legEnvText">Envelope</span></span>
-              <span id="legEnvMid" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--env)" stroke-width="1.5"/></svg><span id="legEnvMidText">Dynamic threshold (envelope)</span></span>
-              <span id="legHItem"><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="3 2"/></svg><span id="legH">Threshold h</span></span>
             </div>
           </div>
           <div class="plot-tools">
             <label class="toggle iv" title="Show the time between consecutive steps under the signal, and the period of the spectrum’s main rhythm over time"><input type="checkbox" id="showIntervals"><span>Step intervals</span></label>
             <label class="toggle" title="Click the plot to pin a note at that time"><input type="checkbox" id="noteMode"><span>Add notes</span></label>
-            <label class="toggle env" title="Curves around the signal the algorithm sees. A view only: they never change the steps or metrics.">Envelope<select id="envSel"></select></label>
             <form class="note-form" id="noteForm" hidden>
               <label for="noteText" id="noteAt">Note at 0.00 s</label>
               <input type="text" id="noteText" maxlength="80" placeholder="e.g. turned around" autocomplete="off">
@@ -338,7 +244,7 @@
                   </div>
                   <div id="expParts" hidden>
                     <label class="check"><input type="checkbox" id="expSignals" checked><span>Signals</span><small id="expSignalsInfo"></small></label>
-                    <label class="check"><input type="checkbox" id="expEnvelope"><span>Envelope</span><small>The band shown on the plot (choose one under Envelope).</small></label>
+                    <label class="check"><input type="checkbox" id="expEnvelope"><span>Envelope</span><small>The bands shown on the plot (added under Envelopes and bands).</small></label>
                     <div class="stack"><button class="btn primary" id="expGo" type="button" disabled>Export</button></div>
                   </div>
                   <p class="hint"><a href="https://github.com/soroushdty/gaitscope/blob/main/docs/export.md" target="_blank" rel="noopener">What each file holds</a></p>
@@ -346,7 +252,8 @@
               </details>
             </div>
             <table class="metrics" id="metricsTable"></table>
-            <p class="note" id="labNote">The lab code column reproduces LabStepDet_2025.m exactly, including its 100 Hz assumption and its Pace formula. It was checked against MATLAB's output (via Octave) on Walking.mat.<span id="labFilterNote" hidden> It runs on the recorded signal; the filter only feeds the algorithm.</span></p>
+            <p class="note" id="specCadNote"></p>
+            <p class="note" id="cozaNote" hidden>Rows marked “Coza’s formula” reproduce LabStepDet_2025.m’s outputs exactly, including its 100 Hz assumption and its Pace formula; checked against MATLAB’s output (via Octave) on Walking.mat.</p>
           </section>
           <details class="card steps" id="stepsDetails">
             <summary><h2 id="stepsTitle">Steps</h2></summary>

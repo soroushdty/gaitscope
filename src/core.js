@@ -770,9 +770,9 @@
       const lvl = sensor.accel ? 'info' : 'warn';
       const extra = sensor.accel
         ? (!sensor.gravity ? ' Gravity is removed, so a still phone reads near 0.'
-          : sensor.unit === 'g' ? ' Includes gravity: an upright phone reads about 1 g on one axis, so the lab threshold h = 1 sits right at the resting level.'
-            : ' Includes gravity: a still phone reads about 9.8 m/s² in total, so the lab threshold h = 1, chosen for data in g, sits far below the resting level of whichever axis points up. Dividing by 9.81 gives g.')
-        : ' This sensor does not measure acceleration. Steps may still show up as peaks, but the lab threshold h = 1 has no physical meaning here.';
+          : sensor.unit === 'g' ? ' Includes gravity: an upright phone reads about 1 g on one axis, so Coza\u2019s threshold h = 1 sits right at the resting level.'
+            : ' Includes gravity: a still phone reads about 9.8 m/s² in total, so Coza\u2019s threshold h = 1, chosen for data in g, sits far below the resting level of whichever axis points up. Dividing by 9.81 gives g.')
+        : ' This sensor does not measure acceleration. Steps may still show up as peaks, but Coza\u2019s threshold h = 1 has no physical meaning here.';
       return { level: lvl, title: 'Units: ' + sensor.unit, detail: sensor.label + ' data (from the column names).' + extra };
     }
     if (!(x && y && z)) return null;
@@ -788,7 +788,7 @@
     if (!best) return null;
     const ratio = best.mu / (best.sd || 1e-9);
     if (ratio > 8) {
-      if (best.mu > 0.8 && best.mu < 1.25) return { level: 'info', title: 'Units: probably g (with gravity)', detail: 'At rest the magnitude is about ' + best.mu.toFixed(2) + ', which matches 1 g. The lab threshold h = 1 is at the resting level, so check detections carefully.' };
+      if (best.mu > 0.8 && best.mu < 1.25) return { level: 'info', title: 'Units: probably g (with gravity)', detail: 'At rest the magnitude is about ' + best.mu.toFixed(2) + ', which matches 1 g. Coza\u2019s threshold h = 1 is at the resting level, so check detections carefully.' };
       if (best.mu > 8.5 && best.mu < 11) return { level: 'info', title: 'Units: probably m/s² (with gravity)', detail: 'At rest the magnitude is about ' + best.mu.toFixed(1) + ', which matches 9.8 m/s².' };
       return { level: 'warn', title: 'Units unclear', detail: 'The resting magnitude is ' + best.mu.toFixed(2) + ', which matches neither 1 g nor 9.8 m/s². Check how the data was recorded before trusting the threshold h.' };
     }
@@ -860,7 +860,7 @@
       if (!gs.ok) return { fatal: true, checks: [{ level: 'error', title: cap(colIndex) + ' acceleration not available', detail: 'It ' + gs.reason + '.', fix: 'Pick another signal, or record with the G-Force Meter, which keeps gravity.' }] };
       raw = gs[colIndex];
       checks.push(colIndex === 'vertical'
-        ? { level: 'info', title: 'Vertical acceleration from the direction of gravity', detail: 'Gravity is x, y, z low-passed at ' + GRAVITY_CUTOFF + ' Hz (' + fmt(gs.gravity, 2) + ' on average). Each sample is projected onto it and gravity is subtracted, so standing still reads 0 whatever the phone\u2019s tilt. Coza and the lab code compare peaks with h, which then belongs a little above 0 (about 0.1 g or 1 m/s\u00b2), not at 1.' }
+        ? { level: 'info', title: 'Vertical acceleration from the direction of gravity', detail: 'Gravity is x, y, z low-passed at ' + GRAVITY_CUTOFF + ' Hz (' + fmt(gs.gravity, 2) + ' on average). Each sample is projected onto it and gravity is subtracted, so standing still reads 0 whatever the phone\u2019s tilt. Coza and Coza (modified) compare peaks with h, which then belongs a little above 0 (about 0.1 g or 1 m/s\u00b2), not at 1.' }
         : { level: 'info', title: 'Horizontal acceleration from the direction of gravity', detail: 'What is left after the vertical part (along gravity, x, y, z low-passed at ' + GRAVITY_CUTOFF + ' Hz) is removed, as a magnitude: forward and sideways sway.' });
     } else raw = col.data;
 
@@ -907,15 +907,15 @@
       checks.push({ level: fs < 10 ? 'warn' : 'pass', title: 'Sampling rate about ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz',
         detail: 'Measured from the timestamps. Timing varies by ' + Math.round(jitter * 100) + '% between samples' + (jitter > 0.25 ? ', which is typical of phone apps.' : '.') +
           (fs < 10 ? ' This is too slow to resolve individual steps reliably.' : '') });
-      const lab = labRateCheck(fs);
-      if (lab) checks.push(lab);
+      const rate = cozaRateCheck(fs);
+      if (rate) checks.push(rate);
       if (dup) checks.push({ level: 'warn', title: dup + ' repeated timestamps', detail: 'Some consecutive samples share a timestamp. Durations still come from the timestamps, but those samples add no timing information.' });
       if (gaps) checks.push({ level: 'warn', title: gaps + ' gap' + (gaps > 1 ? 's' : '') + ' in the recording', detail: 'The longest pause between samples is ' + fmt(maxGap, 2) + ' s. Steps inside a gap cannot be detected.' });
     } else {
       checks.push({ level: 'info', title: 'Sampling rate set to ' + fs + ' Hz', detail: 'Change it in Recording settings if your device recorded at a different rate.' });
     }
     if (col && col.sensor && !col.sensor.accel) {
-      checks.push({ level: 'warn', title: 'Not an acceleration signal', detail: cap(col.sensor.label) + ' data (' + col.sensor.unit + '). Walking still creates peaks, but the lab threshold h = 1 has no physical meaning for it.' });
+      checks.push({ level: 'warn', title: 'Not an acceleration signal', detail: cap(col.sensor.label) + ' data (' + col.sensor.unit + '). Walking still creates peaks, but Coza\u2019s threshold h = 1 has no physical meaning for it.' });
     }
     const sd = std(A);
     if (!(sd > 0)) return { fatal: true, checks: checks.concat([{ level: 'error', title: 'Flat signal', detail: 'Every sample in this channel has the same value, so there are no peaks to detect.', fix: 'Pick another channel.' }]) };
@@ -936,11 +936,13 @@
     return { A, t, fs, checks, fatal: false, min: mn, max: mx };
   }
 
-  // The lab code divides by 100 to get seconds; warn when what it receives is over 5% away.
-  function labRateCheck(fs, resampled) {
+  // Coza divides by 100 to get seconds and counts its window w in samples: warn when what it
+  // receives is over 5% away from 100 Hz. Shown while a Coza is on the plot (needs).
+  function cozaRateCheck(fs, resampled) {
     if (!(Math.abs(fs - 100) / 100 > 0.05)) return null;
-    return { level: 'warn', lab: true, id: 'labRate', title: 'Lab code assumes 100 Hz', detail: 'The original code divides by 100 to get seconds, so its durations are off by ' + Math.round(Math.abs(100 / fs - 1) * 100) + '% for ' + (resampled ? 'the ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz it receives after resampling' : 'this file') + '. Coza uses the real timestamps.' +
-      (resampled ? '' : ' Resample (under Detection) can set a rate for everything, the lab code included.') };
+    return { level: 'warn', needs: 'coza_original', id: 'cozaRate', title: 'Coza assumes 100 Hz', detail: 'Coza divides by 100 to get seconds and counts its window w in samples, so its durations are off by ' + Math.round(Math.abs(100 / fs - 1) * 100) + '% for ' +
+      (resampled ? 'the ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz it receives after resampling' : 'this file') + ', and w = 30 covers \u00b1' + fmt(30 / fs, 2) + ' s instead of \u00b10.3 s. The other detectors use the real timestamps.' +
+      (resampled ? '' : ' Resample (under Detection) can set a rate for everything, Coza included.') };
   }
 
   function interpolateNaN(A) {
@@ -1278,7 +1280,7 @@
   // margin on both sides, so it is fixed rather than a setting.
   const WEAK_RATIO = 0.4;
 
-  // Coza: the lab detector with its bugs fixed. opts: {ties, weak, weakRatio}
+  // Coza (modified): Coza's detector with its bugs fixed. opts: {ties, weak, weakRatio}
   function detectCoza(A, w, h, opts) {
     const M = windowExtreme(A, w, w, true);
     const L = opts.ties ? windowExtreme(A, w, -1, true) : null; // max of A[i-w .. i-1]
@@ -1410,44 +1412,63 @@
     return Math.max(1, Math.min(Math.round(seconds * fs), Math.floor((n - 1) / 2) - 1));
   }
 
-  /* Step detection algorithms offered in the dashboard. The lab code (detectOriginal /
-     originalMetrics) is the MATLAB reference, always shown for comparison; its rule is also
-     listed as Coza, to pick like any algorithm. The page opens on Coza (modified).
+  /* Parameters of an algorithm or envelope, from which the page builds its controls (one set
+     per instance on the plot). {key, label, abbr (short name in summaries), type: 'range'
+     (default) | 'number' | 'bool', min, max, step, default, unit, dec (decimals shown),
+     samples (show the window in samples too), signalRange (slider spans the signal, for h),
+     hint}. */
+  const P_H = { key: 'h', label: 'Threshold h', abbr: 'h', type: 'number', min: -1e6, max: 1e6, step: 0.1, default: 1, dec: 2, signalRange: true };
+  const P_W = { key: 'w', label: 'Window w', abbr: 'w', type: 'range', min: 1, max: 300, step: 1, default: 30, unit: 'samples', dec: 0, seconds: true,
+    hint: 'Samples on each side, as in the .m file: \u00b10.3 s only at 100 Hz.' };
+  const defaultParams = def => Object.fromEntries((def.params || []).map(q => [q.key, q.default]));
+  // "w 30 · h 1": the parameters in a line, for legends and lists
+  function paramSummary(def, p) {
+    return (def.params || []).map(q => {
+      const v = p[q.key];
+      if (q.type === 'bool') return v ? q.abbr || q.label : '';
+      const u = q.unit === '%' ? '%' : q.unit && q.unit !== 'samples' ? ' ' + q.unit : '';
+      return (q.abbr || q.key) + ' ' + (q.unit === 'ordinal' ? ORDINAL(v) : q.type === 'number' ? String(+Number(v).toFixed(4)) + u : fmt(v, q.dec || 0) + u);
+    }).filter(Boolean).join(' \u00b7 ');
+  }
+
+  /* Step detectors offered in the dashboard, to put on the plot like a chart's indicators
+     (any number, in any mix). The first, Coza, is LabStepDet_2025.m's rule as written
+     (detectOriginal; with originalMetrics for its own outputs), bit-exact with MATLAB. The
+     page opens with Coza and Coza (modified).
      Each entry:
        tagline   one line under the dropdown
        summary   shown in "How detection works"
-       usesH     whether the threshold h applies (it always applies to the lab code)
-       usesW     whether it uses the lab code's window w (samples), so w stays shown
+       params    its settings (see P_H): the page builds the controls from them
+       credit    who made it (shown with it)
        detect(A, t, p) -> {idx, weakDropped?, w?, markY?, guides?}
                  idx: 0-based step samples. markY: values the markers sit on (default A).
                  guides: up to two lines drawn with the signal, [{name, y, dash?}], where y is
                  an array (one value per sample) or a single number (a level line).
        settings(p, fx) -> [[name, value], ...] for the metrics export
      Metrics come from timingMetrics for every algorithm. p holds h, the sampling rate fs,
-     the lab code's w (samples), the phone position and every algorithm's own options. */
+     the phone position and the detector's own params. */
   const ALGORITHMS = [
     {
-      // The lab's rule exactly as LabStepDet_2025.m has it, bugs included, as an algorithm to
-      // pick: detectOriginal, with the lab code's w (samples) and h. Run on the signal the
-      // algorithms get, so with no filter its steps are the lab code's. Its metrics come from
-      // the timestamps, like every algorithm's; the Lab code column keeps the .m formulas.
+      // Coza's rule exactly as LabStepDet_2025.m has it, bugs included: detectOriginal with
+      // its own w (samples) and h. Its metrics come from the timestamps, like every
+      // detector's; the metrics rows marked "Coza's formula" are the .m file's outputs.
       id: 'coza_original',
       name: 'Coza',
-      tagline: 'The lab detector exactly as written, bugs included.',
-      summary: 'Coza is LabStepDet_2025.m\u2019s rule unchanged: a sample is a step when it is the highest within w samples on each side and above h. The window counts samples, so it means \u00b10.3 s only at 100 Hz; tied peaks count twice and the stop bump counts as a step. It uses the lab code\u2019s w and h, so its steps match the lab code\u2019s (unless a filter is on); its metrics come from the timestamps, like every algorithm\u2019s.',
-      usesH: true,
-      usesW: true,
+      tagline: 'The Lab 1 peak detector exactly as written, bugs included.',
+      summary: 'Coza is LabStepDet_2025.m\u2019s rule unchanged: a sample is a step when it is the highest within w samples on each side and above h. The window counts samples, so it means \u00b10.3 s only at 100 Hz; tied peaks count twice and the stop bump counts as a step. Its metrics come from the timestamps, like every detector\u2019s; the rows marked \u201cCoza\u2019s formula\u201d reproduce the .m file\u2019s own outputs.',
+      params: [P_W, P_H],
       detect: (A, t, p) => ({ idx: detectOriginal(A, p.w, p.h), weakDropped: [] }),
       settings: () => [],
     },
     {
       id: 'coza',
       name: 'Coza (modified)',
-      tagline: 'The lab detector with its bugs fixed.',
-      summary: 'Coza (modified) fixes the lab code\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
-      usesH: true,
-      // Window in seconds, so it means the same at any sampling rate (the lab's w is samples).
-      // Tied peaks are always counted once: showing the double count is the lab code's job.
+      tagline: 'Coza\u2019s detector with its bugs fixed.',
+      summary: 'Coza (modified) fixes Coza\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
+      params: [P_H, { key: 'cozaWindow', label: 'Window', abbr: 'window', min: 0.05, max: 1.5, step: 0.01, default: 0.3, unit: 's', dec: 2, samples: true },
+        { key: 'weak', label: 'Drop weak peaks', abbr: 'weak peaks dropped', type: 'bool', default: true, hint: 'Ignore peaks that rise less than 40% as far above h as a typical peak, such as the bump when you stop walking.' }],
+      // Window in seconds, so it means the same at any sampling rate (Coza's w is samples).
+      // Tied peaks are always counted once: Coza, beside it, shows the double count.
       detect: (A, t, p) => {
         const w = windowSamples(p.cozaWindow, p.fs, A.length);
         return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: WEAK_RATIO }), { w });
@@ -1460,7 +1481,9 @@
       name: 'Threshold peaks',
       tagline: 'Peaks of the smoothed signal above mean + k\u00b7SD.',
       summary: 'Threshold peaks is the textbook peak detector, with what Coza lacks: the signal is low-pass filtered first, the threshold is set from the signal itself (mean + k \u00d7 SD of the smoothed signal) instead of h, and of two peaks closer than the minimum interval only the taller one counts. Markers sit on the smoothed signal.',
-      usesH: false,
+      params: [{ key: 'tpCutoff', label: 'Low-pass cut-off', abbr: 'cut-off', min: 1, max: 10, step: 0.5, default: 3, unit: 'Hz', dec: 1 },
+        { key: 'tpK', label: 'Threshold: mean + k × SD, k', abbr: 'k', min: -1, max: 2, step: 0.05, default: 0.5, unit: 'SD', dec: 2 },
+        { key: 'tpMinInterval', label: 'Minimum interval', abbr: 'min', min: 0.1, max: 1, step: 0.05, default: 0.25, unit: 's', dec: 2 }],
       detect: (A, t, p) => {
         const r = detectThresholdPeaks(A, t, p.fs, { cutoff: p.tpCutoff, k: p.tpK, minInterval: p.tpMinInterval });
         return { idx: r.idx, markY: r.smooth, threshold: r.threshold,
@@ -1473,7 +1496,9 @@
       name: 'Peak-to-valley',
       tagline: 'A peak followed by a valley, around a threshold that follows the signal.',
       summary: 'Peak-to-valley (min-max) uses a threshold that moves with the signal: the midpoint of the highest and lowest smoothed values within a sliding window. Each rise above it followed by a fall below it is a step, marked at its peak, when the peak-to-valley swing is at least a set share of the typical (median) swing. Steps closer than the minimum interval keep the larger swing. It does not use h.',
-      usesH: false,
+      params: [{ key: 'pvWindow', label: 'Threshold window', abbr: 'window', min: 0.3, max: 3, step: 0.1, default: 1, unit: 's', dec: 1 },
+        { key: 'pvSwing', label: 'Minimum swing, of the median', abbr: 'swing', min: 0, max: 100, step: 5, default: 40, unit: '%', dec: 0 },
+        { key: 'pvMinInterval', label: 'Minimum interval', abbr: 'min', min: 0.1, max: 1, step: 0.05, default: 0.25, unit: 's', dec: 2 }],
       detect: (A, t, p) => {
         const r = detectPeakToValley(A, t, p.fs, { window: p.pvWindow, minSwing: p.pvSwing / 100, minInterval: p.pvMinInterval });
         return { idx: r.idx, markY: r.smooth, medSwing: r.medSwing,
@@ -1487,7 +1512,8 @@
       name: 'Zero-crossing',
       tagline: 'Upward crossings of the smoothed signal through its baseline.',
       summary: 'Zero-crossing uses timing, not peak height. The signal is low-pass filtered and a slow baseline (the signal low-passed at 0.3 Hz) is subtracted, which also removes gravity; each upward crossing of zero is a step. A hysteresis band (\u00b10.3 SD) stops noise near zero from adding crossings, and crossings closer than the minimum interval are ignored. Markers sit where the smoothed signal crosses its baseline, not on a peak. It does not use h.',
-      usesH: false,
+      params: [{ key: 'zcCutoff', label: 'Low-pass cut-off', abbr: 'cut-off', min: 1, max: 10, step: 0.5, default: 3, unit: 'Hz', dec: 1 },
+        { key: 'zcMinInterval', label: 'Minimum interval', abbr: 'min', min: 0.1, max: 1, step: 0.05, default: 0.25, unit: 's', dec: 2 }],
       detect: (A, t, p) => {
         const r = detectZeroCrossing(A, t, p.fs, { cutoff: p.zcCutoff, minInterval: p.zcMinInterval });
         return { idx: r.idx, markY: r.smooth, band: r.band,
@@ -1622,7 +1648,7 @@
   }
 
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
-     algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
+     indicators set to Filtered run on; one set to Unfiltered keeps the recorded signal.
      Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
      evenly spaced samples (throws a RangeError saying what to change when the settings
      can't be used), label(p) for the export. Its settings are the rows under Advanced whose
@@ -1951,7 +1977,7 @@
   const MAX_GRID = 2e6; // samples; beyond this the page would stall
   const RESAMPLE_METHODS = { linear: 'straight lines between samples (like MATLAB interp1)', pchip: 'a monotone cubic through the samples (pchip)' };
 
-  // numpy.interp, operation for operation, so the lab code gets the same bits as from the
+  // numpy.interp, operation for operation, so Coza gets the same bits as from the
   // Python port's resample(): xp strictly increasing, x increasing.
   function interpLinear(xp, fp, x) {
     const n = xp.length, out = new Float64Array(x.length);
@@ -1983,7 +2009,7 @@
   }
 
   /* A prepared channel on an even grid t0, t0 + 1/fs, … (#52), for analyses that count
-     samples (the lab code's w and /100) or need even spacing. opts: {mode: 'even' (the
+     samples (Coza's w and /100) or need even spacing. opts: {mode: 'even' (the
      recording's own median rate) or 'rate', rate (Hz), method: 'linear' | 'pchip',
      antialias}. antialias low-passes below the new Nyquist frequency first when going down
      in rate, on an even grid at the recording's median rate. Same steps as resample() in
@@ -2016,7 +2042,7 @@
 
     const checks = [{ level: 'info', title: 'Resampled to ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz', detail: 'From about ' + fmt(from, from >= 100 ? 0 : 1) + ' Hz (' + ch.A.length + ' samples) to an even grid of ' + m + ' samples, by ' + RESAMPLE_METHODS[method] + '.' +
       (aa ? ' Low-passed at ' + fmt(aa.fc, 1) + ' Hz first (Chebyshev I, order ' + ANTIALIAS.order + ', like scipy decimate) so faster motion can’t fold back in.' : '') +
-      ' The filter, the lab code, the algorithms and the spectrum all use the resampled signal; the plot shows the recording faded behind it.' }];
+      ' The filter, every step detector and envelope, and the spectrum use the resampled signal; the plot shows the recording faded behind it.' }];
     if (fs > from * 1.01) checks.push({ level: 'info', title: 'Upsampling adds no information', detail: 'Going from about ' + fmt(from, 0) + ' Hz up to ' + fmt(fs, 0) + ' Hz only draws ' + (method === 'pchip' ? 'curves' : 'lines') + ' between the recorded samples. It can’t recover motion faster than the recording caught.' });
     if (down && fs < from * 0.99 && !aa) checks.push({ level: 'info', title: 'No anti-aliasing', detail: 'Going down to ' + fmt(fs, 0) + ' Hz, anything faster than ' + fmt(fs / 2, 1) + ' Hz in the recording folds back in as slower motion (aliasing). Walking has little above 20 Hz, but impacts can.', fix: 'Turn on Anti-aliasing under Advanced to low-pass first.' });
     if (aa && aa.gaps) checks.push({ level: 'warn', title: 'Anti-aliasing filter run as if evenly sampled', detail: 'The recording has long gaps, so an even grid would be over 4 times its length; the filter’s cut-off is blurred.', fix: 'Trim the gaps or split the recording.' });
@@ -2024,63 +2050,67 @@
     let gaps = 0, maxGap = 0;
     for (const d of dts) if (d > 5 * md) { gaps++; maxGap = Math.max(maxGap, d); }
     if (gaps) checks.push({ level: 'warn', title: 'Resampling fills ' + gaps + ' gap' + (gaps > 1 ? 's' : ''), detail: 'The longest is ' + fmt(maxGap, 2) + ' s. The resampled signal bridges ' + (gaps > 1 ? 'them' : 'it') + ' with made-up values, so steps found there are not real.', fix: 'Trim the gaps or split the recording.' });
-    const lab = labRateCheck(fs, true);
-    if (lab) checks.push(lab);
+    const rate = cozaRateCheck(fs, true);
+    if (rate) checks.push(rate);
     return { applied: true, A, t, fs, from, method, antialias: !!aa, n: m, checks, min: mn, max: mx };
   }
 
   /* --------------------------------------------------------------- export (#53) */
   // One content model, written as JSON, MATLAB .mat (v5), NumPy .npz or a zip of CSV files.
   // The fields are described in docs/export.md; python/lab_step_det.py --export writes the
-  // same model (lab code only). Sample numbers are 1-based, like MATLAB, everywhere.
+  // same model (Coza only). Sample numbers are 1-based, like MATLAB, everywhere.
   const VERSION = '0.1.0'; // as in package.json and pyproject.toml (a test keeps them equal)
-  const EXPORT_FORMAT_VERSION = 1;
-  // column types: text and true/false columns by name, every other column is a number
-  const TEXT_COLUMNS = new Set(['algorithm_status', 'metric', 'unit_lab_code', 'unit_algorithm', 'text']);
-  const BOOL_COLUMNS = new Set(['in_lab_code', 'in_algorithm']);
-  const columnKind = name => (TEXT_COLUMNS.has(name) ? 'str' : BOOL_COLUMNS.has(name) ? 'bool' : 'f8');
-  const TABLES = ['signals', 'recorded', 'steps', 'metrics', 'notes'], RECORDS = ['about', 'settings', 'params'];
+  const EXPORT_FORMAT_VERSION = 2;
+  // Column types: these names are always text, the rest follow their values (text, true/false
+  // or numbers), so a detector's column of step statuses is text.
+  const TEXT_COLUMNS = new Set(['metric', 'unit', 'text', 'id', 'kind', 'type', 'name', 'source', 'color', 'params', 'settings']);
+  function columnKind(name, values) {
+    if (TEXT_COLUMNS.has(name)) return 'str';
+    const v = values ? Array.from(values).find(x => x !== null && x !== undefined && !(typeof x === 'number' && Number.isNaN(x))) : undefined;
+    return typeof v === 'string' ? 'str' : typeof v === 'boolean' ? 'bool' : 'f8';
+  }
+  const TABLES = ['indicators', 'signals', 'recorded', 'steps', 'metrics', 'notes'], RECORDS = ['about', 'settings', 'params', 'spectrum'];
 
-  /* Every peak either version marked, in time order, and what the algorithm made of it: kept,
-     a weak peak, a tied peak (the lab code's double count), or not found. idx 0-based. */
-  function stepStatus(origIdx, finalIdx, weakIdx, w, algoName) {
-    const origSet = new Set(origIdx), finalSet = new Set(finalIdx), weakSet = new Set(weakIdx || []);
-    const all = Array.from(new Set(origIdx.concat(finalIdx))).sort((a, b) => a - b);
-    let prevOrig = -10;
-    return all.map(i => {
-      const inO = origSet.has(i), inF = finalSet.has(i);
-      let why;
-      if (inF) why = 'kept';
-      else if (weakSet.has(i)) why = 'weak peak';
-      else if (inO && i - prevOrig <= w) why = 'tied peak';
-      else why = 'not found by ' + algoName;
-      if (inO) prevOrig = i;
-      return { i, inO, inF, why };
-    });
+  /* Every sample any detector marked (or dropped as a weak peak), in time order, and what each
+     detector made of it: 'step', 'weak peak' (found, then dropped), or ''. dets: [{id, idx,
+     weak}] with 0-based idx. Returns {rows: [sample], status: {id: [..]}}. */
+  function stepTable(dets) {
+    const rows = Array.from(new Set(dets.flatMap(d => d.idx.concat(d.weak || []))));
+    rows.sort((a, b) => a - b);
+    const status = {};
+    for (const d of dets) {
+      const on = new Set(d.idx), weak = new Set(d.weak || []);
+      status[d.id] = rows.map(i => (on.has(i) ? 'step' : weak.has(i) ? 'weak peak' : ''));
+    }
+    return { rows, status };
   }
 
-  /* The metrics table: one row per metric, the lab code's and the algorithm's value and units
-     (NaN where a version has none). alg: timingMetrics; extra: {specCadence, hr}. */
-  function metricRows(orig, alg, extra, stride) {
-    const rows = [['steps', orig.steps, 'count'], ['average_step_duration', orig.avgStepDuration, 's (samples/100)'], ['cadence', NaN, ''],
-      ['pace_lab_formula', orig.pace, 'duration*60'], [stride ? 'stride_time_variability' : 'step_time_variability', orig.variabilitySamples, 'samples (SD)'],
-      ['coefficient_of_variation', NaN, ''], ['gait_asymmetry', orig.asymmetry, 'even/odd intervals'], ['cadence_spectrum', NaN, ''], ['harmonic_ratio', NaN, '']];
-    const out = { metric: rows.map(r => r[0]), lab_code: rows.map(r => r[1]), unit_lab_code: rows.map(r => r[2]) };
-    if (alg) {
-      Object.assign(out, {
-        algorithm: [alg.steps, alg.stepInterval, alg.cadence, NaN, alg.variabilityMs, alg.cv, stride ? NaN : alg.asymmetry, extra.specCadence, extra.hr ? extra.hr.ratio : NaN],
-        unit_algorithm: ['count', 's (timestamps)', 'steps/min', '', 'ms (SD)', '%', 'even/odd intervals', 'steps/min (dominant frequency × 60)',
-          'even/odd harmonics per stride' + (extra.hr ? ' (' + extra.hr.strides + ' strides)' : '')],
-      });
-    }
+  /* The metrics table: one row per metric, one column per detector. The rows from
+     timingMetrics apply to every detector; the coza_ rows are Coza's own formulas from the
+     .m file (samples ÷ 100, Pace), only for Coza. dets: [{id, type, metrics, hr, script}]. */
+  function metricRows(dets, stride) {
+    const rows = [
+      ['steps', 'count', d => d.metrics.steps], ['peaks', 'count', d => d.metrics.peaks],
+      ['step_interval', 's (timestamps)', d => d.metrics.stepInterval], ['cadence', 'steps/min', d => d.metrics.cadence],
+      [stride ? 'stride_time_variability' : 'step_time_variability', 'ms (SD)', d => d.metrics.variabilityMs],
+      ['coefficient_of_variation', '%', d => d.metrics.cv], ['gait_asymmetry', 'even/odd intervals', d => d.metrics.asymmetry],
+      ['walking_span', 's', d => d.metrics.span], ['harmonic_ratio', 'even/odd harmonics per stride', d => (d.hr ? d.hr.ratio : NaN)],
+      ['coza_average_step_duration', 's (samples/100, Coza’s formula)', d => (d.script ? d.script.avgStepDuration : NaN)],
+      ['coza_pace', 'duration*60 (Coza’s formula)', d => (d.script ? d.script.pace : NaN)],
+      ['coza_variability', 'samples (SD, Coza’s formula)', d => (d.script ? d.script.variabilitySamples : NaN)],
+      ['coza_gait_asymmetry', 'even/odd sample intervals (Coza’s formula)', d => (d.script ? d.script.asymmetry : NaN)],
+    ];
+    const out = { metric: rows.map(r => r[0]), unit: rows.map(r => r[1]) };
+    for (const d of dets) out[d.id] = rows.map(r => { const v = r[2](d); return Number.isFinite(v) ? v : NaN; });
     return out;
   }
 
-  /* The export model. x: {about, settings, params, t, A (the signal the lab code gets),
-     filtered?, envelope? {lower, upper, mid}, recorded? {t, A} (before resampling), origIdx,
-     orig, algo? {name, idx, weak, metrics, specCadence, hr}, stride, w, notes [{t, text}],
-     parts {signals, envelope}}. Without algo (the Python port), steps and metrics have no
-     algorithm columns. */
+  /* The export model (format_version 2; docs/export.md). x: {about, settings, params (the
+     page's own controls), spectrum? {}, t, A (the analysed signal), filtered?, recorded? {t, A}
+     (before resampling), indicators [{id, kind, type, name, source, color, params, settings}],
+     detectors [{id, type, idx, weak, metrics, hr, script}], envelopes [{id, upper, lower,
+     mid}], stride, notes [{t, text}], parts {signals, envelope}}. Ids are short names that
+     work as MATLAB fields (coza, coza_modified, threshold_2, …). */
   function buildExport(x) {
     const parts = Object.assign({ signals: true, envelope: false }, x.parts);
     const model = {
@@ -2088,18 +2118,35 @@
         exported: new Date().toISOString(), sample_numbers: '1-based, like MATLAB (sample_matlab)', time: 's from the first sample of the recording' }, x.about),
       settings: x.settings || {}, params: x.params || {},
     };
+    if (x.spectrum) model.spectrum = x.spectrum;
+    const ind = x.indicators || [];
+    model.indicators = { id: ind.map(i => i.id), kind: ind.map(i => i.kind), type: ind.map(i => i.type), name: ind.map(i => i.name),
+      source: ind.map(i => i.source || ''), color: ind.map(i => i.color || ''), params: ind.map(i => JSON.stringify(i.params || {})),
+      settings: ind.map(i => JSON.stringify(i.settings || {})) }; // what a detector derived from its params (e.g. its window in samples)
     if (parts.signals) {
       model.signals = { time_s: Array.from(x.t), signal: Array.from(x.A) };
       if (x.filtered) model.signals.filtered = Array.from(x.filtered);
-      if (parts.envelope && x.envelope) for (const k of ['lower', 'upper', 'mid']) if (x.envelope[k]) model.signals['envelope_' + k] = Array.from(x.envelope[k]);
+      if (parts.envelope) for (const e of x.envelopes || []) for (const k of ['lower', 'upper', 'mid']) if (e[k]) model.signals[e.id + '_' + k] = Array.from(e[k]);
       if (x.recorded) model.recorded = { time_s: Array.from(x.recorded.t), value: Array.from(x.recorded.A) };
     }
-    const rows = x.algo ? stepStatus(x.origIdx, x.algo.idx, x.algo.weak, x.w, x.algo.name) : x.origIdx.map(i => ({ i, inO: true }));
-    model.steps = { time_s: rows.map(r => x.t[r.i]), sample_matlab: rows.map(r => r.i + 1), value: rows.map(r => x.A[r.i]), in_lab_code: rows.map(r => r.inO) };
-    if (x.algo) Object.assign(model.steps, { in_algorithm: rows.map(r => r.inF), algorithm_status: rows.map(r => r.why) });
-    model.metrics = metricRows(x.orig, x.algo && x.algo.metrics, x.algo || {}, x.stride);
+    const dets = x.detectors || [], st = stepTable(dets);
+    model.steps = { time_s: st.rows.map(i => x.t[i]), sample_matlab: st.rows.map(i => i + 1), value: st.rows.map(i => x.A[i]) };
+    for (const d of dets) model.steps[d.id] = st.status[d.id];
+    model.metrics = metricRows(dets, x.stride);
     model.notes = { time_s: (x.notes || []).map(n => n.t), text: (x.notes || []).map(n => n.text) };
     return model;
+  }
+
+  /* Short ids for indicators, usable as MATLAB field names: the type (coza_original → coza,
+     coza → coza_modified), then _2, _3 for repeats. */
+  const EXPORT_ID = { coza_original: 'coza', coza: 'coza_modified' };
+  function indicatorIds(list) {
+    const seen = {};
+    return list.map(i => {
+      const base = (EXPORT_ID[i.type] || i.type).replace(/[^A-Za-z0-9_]/g, '_').replace(/^[^A-Za-z]/, c => 'x' + c).slice(0, 24);
+      seen[base] = (seen[base] || 0) + 1;
+      return seen[base] > 1 ? base + '_' + seen[base] : base;
+    });
   }
 
   // JSON: one line per part. NaN and ±Infinity become null (JSON has no NaN).
@@ -2116,7 +2163,7 @@
     if (!m || !m.about || m.about.format !== 'gaitscope-export') throw new InputError('This JSON file is not a gaitscope export.', 'Open a .json file saved with Export… → JSON, or the recording itself.');
     if (!(m.about.format_version <= EXPORT_FORMAT_VERSION)) throw new InputError('This export uses format version ' + m.about.format_version + ', newer than this page (' + EXPORT_FORMAT_VERSION + ').', 'Reload the page to get the latest version.');
     if (!m.signals || !Array.isArray(m.signals.time_s) || !Array.isArray(m.signals.signal)) throw new InputError('This export has no signals, so it can’t be reopened.', 'Export again with Signals ticked.');
-    for (const k of TABLES) if (m[k]) for (const c of Object.keys(m[k])) if (columnKind(c) === 'f8') m[k][c] = Float64Array.from(m[k][c], v => (v === null ? NaN : v));
+    for (const k of TABLES) if (m[k]) for (const c of Object.keys(m[k])) if (columnKind(c, m[k][c]) === 'f8') m[k][c] = Float64Array.from(m[k][c], v => (v === null ? NaN : v));
     return m;
   }
 
@@ -2200,7 +2247,7 @@
   function exportNpz(model) {
     const files = [];
     for (const k of RECORDS) if (model[k]) files.push({ name: k + '.npy', data: npyBytes('str', JSON.stringify(model[k], (key, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v))) });
-    for (const k of TABLES) if (model[k]) for (const c of Object.keys(model[k])) files.push({ name: k + '/' + c + '.npy', data: npyBytes(columnKind(c), model[k][c]) });
+    for (const k of TABLES) if (model[k]) for (const c of Object.keys(model[k])) files.push({ name: k + '/' + c + '.npy', data: npyBytes(columnKind(c, model[k][c]), model[k][c]) });
     return zipStore(files);
   }
 
@@ -2247,7 +2294,7 @@
       : v && typeof v === 'object' ? record(v) : text(v === null || v === undefined ? '' : v));
     const record = rec => struct(Object.fromEntries(Object.entries(rec).map(([k, v]) => [k, value(v)])));
     const column = (name, vals) => {
-      const n = vals.length, kind = columnKind(name);
+      const n = vals.length, kind = columnKind(name, vals);
       if (kind === 'f8') return dbl(vals, [n, 1]);
       if (kind === 'bool') return logical(vals, [n, 1]);
       return matrix(1, [n, 1], Array.from(vals, text)); // a cell array of text
@@ -2347,10 +2394,10 @@
     }
     return { lower, upper };
   }
+  const P_ENV_WIN = { key: 'envWindow', label: 'Window', abbr: 'window', min: 0.2, max: 3, step: 0.1, default: 1, unit: 's', dec: 1 };
   const ENVELOPES = [
-    { id: 'none', name: 'None' },
     {
-      id: 'sliding', name: 'Sliding window',
+      id: 'sliding', name: 'Sliding window', params: [P_ENV_WIN],
       tagline: 'The highest and lowest value within a window around each moment.',
       compute: (A, t, p) => {
         const h = halfWindow(p.envWindow, p.fs);
@@ -2360,6 +2407,8 @@
     },
     {
       id: 'peaktrough', name: 'Peak-trough',
+      params: [{ key: 'envPeakWindow', label: 'Peak window', abbr: 'window', min: 0.1, max: 1, step: 0.05, default: 0.3, unit: 's', dec: 2, hint: 'A peak is the highest point within this window; the same for troughs.' },
+        { key: 'envSmooth', label: 'Smooth joins', abbr: 'smooth', type: 'bool', default: false, hint: 'A monotone cubic through the peaks instead of straight lines. It never overshoots between them.' }],
       tagline: 'Lines joining successive peaks, and successive troughs: straight, or a smooth curve that never overshoots.',
       compute: (A, t, p) => {
         const h = halfWindow(p.envPeakWindow, p.fs);
@@ -2368,7 +2417,7 @@
       label: p => 'Envelope, peak-trough' + (p.envSmooth ? ' (smooth)' : ''),
     },
     {
-      id: 'dynamic', name: 'Dynamic threshold',
+      id: 'dynamic', name: 'Dynamic threshold', params: [P_ENV_WIN],
       tagline: 'The midpoint of the sliding max and min: where an adaptive threshold would sit.',
       // the same dynamicThreshold that Peak-to-valley counts steps with
       compute: (A, t, p) => dynamicThreshold(A, halfWindow(p.envWindow, p.fs)),
@@ -2377,6 +2426,7 @@
     },
     {
       id: 'meansd', name: 'Mean \u00b1 k\u00b7SD',
+      params: [P_ENV_WIN, { key: 'envK', label: 'k (standard deviations)', abbr: 'k', min: 0.25, max: 3, step: 0.25, default: 1, unit: 'SD', dec: 2, hint: 'k = 1: activity (RMS around the mean). k = 0.5: Threshold peaks\u2019 cut-off, following the signal.' }],
       tagline: 'The moving mean \u00b1 k standard deviations. With k = 1 it shows how hard the person moves at each moment (the RMS around the mean); with k = 0.5 its upper line is where Threshold peaks\u2019 cut-off would sit if it followed the signal.',
       compute: (A, t, p) => {
         const { mean: m, sd } = movingMeanSd(A, halfWindow(p.envWindow, p.fs));
@@ -2386,7 +2436,7 @@
       midName: 'Moving mean',
     },
     {
-      id: 'hilbert', name: 'Hilbert envelope',
+      id: 'hilbert', name: 'Hilbert envelope', params: [],
       tagline: 'The amplitude of the swing at each moment, from the analytic signal (a frequency-domain method): a smooth band that follows every swing. It rings at the ends of the recording.',
       // on an even grid, around the signal's mean; uneven recordings are read back at their own timestamps
       compute: (A, t) => {
@@ -2399,13 +2449,14 @@
     },
     {
       id: 'percentile', name: 'Percentile band',
+      params: [P_ENV_WIN, { key: 'envPct', label: 'Lower percentile (upper is 100 minus it)', abbr: 'pct', min: 1, max: 25, step: 1, default: 10, unit: 'ordinal', dec: 0 }],
       tagline: 'The 10th and 90th percentile (a setting) within a window around each moment: like the sliding max and min, but one spike can\u2019t stretch it.',
       compute: (A, t, p) => movingPercentiles(A, halfWindow(p.envWindow, p.fs), p.envPct),
       label: p => 'Envelope, ' + ORDINAL(p.envPct) + '\u2013' + ORDINAL(100 - p.envPct) + ' percentile, ' + fmt(p.envWindow, 1) + ' s',
     },
   ];
 
-  /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
+  /* Synthetic demo walk: 5 columns like the course's Walking.mat (t, x, y, z, |a|). */
   function demoWalk() {
     const fs = 100, dur = 22, n = fs * dur;
     let seed = 7;
@@ -2426,7 +2477,7 @@
     return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m] };
   }
 
-  const api = { InputError, MAX_BYTES, VERSION, EXPORT_FORMAT_VERSION, stepStatus, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, labRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
+  const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,

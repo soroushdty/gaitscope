@@ -1,6 +1,8 @@
 :root {
   --bg: #F3F5F7; --surface: #FFFFFF; --sunk: #EEF1F4; --ink: #17222D; --muted: #5A6774; --line: #D8DEE4;
   --signal: #3D5F82; --orig: #B7790A; --algo: #0D7A64; --note: #6B4FC8; --env: #A4407A;
+  /* indicators on the plot (step detectors, envelopes): one colour each, in this order */
+  --c1: #B7790A; --c2: #0D7A64; --c3: #A4407A; --c4: #C2410C; --c5: #5F6E00; --c6: #8B5A2B;
   --err: #B42318; --err-bg: #FDF0EE; --warn: #8F5400; --warn-bg: #FDF5E8; --ok: #2F7D32; --ok-bg: #EEF7EE;
   --info: #3D5F82; --info-bg: #EEF3F8; --focus: #2B6CB0;
   --font: "Public Sans", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -13,6 +15,7 @@
   :root:not([data-theme="light"]) {
     --bg: #10171E; --surface: #172029; --sunk: #131B23; --ink: #E4EAF0; --muted: #97A4B1; --line: #2A3643;
     --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2; --env: #E58BBE;
+    --c1: #E3A93B; --c2: #3DC1A2; --c3: #E58BBE; --c4: #F08A5D; --c5: #B5C34A; --c6: #D2A679;
     --err: #F07A6E; --err-bg: #2A1716; --warn: #E0A548; --warn-bg: #271F12; --ok: #6CC070; --ok-bg: #16241A;
     --info: #8DB0D6; --info-bg: #16212C; --focus: #7FB2EC; color-scheme: dark;
   }
@@ -20,6 +23,7 @@
 :root[data-theme="dark"] {
   --bg: #10171E; --surface: #172029; --sunk: #131B23; --ink: #E4EAF0; --muted: #97A4B1; --line: #2A3643;
   --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2; --env: #E58BBE;
+  --c1: #E3A93B; --c2: #3DC1A2; --c3: #E58BBE; --c4: #F08A5D; --c5: #B5C34A; --c6: #D2A679;
   --err: #F07A6E; --err-bg: #2A1716; --warn: #E0A548; --warn-bg: #271F12; --ok: #6CC070; --ok-bg: #16241A;
   --info: #8DB0D6; --info-bg: #16212C; --focus: #7FB2EC; color-scheme: dark;
 }
@@ -119,6 +123,8 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend svg { flex: none; }
+/* the indicators' entries wrap like the others: their span adds no box of its own */
+.legend #legInd { display: contents; }
 .plot-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 6px 8px; font-size: 13px; color: var(--muted); }
 .plot-tools .btn { padding: 4px 9px; font-size: 12.5px; }
 .toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font-weight: 500; cursor: pointer; }
@@ -178,6 +184,24 @@ tr.only-orig td { color: var(--muted); }
   .top { padding: 18px 16px 14px; flex-direction: column; align-items: flex-start; }
   .filechip { text-align: left; max-width: 100%; }
 }
+/* indicators: step detectors and envelopes on the plot, each a row with its colour */
+aside h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 0; }
+.ind-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.ind { min-width: 0; border: 1px solid var(--line); border-left: 3px solid var(--ic); border-radius: 6px; background: var(--surface); }
+.ind.off { opacity: .6; }
+.ind-head { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px; min-width: 0; }
+.ind .sw { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--ic); }
+.ind .sw.band { border-radius: 2px; background: color-mix(in srgb, var(--ic) 30%, transparent); border: 1px solid var(--ic); }
+.ind-name { flex: none; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; font-size: 13.5px; color: var(--ink); cursor: pointer; text-align: left; }
+.ind-name:hover { text-decoration: underline; }
+.ind-sum { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ind-btn { flex: none; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; }
+.ind-btn:hover { border-color: var(--line); color: var(--ink); }
+.ind-body { padding: 0 10px 10px; border-top: 1px solid var(--line); min-width: 0; }
+.ind-body input[type=range] { width: 100%; }
+.ind-body .field:first-of-type { margin-top: 8px; }
+.field.add { margin-top: 8px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* Export… menu (#53) */
 .exp { position: relative; }
 .exp > summary { list-style: none; }
