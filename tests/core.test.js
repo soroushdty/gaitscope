@@ -690,6 +690,44 @@ test('a few missing values are interpolated when there is no time column', () =>
   assert.ok(ch.A.every(Number.isFinite));
 });
 
+/* ------------------------------------------------- MAT v7.3 (HDF5) */
+const hdf5 = require('jsfive');
+const v73 = f => C.parseMat73(readU8(path.join(FIX, f)), hdf5);
+
+test('MATLAB v7.3: the same walk as the v5 file, column for column and step for step', () => {
+  assert.equal(C.isMat73(readU8(path.join(FIX, 'walk_v73.mat'))), true);
+  assert.equal(C.isMat73(readU8(path.join(FIX, 'walk.mat'))), false);
+  const r = v73('walk_v73.mat');
+  assert.match(r.header, /^MATLAB 7\.3 MAT-file/);
+  const { cands } = C.matCandidates(r.variables);
+  assert.deepEqual(cands.map(c => [c.path, c.dims.join('×'), c.ok]), [['Walking', '1800×5', true]]);
+  const a = C.matToColumns(cands[0]).cols, b = C.matToColumns(C.matCandidates(C.parseMat(readU8(path.join(FIX, 'walk.mat')), inflate).variables).cands[0]).cols;
+  a.forEach((col, k) => assert.deepEqual(Array.from(col), Array.from(b[k]), 'column ' + (k + 1)));
+  const ds = C.buildDataset(a.map((_, k) => 'Column ' + (k + 1)), a, 'mat');
+  const ref = loadMatDataset(path.join(FIX, 'walk.mat')).ds;
+  for (const col of [1, 2, 3]) assert.deepEqual(C.detectOriginal(C.prepareChannel(ds, col).A, 30, 1), C.detectOriginal(C.prepareChannel(ref, col).A, 30, 1));
+});
+
+test('MATLAB v7.3: small arrays in compact storage, structs, and a clear note for what is not data', () => {
+  const r = v73('walk_v73_mixed.mat');
+  const { cands, notes } = C.matCandidates(r.variables);
+  const got = Object.fromEntries(cands.map(c => [c.path, c.ok ? c.dims.join('×') : c.reason]));
+  assert.deepEqual(got, { A: '25×5', flags: 'contains true/false values, not measurements', nothing: 'is empty', 'rec.acc': '1800×3', 'rec.fs': 'is too small (1×1)', z: 'contains complex numbers' });
+  assert.deepEqual(notes.map(n => n.reason), ['"labels" is a cell array, which is not searched.']);
+  // A is the first 25 rows of the walk, read from compact storage (jsfive alone can't)
+  const walk = C.matToColumns(C.matCandidates(C.parseMat(readU8(path.join(FIX, 'walk.mat')), inflate).variables).cands[0]).cols;
+  C.matToColumns(cands.find(c => c.path === 'A')).cols.forEach((col, k) => assert.deepEqual(Array.from(col), Array.from(walk[k].slice(0, 25))));
+  assert.deepEqual(Array.from(cands.find(c => c.path === 'rec.acc').var.data.slice(0, 3)), Array.from(walk[1].slice(0, 3), v => Math.trunc(v * 100)), 'int16 struct field');
+});
+
+test('MATLAB v7.3: says what to do when the reader is missing or the file is damaged', () => {
+  const u8 = readU8(path.join(FIX, 'walk_v73.mat'));
+  assert.throws(() => C.parseMat73(u8, undefined), e => e instanceof C.InputError && /did not load/.test(e.message) && /-v7/.test(e.fix));
+  assert.throws(() => C.parseMat73(u8.slice(0, 600), hdf5), e => e instanceof C.InputError && /could not be read/.test(e.message) && /-v7/.test(e.fix));
+  assert.throws(() => C.parseMat73(u8.slice(0, 512), hdf5), e => e instanceof C.InputError && /no HDF5 data/.test(e.message), 'header only');
+  assert.throws(() => C.parseMat73(readU8(path.join(FIX, 'bad_v73.mat')), hdf5), e => e instanceof C.InputError && /could not be read \(File uses non-64-bit addressing\)/.test(e.message));
+});
+
 /* -------------------------------------------------- rejected MAT files */
 const rejects = {
   'bad_v73.mat': /v7\.3/,

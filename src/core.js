@@ -207,11 +207,97 @@
     return { header: head.trim(), variables: vars.filter(v => v.name && !v.name.startsWith('__')) };
   }
 
+  /* ------------------------------------------------------- MAT v7.3 (HDF5) */
+  // A v7.3 MAT-file is HDF5 behind a 512-byte MATLAB header. The page reads it with jsfive
+  // (pure JavaScript, loaded only when such a file is opened), passed in as hdf5 so this file
+  // stays DOM-free. It produces the same variable objects as the v5 reader, so matCandidates,
+  // matToColumns and every check after them are unchanged.
+  function isMat73(u8) {
+    return /MATLAB 7\.3/.test(latin1(u8.subarray(0, 116))) || isHDF5(u8);
+  }
+  const HDF5_SIG = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a];
+  const sigAt = (u8, off) => u8.length >= off + 8 && HDF5_SIG.every((b, i) => u8[off + i] === b);
+
+  /* jsfive 0.4.2 can't read compact storage (small datasets kept inside their object header),
+     and MATLAB stores every small array that way. Teach it, once: for a version 3/4 layout
+     message of class 0, the data follows a 2-byte size, packed as the dataset's dtype. Only
+     plain numbers are decoded; anything else keeps jsfive's own error. */
+  function patchCompactStorage(dataset) {
+    const proto = Object.getPrototypeOf(dataset._dataobjects);
+    if (!proto || proto.__compactStorage || typeof proto.get_data !== 'function') return;
+    const original = proto.get_data;
+    proto.get_data = function () {
+      const msg = this.find_msg_type(8)[0]; // DATA_STORAGE_MSG_TYPE
+      const off = msg && msg.get('offset_to_message');
+      const dv = new DataView(this.fh);
+      if (off !== undefined && (dv.getUint8(off) === 3 || dv.getUint8(off) === 4) && dv.getUint8(off + 1) === 0) {
+        const m = typeof this.dtype === 'string' && this.dtype.match(/^([<>|=!]?)([iuf])(\d)$/);
+        if (!m) throw 'Compact storage of this data type is not supported';
+        const le = m[1] !== '>' && m[1] !== '!', size = Number(m[3]), kind = m[2];
+        const n = this.shape.reduce((a, b) => a * b, 1), start = off + 4, out = new Array(n);
+        const get = { f4: 'getFloat32', f8: 'getFloat64', i1: 'getInt8', i2: 'getInt16', i4: 'getInt32', i8: 'getBigInt64',
+          u1: 'getUint8', u2: 'getUint16', u4: 'getUint32', u8: 'getBigUint64' }[kind + size];
+        if (!get) throw 'Compact storage of this data type is not supported';
+        for (let i = 0; i < n; i++) { const v = dv[get](start + i * size, le); out[i] = typeof v === 'bigint' ? Number(v) : v; }
+        return out;
+      }
+      return original.call(this);
+    };
+    proto.__compactStorage = true;
+  }
+
+  const MATLAB_CLASS_ID = { double: 6, single: 7, int8: 8, uint8: 9, int16: 10, uint16: 11, int32: 12, uint32: 13, int64: 14, uint64: 15,
+    logical: 9, char: 4, cell: 1, struct: 2, function_handle: 16 };
+
+  function parseMat73(u8, hdf5) {
+    if (!hdf5 || !hdf5.File) throw new InputError('The reader for MATLAB v7.3 files did not load.',
+      "Check your internet connection and reload the page. Or, in MATLAB, re-save it in the standard format: save('myfile.mat','-v7'), or export the data as CSV.");
+    const header = latin1(u8.subarray(0, 116)).replace(/\0+$/, '').trim();
+    const off = sigAt(u8, 512) ? 512 : sigAt(u8, 0) ? 0 : -1;
+    if (off < 0) throw new InputError('This MATLAB v7.3 file has no HDF5 data after its header, so it is damaged or incomplete.', 'Re-save or re-download the file.');
+    let file;
+    try { file = new hdf5.File(u8.slice(off).buffer, 'file.mat'); }
+    catch (e) { throw new InputError('This MATLAB v7.3 file could not be read (' + String(e && e.message || e) + ').', "In MATLAB, re-save it in the standard format: save('myfile.mat','-v7'). Or export the data as CSV."); }
+    const vars = [];
+    for (const name of file.keys) if (!name.startsWith('#')) vars.push(readMat73Node(file.get(name), name));
+    return { header, variables: vars, v73: true };
+  }
+
+  function readMat73Node(node, name) {
+    const attrs = node.attrs || {}, cls = String(attrs.MATLAB_class || '');
+    if (node.keys !== undefined && typeof node.get === 'function') { // group: struct (or sparse, or object)
+      if (attrs.MATLAB_sparse !== undefined) return { name, clsId: 5, cls: 'sparse' };
+      if (cls && cls !== 'struct') return { name, clsId: 17, cls: 'opaque', className: cls };
+      const fields = {};
+      for (const k of node.keys) fields[k] = readMat73Node(node.get(k), k);
+      return { name, clsId: 2, cls: 'struct', fields, structCount: 1 };
+    }
+    if (attrs.MATLAB_object_decode !== undefined) return { name, clsId: 17, cls: 'opaque', className: cls };
+    const clsId = MATLAB_CLASS_ID[cls];
+    if (clsId === undefined) return { name, clsId: 17, cls: 'opaque', className: cls || 'object' };
+    if (clsId === 1 || clsId === 4 || clsId === 16) return { name, clsId, cls };
+    const shape = node.shape || [];
+    if (attrs.MATLAB_empty !== undefined) return { name, clsId, cls, dims: [0, 0], data: new Float64Array(0), logical: cls === 'logical' };
+    // MATLAB is column-major: HDF5 shape [c, r] holds an r×c matrix, already in MATLAB's order
+    const dims = shape.slice().reverse();
+    while (dims.length < 2) dims.push(1);
+    // MATLAB stores complex numbers as a (real, imag) compound type; jsfive throws on reading one
+    let complex = false;
+    try { const dt = node.dtype; complex = Array.isArray(dt) && dt[0] === 'COMPOUND'; } catch (e) { complex = /compound/i.test(String(e && e.message || e)); if (!complex) throw e; }
+    const v = { name, clsId, cls: cls === 'logical' ? 'logical' : cls, dims, logical: cls === 'logical', complex };
+    if (complex) return Object.assign(v, { data: new Float64Array(0) });
+    patchCompactStorage(node);
+    try { v.data = Float64Array.from(node.value, Number); }
+    catch (e) { return { name, clsId: 0, unreadable: 'could not be read (' + String(e && e.message || e) + ')' }; }
+    return v;
+  }
+
   /* Walk parsed variables and list numeric matrices that could hold sensor data. */
   function matCandidates(vars) {
     const cands = [], notes = [];
     function visit(v, path) {
       if (!v) return;
+      if (v.unreadable) { notes.push({ path, reason: '"' + path + '" ' + v.unreadable + '.', fix: "In MATLAB, re-save it in the standard format: save('myfile.mat','-v7'), or export the data as CSV." }); return; }
       if (v.clsId === 17) {
         const cn = v.className || 'object';
         const fix = cn === 'table' ? 'A = table2array(' + v.name + ');' :
@@ -1813,7 +1899,7 @@
     return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m] };
   }
 
-  const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
+  const api = { InputError, MAX_BYTES, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
