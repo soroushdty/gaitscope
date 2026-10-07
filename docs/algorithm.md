@@ -110,7 +110,8 @@ one over it.
 
 | Filter | Passband | Stopband | Trade-off |
 |---|---|---|---|
-| Butterworth | Flat | Gentlest roll-off | Least change to the shape of each step |
+| Butterworth | Flat | Gentle roll-off | Little change to the shape of each step |
+| Bessel | Flat, gently falling | Gentlest roll-off | The most even delay across frequencies, so steps keep their shape best (least overshoot). The cut-off is where the phase is half delayed (scipy's `norm='phase'`), so the gain there is above ½. |
 | Chebyshev I | Ripple (default 0.5 dB) | Steeper roll-off | Ripple slightly reshapes peaks. The cut-off is where the ripple band ends. |
 | Chebyshev II | Flat | Ripple, at least the set attenuation (default 40 dB) | The cut-off is where the stopband starts, so the passband ends lower. |
 
@@ -122,7 +123,7 @@ order, as in scipy. The centred signal then needs a different `h` for Coza.
 How it is built (`designFilter`, `sosfiltfilt`):
 
 * The design follows scipy's `iirfilter`: analog prototype poles and zeros (`buttap`,
-  `cheb1ap`, `cheb2ap`), pre-warped low-pass or band-pass transform, bilinear transform,
+  `besselap` (roots of the reverse Bessel polynomial, by Aberth iteration), `cheb1ap`, `cheb2ap`), pre-warped low-pass or band-pass transform, bilinear transform,
   and second-order sections. Sections stay numerically stable at the low cut-off to
   sampling-rate ratios of phone data (0.3 Hz at 460 Hz).
 * Filtering runs forwards and backwards like scipy's `sosfiltfilt`, with the same odd
