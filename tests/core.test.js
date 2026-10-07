@@ -1070,7 +1070,7 @@ function readNpy(u8) {
 test('export model: the parts, 1-based samples, a step column and a metrics column per detector', () => {
   const { ch, dets, model } = walkExport();
   assert.deepEqual(Object.keys(model), ['about', 'settings', 'params', 'spectrum', 'indicators', 'signals', 'steps', 'metrics', 'notes']);
-  assert.equal(model.about.format, 'gaitscope-export'); assert.equal(model.about.format_version, 2); assert.equal(model.about.version, C.VERSION);
+  assert.equal(model.about.format, 'gaitscope-export'); assert.equal(model.about.format_version, 3); assert.equal(model.about.version, C.VERSION);
   assert.deepEqual(model.indicators.id, ['coza', 'coza_modified', 'sliding']);
   assert.deepEqual(JSON.parse(model.indicators.params[1]), { h: 1, cozaWindow: 0.3, weak: true }); assert.deepEqual(JSON.parse(model.indicators.settings[1]), { coza_window_samples: 30 });
   assert.deepEqual(Object.keys(model.signals), ['time_s', 'signal', 'filtered', 'sliding_lower', 'sliding_upper']);
@@ -1122,7 +1122,7 @@ test('MAT export reads back in the page\'s own MAT reader with the same numbers'
   }
   assert.equal(g.steps.fields.coza.cls, 'cell'); assert.equal(g.indicators.fields.params.cls, 'cell');
   assert.equal(g.settings.fields.filter_resampled.logical, true);
-  assert.equal(g.about.fields.format_version.data[0], 2);
+  assert.equal(g.about.fields.format_version.data[0], 3);
 });
 test('MAT export: struct field-name lengths are small data elements, as MATLAB writes them', () => {
   const mat = C.exportMat(walkExport().model), hex = Buffer.from(mat).toString('hex');
@@ -1173,7 +1173,7 @@ test('CSV zip: one file per part, and the CSV reader reads it back', () => {
   assert.deepEqual(sig.names, Object.keys(model.signals));
   assert.ok(sameNum(sig.cols[1], model.signals.signal), 'full precision');
   assert.match(text('steps.csv'), /^time_s,sample_matlab,value,coza,coza_modified\n[\d.]+,\d+,[-\d.]+,step,(step|weak peak)?\n/);
-  assert.match(text('notes.csv'), /^time_s,text\n3\.25,"turned ""around"", ✓"\n$/);
+  assert.match(text('notes.csv'), /^time_s,plot,kind,x,y,text\n3\.25,signal,time,3\.25,,"turned ""around"", ✓"\n$/);
   assert.match(text('settings.csv'), /^key,value\nfilter,none\nfilter_resampled,false\n/);
 });
 test('zip writer: CRC-32 and a central directory other tools accept', () => {
@@ -1231,6 +1231,23 @@ test('the export\'s indicators table credits each indicator', () => {
   assert.match(model.indicators.credit[0], /^Dr\. Aurel Coza/);
   assert.equal(model.indicators.credit[2], '', 'the sliding window needs none');
 });
+// #80: notes at a time, a level or a point, on the signal or the spectrum (format 3)
+test('notes of every kind go through a JSON export and back; format 2 notes reopen as times', () => {
+  const notes = [{ plot: 'signal', kind: 'time', x: 3.25, text: 'turned' }, { plot: 'signal', kind: 'level', y: 2.5, text: 'resting' },
+    { plot: 'signal', kind: 'point', x: 6.32, y: 9.81, text: 'a double count' }, { plot: 'spectrum', kind: 'time', x: 0.91, text: 'walking rhythm' },
+    { plot: 'spectrum', kind: 'level', y: 12, text: 'noise floor' }, { plot: 'spectrum', kind: 'point', x: 1.82, y: 30.5, text: 'harmonic' }];
+  const { model } = walkExport({ notes });
+  assert.deepEqual(Array.from(model.notes.time_s, v => (Number.isNaN(v) ? null : v)), [3.25, null, 6.32, null, null, null], 'time_s only for times on the signal');
+  const back = C.exportNotes(C.parseExportJson(C.exportJson(model)));
+  assert.deepEqual(back, notes.map(C.noteOf));
+  assert.ok(Number.isNaN(back[0].y) && Number.isNaN(back[1].x), 'what a kind doesn\'t use is NaN');
+  // a format 2 export: time_s and text only
+  const old = JSON.parse(C.exportJson(model)); old.about.format_version = 2; old.notes = { time_s: [1.5], text: ['old note'] };
+  assert.deepEqual(C.exportNotes(C.parseExportJson(JSON.stringify(old))), [C.noteOf({ plot: 'signal', kind: 'time', x: 1.5, text: 'old note' })]);
+  // the MAT and zip exports carry the new columns
+  assert.deepEqual(Object.keys(C.parseMat(C.exportMat(model)).variables[0].fields.notes.fields), ['time_s', 'plot', 'kind', 'x', 'y', 'text']);
+});
+
 test('VERSION matches package.json', () => {
   assert.equal(C.VERSION, require('../package.json').version);
 });
