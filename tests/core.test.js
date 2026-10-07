@@ -150,14 +150,23 @@ test('Butterworth, Bessel, Chebyshev I/II and elliptic match scipy: design and z
 // Same as spiky_input() in scripts/make_fixtures.py.
 const spikyInput = fs => { const x = filterInput(fs); for (let i = 7; i < x.length; i += 53) x[i] += 2.5; return x; };
 
-test('smoothing filters match scipy, edges included', () => {
-  const { smoothing } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
-  const ids = new Set(smoothing.map(c => c.filter));
-  for (const id of ids) assert.ok(C.FILTERS.some(f => f.id === id), id + ' is offered');
-  for (const c of smoothing) {
+test('moving average, median, Savitzky–Golay and notch match scipy, edges included', () => {
+  const { other } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
+  assert.deepEqual([...new Set(other.map(c => c.filter))], ['movavg', 'median', 'savgol', 'notch']);
+  for (const c of other) {
     const y = C.FILTERS.find(f => f.id === c.filter).apply(spikyInput(c.fs), c.fs, c.p);
     c.idx.forEach((i, k) => assert.ok(Math.abs(y[i] - c.y[k]) < 1e-9, c.filter + ' ' + JSON.stringify(c.p) + ' at ' + c.fs + ' Hz, sample ' + i));
   }
+});
+
+test('the notch removes one frequency and keeps the walk', () => {
+  const fs = 460, t = Float64Array.from({ length: 2300 }, (_, i) => i / fs);
+  const walk = t.map(v => Math.sin(2 * Math.PI * 1.8 * v)), A = t.map((v, i) => walk[i] + 0.5 * Math.sin(2 * Math.PI * 50 * v));
+  const y = C.FILTERS.find(f => f.id === 'notch').apply(A, fs, { notchFreq: 50, notchQ: 30 });
+  // a narrow notch (Q 30) rings for a few hundred ms at each end; past the first and last second the hum is gone
+  assert.ok(Math.max(...Array.from(y.slice(460, -460), (v, i) => Math.abs(v - walk[i + 460]))) < 0.002);
+  assert.ok(Math.abs(y[100] - walk[100]) > 0.01, 'the ringing near the start is real');
+  assert.throws(() => C.notchSos(30, 30, 57), /under 28\.5 Hz/);
 });
 
 test('Savitzky–Golay weights are exact even for long windows of high order', () => {

@@ -1273,6 +1273,14 @@
     return out;
   }
 
+  // Notch: removes one narrow band around f0 (Hz), bandwidth f0/Q, as scipy's iirnotch(f0, Q, fs).
+  function notchSos(f0, Q, fs) {
+    if (!(f0 > 0 && f0 < fs / 2)) throw new RangeError('The notch frequency must be above 0 and below half the sampling rate: under ' + fmt(fs / 2, 1) + ' Hz for this recording.');
+    if (!(Q > 0)) throw new RangeError('The notch quality factor Q must be above 0.');
+    const w0 = 2 * Math.PI * f0 / fs, beta = Math.tan(w0 / Q / 2), gain = 1 / (1 + beta);
+    return [[gain, -2 * gain * Math.cos(w0), gain, 1, -2 * gain * Math.cos(w0), 2 * gain - 1]];
+  }
+
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
      algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
      Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
@@ -1315,6 +1323,12 @@
         return savgol(A, w, p.sgOrder);
       },
       label: p => 'Savitzky\u2013Golay, ' + fmt(p.sgWindow, 2) + ' s window, order ' + p.sgOrder,
+    },
+    {
+      id: 'notch', name: 'Notch',
+      tagline: 'Removes one narrow frequency, such as 50/60 Hz mains hum or a known vibration, and leaves the rest. Matters only at high sampling rates.',
+      apply: (A, fs, p) => sosfiltfilt(notchSos(p.notchFreq, p.notchQ, fs), A),
+      label: p => 'Notch, ' + fmt(p.notchFreq, 1) + ' Hz, Q ' + p.notchQ,
     },
   ];
   function filterLabel(p) {
@@ -1444,7 +1458,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
+    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

@@ -233,6 +233,9 @@
     const fLow = $('fLowIn');
     fLow.max = String(Math.max(0.5, Math.min(20, (Math.ceil(S.ch.fs / 2 / 0.5) - 1) * 0.5)));
     if (Number(fLow.value) > Number(fLow.max)) fLow.value = fLow.max;
+    const notch = $('notchFIn');
+    notch.max = String(Math.max(1, Math.min(100, (Math.ceil(S.ch.fs / 2 / 0.5) - 1) * 0.5)));
+    if (Number(notch.value) > Number(notch.max)) notch.value = notch.max;
     for (const el of optionInputs()) updateOptionOut(el);
     updateWOut(); updateCwOut();
   }
