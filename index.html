@@ -115,6 +115,15 @@
         <div class="ctl-head"><label for="sgOrderIn">Polynomial order</label><output id="sgOrderOut" for="sgOrderIn" data-unit="" data-dec="0">3</output></div>
         <input type="range" id="sgOrderIn" data-param="sgOrder" min="1" max="5" value="3" step="1">
       </div>
+      <div class="ctl" data-only="notch">
+        <div class="ctl-head"><label for="notchFIn">Frequency</label><output id="notchFOut" for="notchFIn" data-unit="Hz" data-dec="1">50.0 Hz</output></div>
+        <input type="range" id="notchFIn" data-param="notchFreq" min="1" max="100" value="50" step="0.5">
+      </div>
+      <div class="ctl" data-only="notch">
+        <div class="ctl-head"><label for="notchQIn">Quality factor Q</label><output id="notchQOut" for="notchQIn" data-unit="" data-dec="0">30</output></div>
+        <input type="range" id="notchQIn" data-param="notchQ" min="2" max="60" value="30" step="1">
+      </div>
+      <p class="hint" data-only="notch">The notch is the frequency ÷ Q wide: Q 30 at 50 Hz removes about 48–52 Hz.</p>
       <div class="ctl" data-only="cheby1 ellip">
         <div class="ctl-head"><label for="fRippleIn">Passband ripple</label><output id="fRippleOut" for="fRippleIn" data-unit="dB" data-dec="1">0.5 dB</output></div>
         <input type="range" id="fRippleIn" data-param="fRipple" min="0.1" max="3" value="0.5" step="0.1">

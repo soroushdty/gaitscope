@@ -64,9 +64,9 @@ def odd_window(seconds, fs):
     return 2 * math.floor(seconds * fs / 2 + 0.5) + 1
 
 
-def smoothing_fixtures():
-    """scipy references for the smoothing filters, on spiky_input(): the first and last 12
-    samples (where edge handling shows) and every 8th sample in between."""
+def other_filter_fixtures():
+    """scipy references for the smoothing and notch filters, on spiky_input(): the first and
+    last 12 samples (where edge handling shows) and every 8th sample in between."""
     cases = []
     for fs in (57, 100, 460):
         x = spiky_input(fs)
@@ -83,6 +83,10 @@ def smoothing_fixtures():
         for sec, order in ((0.3, 3), (0.15, 2), (0.2, 5)):
             y = signal.savgol_filter(x, odd_window(sec, fs), order, mode="interp")
             cases.append({"filter": "savgol", "fs": fs, "p": {"sgWindow": sec, "sgOrder": order}, "idx": idx, "y": y[idx].tolist()})
+        for f0, q in ((17, 30), (25, 10)):
+            b, a = signal.iirnotch(f0, q, fs=fs)
+            y = signal.sosfiltfilt(np.concatenate([b, a])[None, :], x)
+            cases.append({"filter": "notch", "fs": fs, "p": {"notchFreq": f0, "notchQ": q}, "idx": idx, "y": y[idx].tolist()})
     return cases
 
 
@@ -208,8 +212,8 @@ def main():
         json.dump({"source": "walk.mat (synthetic), python/lab_step_det.py, w=30, h=1", "columns": expected}, f, indent=2)
     with open(p("filters.json"), "w") as f:
         json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures(),
-                   "smoothing_source": "scipy.ndimage (mode='nearest') and scipy.signal.savgol_filter (mode='interp'); input: spiky_input()",
-                   "smoothing": smoothing_fixtures(),
+                   "other_source": "scipy.ndimage (mode='nearest'), scipy.signal.savgol_filter (mode='interp'), iirnotch + sosfiltfilt; input: spiky_input()",
+                   "other": other_filter_fixtures(),
                    "savgol_exact": {"window": 231, "order": 5, "weights": savgol_exact_weights(231, 5)}}, f)
     print("Wrote fixtures to", OUT)
 
