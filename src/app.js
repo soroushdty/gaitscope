@@ -51,7 +51,7 @@
     showPass = false;
     S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.chRaw = null; S.rs = null; S.res = null;
     S.notes = []; closeNoteForm();
-    S.recording = null; $('saveRec').hidden = true; S.counted = null;
+    S.recording = null; $('saveRec').hidden = true; S.counted = null; S.countedBy = null; // 'hand' or 'demo'
   }
 
   async function handleFile(file) {
@@ -99,6 +99,7 @@
     $('varRow').hidden = true;
     S.varName = null;
     const d = C.demoWalk();
+    S.counted = d.steps; S.countedBy = 'demo'; // its true count, to score each detector against
     S.fileChecks = [{ level: 'info', title: 'Demo data', detail: 'A generated 22 s walk sampled near 100 Hz with irregular timing and values rounded to 0.01, like a phone recording.' }];
     setDataset(d.names, d.cols, 'csv');
   }
@@ -188,7 +189,8 @@
     $('rsSel').value = 'off'; showRs(); // the exported signal is the analysed one, already resampled if it was
     S.fileChecks.push({ level: 'info', title: 'GaitScope export reopened', detail: 'Exported ' + (a.exported || '').replace('T', ' ').replace(/\.\d+Z$/, ' UTC') + ' by the ' + a.generator.replace('gaitscope ', '') + ' (version ' + a.version + ') from "' + a.file + '"' +
       (a.variable ? ', variable ' + a.variable : '') + ', signal ' + a.signal + '. The signal is loaded as it was analysed' + (/Hz/.test(st.resample || '') ? ' (already resampled: ' + st.resample + ')' : '') + ', and the settings and notes are restored.' });
-    S.counted = Number(st.steps_counted_by_hand) > 0 ? Number(st.steps_counted_by_hand) : null;
+    const known = Number(st.steps_counted_by_hand) > 0 ? ['hand', st.steps_counted_by_hand] : Number(st.steps_in_synthetic_walk) > 0 ? ['demo', st.steps_in_synthetic_walk] : [null, null];
+    S.countedBy = known[0]; S.counted = known[1] === null ? null : Number(known[1]);
     setDataset(['time', a.signal_name || a.signal || 'signal'], [m.signals.time_s, m.signals.signal], 'csv');
     if (!S.ch) return;
     S.notes = Array.from(m.notes ? m.notes.time_s : [], (t, k) => ({ t, text: String(m.notes.text[k]) }));
@@ -242,6 +244,7 @@
         (said.length ? ' Recorded with: ' + said.join(', ') + '.' : '') });
     }
     S.counted = /^\d+$/.test(m.steps_counted || '') && Number(m.steps_counted) > 0 ? Number(m.steps_counted) : null;
+    S.countedBy = S.counted ? 'hand' : null;
     if (/^gaitscope/.test(m.recorder || '') && /iPhone|iPad/.test(m.device || '')) {
       pre.push({ level: 'info', title: 'iPhone axis signs not yet checked', detail: 'Safari on iPhone has been reported to give acceleration with the opposite sign from Android and Physics Toolbox: a phone lying face up reads \u22121 g on z instead of +1. The magnitude, vertical and horizontal signals don\u2019t depend on the sign. For a single axis, compare with a Physics Toolbox recording before trusting h.' });
     }
@@ -613,13 +616,15 @@
       const off = dets.filter(d => d.idx.length >= 3 && Number.isFinite(d.metrics.cadence) && (Math.abs(specCadence / d.metrics.cadence - 2) < 0.2 || Math.abs(specCadence / d.metrics.cadence - 0.5) < 0.05));
       if (off.length) out.push({ level: 'info', title: 'Spectrum and steps differ by a factor of 2', detail: 'The spectrum’s main rhythm gives ' + fmt(specCadence, 0) + ' steps/min; ' + off.map(d => d.label + ' gives ' + fmt(d.metrics.cadence, 0)).join(', ') + '. One of them is counting strides (left plus right step) rather than steps. With the phone on one leg the strongest rhythm is usually the stride; at the waist, the step.' });
     }
-    // a recording that says how many steps were counted by hand: how close each count comes
+    // a known step count (counted by hand, or the synthetic walk's own): how close each detector comes
     if (S.counted && dets.length) {
-      const n = S.counted;
-      out.push({ level: 'info', title: 'You counted ' + n + ' steps', detail: dets.map(d => {
+      const n = S.counted, demo = S.countedBy === 'demo';
+      out.push({ level: 'info', title: demo ? 'The synthetic walk has ' + n + ' steps' : 'You counted ' + n + ' steps', detail: dets.map(d => {
         const f = d.metrics.steps, off = (f - n) / n * 100;
         return d.label + ' finds ' + f + (f === n ? ' (exactly right)' : ' (' + (off > 0 ? '+' : '') + fmt(off, 0) + '%)');
-      }).join('; ') + '.' + (g.stride ? ' Each peak counts as 2 steps (Phone position: one leg).' : '') + ' Hand counts usually include the first and last step, which detectors can miss at the start and stop.' });
+      }).join('; ') + '.' + (g.stride ? ' Each peak counts as 2 steps (Phone position: one leg).' : '') + (demo
+        ? ' One peak of x per step, with the phone in the hand. The walk fades in and out, so its first and last steps are faint; on y, z and the magnitude a step can make several bumps.'
+        : ' Hand counts usually include the first and last step, which detectors can miss at the start and stop.') });
     }
     const slow = g.stride ? [] : dets.filter(d => d.idx.length >= 3 && d.metrics.stepInterval > 0.85 && d.metrics.stepInterval < 1.6);
     if (slow.length) out.push({ level: 'info', title: 'Steps may be strides', detail: slow.map(d => d.label + '’s steps are ' + fmt(d.metrics.stepInterval, 2) + ' s apart').join('; ') + ', slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; set Phone position to "One leg" under Recording.' });
@@ -960,7 +965,7 @@
       resample: !S.rs ? 'off' : !S.rs.applied ? 'off (not applied)' : fmt(S.rs.fs, 2) + ' Hz, ' + S.rs.method + (S.rs.antialias ? ', anti-aliased' : ''),
       filter: C.filterLabel(g) + (filt.applied ? '' : g.filter !== 'none' ? ' (not applied)' : ''), filter_resampled: !!filt.resampled,
       spectrum_segment_s: S.res.spec.segment, phone_position: g.stride ? 'one leg (each peak is a stride)' : 'hand or waist (each peak is a step)' };
-    if (S.counted) s.steps_counted_by_hand = S.counted;
+    if (S.counted) s[S.countedBy === 'demo' ? 'steps_in_synthetic_walk' : 'steps_counted_by_hand'] = S.counted;
     return s;
   }
   // what is shown is what is exported: the shown detectors and envelopes

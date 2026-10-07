@@ -589,12 +589,16 @@ test('moving a detector setting reuses the filter and spectra; their own setting
   assert.equal(calls.applyFilter, 1); assert.equal(calls.spectrum, 3, 'filtered and recorded spectra'); assert.equal(calls.rhythmOverTime, 1);
 });
 
-test('the demo walk: its 17 steps, faint first and last ones included (#81)', async () => {
+test('the demo walk: its 17 steps, faint first and last ones included, and each detector scored against them (#81)', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
   assert.equal(markers(pg, 'Coza').x.length, 17); assert.equal(markers(pg, 'Coza (modified)').x.length, 17, 'faint steps on the rhythm are kept');
   assert.doesNotMatch(text(pg, 'valList'), /drops \d+ weak peak/);
+  assert.match(text(pg, 'valList'), /The synthetic walk has 17 steps ?Coza finds 17 \(exactly right\); Coza \(modified\) finds 17 \(exactly right\)\..*first and last steps are faint/);
+  // its true count goes into the export's settings, not as a hand count
+  const st = await exportCsv(pg);
+  assert.match(st, /steps_in_synthetic_walk,17/); assert.doesNotMatch(st, /counted_by_hand/);
 
   // Phone position: on one leg, each peak is a stride (2 steps)
   const pos = pg.d.getElementById('posSel');
