@@ -23,6 +23,7 @@ Requirements: numpy, scipy, matplotlib (pinned in uv.lock; install with `uv sync
 """
 import argparse
 import csv
+import os
 import re
 import warnings
 import zipfile
@@ -423,6 +424,123 @@ def gaps(t, factor=5):
     return len(long), (long.max() if len(long) else 0.0)
 
 
+# --- export (#53): the dashboard's content model, lab code only (docs/export.md) ----------
+
+VERSION = "0.1.0"  # as in package.json, pyproject.toml and src/core.js
+EXPORT_FORMAT_VERSION = 1
+TEXT_COLUMNS = {"algorithm_status", "metric", "unit_lab_code", "unit_algorithm", "text"}
+BOOL_COLUMNS = {"in_lab_code", "in_algorithm"}
+TABLES, RECORDS = ("signals", "recorded", "steps", "metrics", "notes"), ("about", "settings", "params")
+
+
+def export_model(t, A, idx, about, settings):
+    """The export model for the lab code's result: about, settings, signals (time_s, signal),
+    steps (time_s, sample_matlab 1-based, value, in_lab_code), metrics (lab_code column) and
+    an empty notes table. Same layout as buildExport in src/core.js without an algorithm."""
+    with warnings.catch_warnings():  # mean/std of too few intervals
+        warnings.simplefilter("ignore", RuntimeWarning)
+        m = gait_metrics(idx)
+    d = np.diff(idx)
+    asym = m["GaitAsymmetry"] if len(d[1::2]) and len(d[0::2]) else np.nan
+    from datetime import datetime, timezone
+    return {
+        "about": {"format": "gaitscope-export", "format_version": EXPORT_FORMAT_VERSION, "generator": "gaitscope python port",
+                  "version": VERSION, "exported": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                  "sample_numbers": "1-based, like MATLAB (sample_matlab)", "time": "s from the first sample of the recording", **about},
+        "settings": settings,
+        "params": {},
+        "signals": {"time_s": np.asarray(t, float), "signal": np.asarray(A, float)},
+        "steps": {"time_s": np.asarray(t, float)[idx - 1], "sample_matlab": idx.astype(float),
+                  "value": np.asarray(A, float)[idx - 1], "in_lab_code": np.ones(len(idx), bool)},
+        "metrics": {
+            "metric": ["steps", "average_step_duration", "cadence", "pace_lab_formula", "step_time_variability",
+                       "coefficient_of_variation", "gait_asymmetry", "cadence_spectrum", "harmonic_ratio"],
+            "lab_code": np.array([len(idx), m["AverageStepDuration"], np.nan, m["Pace"], m["VariabilitySteps"] if len(d) > 1 else np.nan,
+                                  np.nan, asym, np.nan, np.nan]),
+            "unit_lab_code": ["count", "s (samples/100)", "", "duration*60", "samples (SD)", "", "even/odd intervals", "", ""],
+        },
+        "notes": {"time_s": np.zeros(0), "text": []},
+    }
+
+
+def _plain(v):
+    """JSON-ready: arrays to lists, NaN and infinities to None."""
+    if isinstance(v, dict):
+        return {k: _plain(x) for k, x in v.items()}
+    if isinstance(v, (np.ndarray, list, tuple)):
+        return [_plain(x) for x in (v.tolist() if isinstance(v, np.ndarray) else v)]
+    if isinstance(v, (float, np.floating)):
+        return float(v) if np.isfinite(v) else None
+    if isinstance(v, np.bool_):
+        return bool(v)
+    if isinstance(v, np.integer):
+        return int(v)
+    return v
+
+
+def _column(name, values):
+    if name in TEXT_COLUMNS:
+        return np.array(list(values), dtype=str) if len(values) else np.array([], dtype="<U1")
+    if name in BOOL_COLUMNS:
+        return np.asarray(values, bool)
+    return np.asarray(values, float)
+
+
+def _number_text(v):
+    """A number as JavaScript's String() writes it, so both ports' CSVs read the same:
+    shortest round-trip digits, whole numbers without .0, exponents without padding."""
+    v = float(v)
+    if not np.isfinite(v):
+        return ""
+    if v.is_integer() and abs(v) < 1e21:
+        return str(int(v))
+    return re.sub(r"e([+-])0*(\d)", r"e\1\2", repr(v))
+
+
+def write_export(model, path):
+    """Write the export model to path; the extension picks the format: .json, .mat (v5, a
+    struct 'gaitscope'), .npz (np.load(..., allow_pickle=False)) or .zip (a CSV per part)."""
+    import json
+    ext = path.rsplit(".", 1)[-1].lower()
+    parts = [k for k in RECORDS + TABLES if k in model]
+    if ext == "json":
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("{\n" + ",\n".join(json.dumps(k) + ": " + json.dumps(_plain(model[k]), ensure_ascii=False) for k in parts) + "\n}\n")
+    elif ext == "mat":
+        from scipy.io import savemat
+        out = {}
+        for k in parts:
+            if k in RECORDS:
+                out[k] = {f: ("" if v is None else v) for f, v in model[k].items()}
+            else:  # columns n x 1; text as a cell array
+                out[k] = {c: (np.array(list(v), dtype=object).reshape(-1, 1) if c in TEXT_COLUMNS else _column(c, v).reshape(-1, 1))
+                          for c, v in model[k].items()}
+        savemat(path, {"gaitscope": out})
+    elif ext == "npz":
+        arrays = {k: np.array(json.dumps(_plain(model[k]), ensure_ascii=False)) for k in parts if k in RECORDS}
+        arrays.update({f"{k}/{c}": _column(c, v) for k in parts if k in TABLES for c, v in model[k].items()})
+        np.savez(path, **arrays)
+    elif ext == "zip":
+        import csv
+        import io
+        with zipfile.ZipFile(path, "w") as z:
+            for k in parts:
+                buf = io.StringIO()
+                w = csv.writer(buf, lineterminator="\n")
+                if k in RECORDS:
+                    w.writerow(["key", "value"])
+                    w.writerows([f, json.dumps(v) if isinstance(v, dict) else v] for f, v in model[k].items())
+                else:
+                    cols = list(model[k])
+                    w.writerow(cols)
+                    cell = lambda v: (_number_text(v) if isinstance(v, (float, np.floating)) and not isinstance(v, (bool, np.bool_))
+                                      else str(v).lower() if isinstance(v, (bool, np.bool_)) else v)
+                    w.writerows([cell(model[k][c][i]) for c in cols] for i in range(len(model[k][cols[0]])))
+                z.writestr(f"{k}.csv", buf.getvalue())
+    else:
+        raise ValueError(f"Can't export to {path!r}: use .json, .mat, .npz or .zip.")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--file", default="data/Walking.mat",
@@ -442,8 +560,12 @@ def main():
     p.add_argument("--to-g", action="store_true",
                    help="divide by 9.80665 (m/s^2 -> g) first, since h = 1 assumes g; "
                         "for phyphox or Linear Accelerometer data")
+    p.add_argument("--export", metavar="FILE",
+                   help="save the result: .json, .mat, .npz or .zip (a CSV per part); see docs/export.md")
     p.add_argument("--no-plot", action="store_true", help="skip the plot window")
     args = p.parse_args()
+    if args.export and not args.export.lower().endswith((".json", ".mat", ".npz", ".zip")):
+        p.error(f"Can't export to {args.export!r}: use .json, .mat, .npz or .zip.")
 
     names = info = None
     try:
@@ -531,6 +653,21 @@ def main():
     print(f"Pace:                {m['Pace']:.4f}")
     print(f"VariabilitySteps:    {m['VariabilitySteps']:.4f} samples")
     print(f"GaitAsymmetry:       {m['GaitAsymmetry']:.4f}")
+    if args.export:
+        timed = _time_in_column_1(data)
+        t = data[:, 0] - data[0, 0] if timed else np.arange(len(A)) / 100
+        about = {"file": os.path.basename(args.file), "variable": args.var if not names else "",
+                 "signal": f"column {args.col}", "signal_name": names[args.col - 1] if names else f"Column {args.col}", "unit": ""}
+        settings = {"algorithm": "lab code", "window_w_samples": args.w, "threshold_h": args.h,
+                    "resample": f"{args.resample:g} Hz, {args.resample_method}" + (", anti-aliased" if args.antialias else "") if args.resample else "off",
+                    "to_g": bool(args.to_g)}
+        if timed:
+            settings["sampling_rate_hz"] = float(sampling_rate(data[:, 0]))
+        try:
+            write_export(export_model(t, A, step_idx, about, settings), args.export)
+        except ValueError as e:
+            p.error(str(e))
+        print(f"Exported:            {args.export}")
     if len(step_idx) < 3:
         print("  Note: fewer than 3 steps, so some metrics are NaN (not enough intervals).")
         if np.nanmax(A) <= args.h:

@@ -1090,6 +1090,17 @@ test('zip writer: CRC-32 and a central directory other tools accept', () => {
   assert.deepEqual(e.map(x => [x.name, x.size]), [['a.txt', 5], ['dir/ü.txt', 0]]);
   assert.equal(new TextDecoder().decode(e[0].read()), 'hello');
 });
+test('the Python port\'s export and the dashboard\'s agree on the lab code (walk.mat, column 2)', () => {
+  const py = C.parseExportJson(fs.readFileSync(path.join(FIX, 'export_python.json'), 'utf8'));
+  const { model } = walkExport();
+  assert.equal(py.about.generator, 'gaitscope python port'); assert.equal(py.about.version, model.about.version);
+  assert.equal(py.about.format_version, model.about.format_version);
+  assert.ok(sameNum(py.signals.time_s, model.signals.time_s) && sameNum(py.signals.signal, model.signals.signal), 'same time base and signal');
+  const lab = model.steps.in_lab_code.map((v, j) => (v ? j : -1)).filter(j => j >= 0);
+  for (const c of ['time_s', 'sample_matlab', 'value']) assert.ok(sameNum(py.steps[c], lab.map(j => model.steps[c][j])), 'steps.' + c);
+  assert.deepEqual(py.metrics.metric, model.metrics.metric); assert.deepEqual(py.metrics.unit_lab_code, model.metrics.unit_lab_code);
+  py.metrics.lab_code.forEach((v, k) => assert.ok(Number.isNaN(v) ? Number.isNaN(model.metrics.lab_code[k]) : close(v, model.metrics.lab_code[k], 1e-12), py.metrics.metric[k]));
+});
 test('VERSION matches package.json', () => {
   assert.equal(C.VERSION, require('../package.json').version);
 });

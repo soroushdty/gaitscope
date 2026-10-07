@@ -449,6 +449,14 @@ def main():
         }
     with open(p("expected.json"), "w") as f:
         json.dump({"source": "walk.mat (synthetic), python/lab_step_det.py, w=30, h=1", "columns": expected}, f, indent=2)
+    # --- the Python port's export (#53) of walk.mat column 2, which the dashboard's must match
+    import lab_step_det
+    A = W[:, 1]
+    model = lab_step_det.export_model(W[:, 0] - W[0, 0], A, detect_steps(A)[1],
+                                      {"file": "walk.mat", "variable": "Walking", "signal": "column 2", "signal_name": "Column 2", "unit": ""},
+                                      {"algorithm": "lab code", "window_w_samples": 30, "threshold_h": 1, "resample": "off", "to_g": False})
+    model["about"]["exported"] = "2026-10-07T00:00:00.000Z"  # fixed, so regenerating doesn't change the file
+    lab_step_det.write_export(model, p("export_python.json"))
     with open(p("envelopes.json"), "w") as f:
         json.dump({"source": "scipy.interpolate.PchipInterpolator", "pchip": pchip_fixtures()}, f)
     with open(p("spectral.json"), "w") as f:
