@@ -183,6 +183,40 @@ def dwt_fixtures():
     return out
 
 
+def cwt_fixtures():
+    """PyWavelets' complex Morlet CWT (cmorB-1, method='fft', precision 12) of a walk-like signal
+    whose rhythm speeds up, at several scales and widths: real and imaginary parts at some
+    samples (#101)."""
+    out = []
+    for fs, n, B in ((20, 400, 2.0), (28.7, 517, 1.0), (20, 160, 4.0)):
+        t = np.arange(n) / fs
+        x = 1 + 0.3 * np.sin(2 * np.pi * (1.4 * t + 0.02 * t ** 2)) + 0.08 * np.sin(2 * np.pi * 0.7 * t + 0.3) + 0.02 * np.cos(2 * np.pi * 4.1 * t)
+        freqs = [0.3, 0.75, 1.6, 2.9, 4.95]
+        scales = [fs / f for f in freqs]
+        coef, _ = pywt.cwt(x, scales, f"cmor{B}-1.0", method="fft")
+        idx = sorted({0, 1, n // 3, n // 2, n - 2, n - 1, 37})
+        out.append({"fs": fs, "n": n, "B": B, "scales": scales, "x": x.tolist(), "idx": idx,
+                    "re": [c.real[idx].tolist() for c in coef], "im": [c.imag[idx].tolist() for c in coef]})
+    return out
+
+
+def mra_fixtures():
+    """PyWavelets' db4 multiresolution analysis: wavedec to `level` (symmetric), then waverec of
+    each detail level alone (the rest zeroed), cut to the input's length (#101)."""
+    out = []
+    for n, level in ((400, 5), (517, 6), (64, 2)):
+        x = fft_input(n)
+        coeffs = pywt.wavedec(x, "db4", mode="symmetric", level=level)
+        zero = [np.zeros_like(c) for c in coeffs]
+        details = []
+        for j in range(1, level + 1):  # coeffs[-j] is detail level j (finest first)
+            keep = list(zero); keep[-j] = coeffs[-j]
+            details.append(pywt.waverec(keep, "db4", mode="symmetric")[:n].tolist())
+        keep = list(zero); keep[0] = coeffs[0]
+        out.append({"n": n, "level": level, "details": details, "approx": pywt.waverec(keep, "db4", mode="symmetric")[:n].tolist()})
+    return out
+
+
 def resample_input(fs, dur=3.0, seed=11):
     """t, a: uneven timing (±30%) starting at 0.0123 s, three repeated timestamps, a walk-like
     1.8 Hz swing plus a 70 Hz tone (above 50 Hz, the Nyquist frequency of 100 Hz)."""
@@ -476,6 +510,9 @@ def main():
                    "other": other_filter_fixtures(),
                    "savgol_exact": {"window": 231, "order": 5, "weights": savgol_exact_weights(231, 5)},
                    "dwt": dwt_fixtures()}, f)
+    with open(p("wavelets.json"), "w") as f:
+        json.dump({"source": "PyWavelets pywt.cwt (cmorB-1.0, method='fft') and wavedec/waverec (db4, symmetric)",
+                   "cwt": cwt_fixtures(), "mra": mra_fixtures()}, f)
     print("Wrote fixtures to", OUT)
 
 

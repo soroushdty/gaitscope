@@ -1923,16 +1923,23 @@
      the recording's time), freq (Hz, NaN where a window has no clear walking peak), window (s),
      hop (s), f and S: the short-time spectra themselves (for spectrogramImage)}. */
   const SPEC_HOP = 0.5, RHYTHM_RATE = 20;
-  function rhythmOverTime(A, t, p) {
+  /* The walking band on an even grid: evenGrid, and above 50 Hz low-passed at 8 Hz and kept
+     every q-th sample (about 20 Hz). Shared by rhythmOverTime, the CWT and the DWT bands.
+     Returns {x, fs, t0 (the grid's first time)}. */
+  function walkingGrid(A, t) {
     const g = evenGrid(A, t), q = Math.max(1, Math.floor(g.fs / RHYTHM_RATE));
     let x = g.A, fs = g.fs;
     if (q > 2) { const lp = lowpass(x, fs, 8); x = Float64Array.from({ length: Math.ceil(lp.length / q) }, (_, k) => lp[k * q]); fs /= q; }
+    return { x, fs, t0: g.t[0] };
+  }
+  function rhythmOverTime(A, t, p) {
+    const w = walkingGrid(A, t), x = w.x, fs = w.fs;
     const nperseg = Math.round((p.specWin || 4) * fs);
     if (x.length < nperseg) return { t: new Float64Array(0), freq: new Float64Array(0), window: nperseg / fs, hop: SPEC_HOP, f: new Float64Array(0), S: [] };
     let nfft = 1; while (nfft < Math.max(nperseg, Math.ceil(fs / 0.01))) nfft *= 2;
     const sg = spectrogram(x, fs, { nperseg, noverlap: nperseg - Math.max(1, Math.round(SPEC_HOP * fs)), nfft });
     const freq = Float64Array.from(sg.S, P => { const pk = dominantFrequency(sg.f, P); return pk.clear ? pk.freq : NaN; });
-    return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / fs, hop: Math.max(1, Math.round(SPEC_HOP * fs)) / fs, f: sg.f, S: sg.S };
+    return { t: sg.t.map(v => v + w.t0), freq, window: nperseg / fs, hop: Math.max(1, Math.round(SPEC_HOP * fs)) / fs, f: sg.f, S: sg.S };
   }
 
   /* Time-frequency pictures (#98, #101) share one layout, a grid: {t (column centres, s), hop
@@ -2133,6 +2140,102 @@
     return { freq: f[best], power: psd[best], clear: psd[best] >= 5 * median(inBand) };
   }
 
+  /* Continuous wavelet transform with the complex Morlet wavelet (#101), as PyWavelets'
+     pywt.cwt(x, scales, 'cmorB-C', method='fft') at its default precision 12: the wavelet
+     1/sqrt(pi B) exp(-u^2/B) exp(2 pi i C u) on 4096 points over [-8, 8] is integrated (a
+     running sum), conjugated, resampled at each scale by whole-number indices, convolved with
+     x (here by FFT) and differenced, times -sqrt(scale); scales in samples, and frequency =
+     C / (scale / fs). Returns one {re, im} per scale, each as long as x. */
+  const CMOR_POINTS = 4096;
+  function cwtMorlet(x, scales, B, C) {
+    // u as numpy.linspace makes it; PyWavelets then takes the spacing as u[1] - u[0], which is
+    // not exactly delta in floating point, and the resampling indices below depend on it
+    const n = x.length, lb = -8, ub = 8, delta = (ub - lb) / (CMOR_POINTS - 1), step = (lb + delta) - lb, amp = 1 / Math.sqrt(Math.PI * B);
+    const ire = new Float64Array(CMOR_POINTS), iim = new Float64Array(CMOR_POINTS);
+    let sr = 0, si = 0;
+    for (let k = 0; k < CMOR_POINTS; k++) {
+      const u = k === CMOR_POINTS - 1 ? ub : k * delta + lb, g = amp * Math.exp(-u * u / B);
+      sr += g * Math.cos(2 * Math.PI * C * u); si += g * Math.sin(2 * Math.PI * C * u);
+      ire[k] = sr * step; iim[k] = -(si * step); // conjugated, as for a complex wavelet
+    }
+    const span = ub - lb, out = [];
+    for (const scale of scales) {
+      const M = Math.ceil(scale * span + 1), div = scale * step, hre = [], him = [];
+      for (let k = 0; k < M; k++) { const j = Math.floor(k / div); if (j >= CMOR_POINTS) break; hre.push(ire[j]); him.push(iim[j]); }
+      hre.reverse(); him.reverse();
+      const L = hre.length, len = n + L - 1;
+      let P = 1; while (P < len) P *= 2;
+      const xr = new Float64Array(P), hr = new Float64Array(P), hi = new Float64Array(P);
+      xr.set(x); hr.set(hre); hi.set(him);
+      const X = fft(xr), H = fft(hr, hi), yr = new Float64Array(P), yi = new Float64Array(P);
+      for (let k = 0; k < P; k++) { yr[k] = X.re[k] * H.re[k] - X.im[k] * H.im[k]; yi[k] = X.re[k] * H.im[k] + X.im[k] * H.re[k]; }
+      const conv = ifft(yr, yi), f = -Math.sqrt(scale), d = (len - 1 - n) / 2, from = Math.floor(d);
+      const re = new Float64Array(n), im = new Float64Array(n);
+      for (let k = 0; k < n; k++) { const a = from + k; re[k] = f * (conv.re[a + 1] - conv.re[a]); im[k] = f * (conv.im[a + 1] - conv.im[a]); }
+      out.push({ re, im });
+    }
+    return out;
+  }
+  /* The CWT as a picture grid (see stftGrid): the walking band (walkingGrid) transformed at the
+     rows' centre frequencies from 0.3 Hz up (cmorB-1), the power |W|^2 divided by the scale, the
+     energy density of Torrence & Compo's Parseval relation (1998, eq. 14), averaged over 0.5 s
+     columns. line: each column's strongest walking frequency, when it stands out (5x the band's
+     median, as for the spectrum). coi: where edge effects matter, within the wavelet's e-folding
+     time sqrt(B)/f of either end (Torrence & Compo's cone of influence, sqrt(2) scale for
+     their Morlet, which cmor2-1 matches). */
+  const CWT_FMIN = 0.3;
+  function cwtGrid(A, t, p) {
+    const w = walkingGrid(A, t), { x, fs } = w, B = p.cwtB || 2, df = 0.05, rows = 100, n = x.length;
+    if (n < 2 * fs) return null;
+    const hop = Math.max(1, Math.round(SPEC_HOP * fs), Math.ceil(n / 1200)), cols = Math.floor(n / hop);
+    if (cols < 1) return null;
+    const used = [];
+    for (let i = 0; i < rows; i++) { const f = (i + 0.5) * df; if (f >= CWT_FMIN && f < fs / 2) used.push(i); }
+    const scales = used.map(i => fs / ((i + 0.5) * df)), W = cwtMorlet(x, scales, B, 1);
+    const P = Array.from({ length: cols }, () => new Float64Array(rows));
+    used.forEach((i, k) => {
+      const { re, im } = W[k], s = scales[k];
+      for (let c = 0; c < cols; c++) { let sum = 0; for (let j = c * hop; j < (c + 1) * hop; j++) sum += re[j] * re[j] + im[j] * im[j]; P[c][i] = sum / hop / s; }
+    });
+    const tc = Float64Array.from({ length: cols }, (_, c) => w.t0 + (c + 0.5) * hop / fs), fr = Float64Array.from({ length: rows }, (_, i) => (i + 0.5) * df);
+    const ridge = Float64Array.from(P, col => { const pk = dominantFrequency(fr, col); return pk.clear ? pk.freq : NaN; });
+    return { grid: { t: tc, hop: hop / fs, df, rows, P }, line: { t: tc, f: ridge }, coi: { from: w.t0, to: w.t0 + (n - 1) / fs, efold: f => Math.sqrt(B) / f } };
+  }
+  /* Multiresolution analysis with the db4 DWT (#101), as PyWavelets: wavedec to `level`
+     (symmetric edges), then for each detail level the waverec of that level alone, the others
+     zeroed, cut to x's length: the part of x in the band fs/2^(j+1)..fs/2^j. Returns {details:
+     [level 1 (finest) .. level], approx}; all add up to x. */
+  function mra(x, level) {
+    const ds = []; let a = x;
+    for (let l = 0; l < level; l++) { const r = dwt(a); ds.push(r.cD); a = r.cA; }
+    const rec = (cA, keep) => {
+      let cur = cA;
+      for (let l = level - 1; l >= 0; l--) { const d = keep === l || keep === 'all' ? ds[l] : new Float64Array(ds[l].length); if (cur.length === d.length + 1) cur = cur.subarray(0, d.length); cur = idwt(cur, d); }
+      return cur.slice(0, x.length);
+    };
+    return { details: ds.map((_, j) => rec(new Float64Array(a.length), j)), approx: rec(a, -1) };
+  }
+  /* The DWT bands as a picture grid: the walking band split into octave bands by mra, enough
+     levels to reach about 0.25 Hz; each band's mean square over 0.5 s columns fills the rows
+     inside the band. bands: [{level, lo, hi (Hz)}] for labelling. */
+  function dwtGrid(A, t) {
+    const w = walkingGrid(A, t), { x, fs } = w, n = x.length, df = 0.05, rows = 100;
+    const maxLevel = Math.floor(Math.log2(n / (DB4.decLo.length - 1)));
+    const level = Math.min(maxLevel, Math.max(1, Math.ceil(Math.log2(fs / 0.5))));
+    if (level < 1 || n < 2 * fs) return null;
+    const { details } = mra(x, level), hop = Math.max(1, Math.round(SPEC_HOP * fs), Math.ceil(n / 1200)), cols = Math.floor(n / hop);
+    const bands = details.map((_, j) => ({ level: j + 1, lo: fs / 2 ** (j + 2), hi: fs / 2 ** (j + 1) }));
+    const P = Array.from({ length: cols }, () => new Float64Array(rows));
+    details.forEach((d, j) => {
+      const { lo, hi } = bands[j];
+      for (let c = 0; c < cols; c++) {
+        let sum = 0; for (let k = c * hop; k < (c + 1) * hop; k++) sum += d[k] * d[k];
+        for (let i = 0; i < rows; i++) { const f = (i + 0.5) * df; if (f >= lo && f < hi) P[c][i] = sum / hop; }
+      }
+    });
+    return { grid: { t: Float64Array.from({ length: cols }, (_, c) => w.t0 + (c + 0.5) * hop / fs), hop: hop / fs, df, rows, P }, bands };
+  }
+
   /* Frequency-domain methods (#101), shown in the Frequency domain section's two slots: kind
      'whole' (power by frequency over the whole recording) or 'time' (a time x frequency
      picture). They are views only: steps, metrics, the rhythm count and the checks always come
@@ -2156,6 +2259,20 @@
         const r = (ctx && ctx.rhythm) || rhythmOverTime(A, t, p), grid = stftGrid(r);
         return grid && { grid, line: { t: r.t, f: r.freq }, window: r.window, hop: r.hop };
       },
+    },
+    {
+      id: 'cwt', kind: 'time', name: 'Continuous wavelet (CWT, Morlet)',
+      params: [{ key: 'cwtB', label: 'Wavelet width (bandwidth B)', min: 0.5, max: 8, step: 0.5, default: 2, unit: '', dec: 1, hint: 'Wider: sharper in frequency, blurrier in time. 2 is the Morlet of Torrence & Compo (about 6 cycles).' }],
+      credit: [{ text: 'Torrence & Compo, 1998', doi: '10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2', note: 'Morlet CWT, power per scale, cone of influence' },
+        { text: 'Lee et al., 2019', doi: '10.21105/joss.01237', note: 'PyWavelets, whose cwt this follows' }],
+      tagline: 'A wavelet that stretches for slow rhythms and shrinks for fast ones, so it is sharp in time for fast changes and sharp in frequency for the slow stride at once. Dashed lines mark the ends, where edge effects matter.',
+      compute: (A, t, p) => cwtGrid(A, t, p),
+    },
+    {
+      id: 'dwt', kind: 'time', name: 'Wavelet bands (DWT)', params: [],
+      credit: [{ text: 'Daubechies, 1988', doi: '10.1002/cpa.3160410705', note: 'db4 wavelet' }, { text: 'Lee et al., 2019', doi: '10.21105/joss.01237', note: 'PyWavelets, which this matches' }],
+      tagline: 'The signal split into octave bands (each half the frequency of the one above) with the same db4 wavelet as the wavelet filter; brightness is each band\u2019s power over time. Coarse: one band can hold both the step and the stride.',
+      compute: (A, t) => dwtGrid(A, t),
     },
   ];
 
@@ -2727,7 +2844,7 @@
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, walkingGrid, cwtMorlet, cwtGrid, mra, dwtGrid, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
