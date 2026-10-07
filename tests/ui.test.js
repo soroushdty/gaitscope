@@ -818,6 +818,49 @@ test('recorder: hold to stop, too short, page hidden mid-recording', async () =>
   assert.match(text(pg, 'valList'), /Recording stopped early.*after [78]\.\d s/);
 });
 
+test('recorder: a hold that stops cuts the touch out; a touch let go early cuts nothing', async () => {
+  const pg = makePage({ coarse: true, motion: true });
+  const $ = id => pg.d.getElementById(id);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  const saved = async () => { $('saveRec').click(); return Core.parseCsv(await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); })); };
+  await startRecording(pg);
+  const all = motionSamples(14), at = s => (s.ts - all[0].ts) / 1000;
+  const part = (a, b) => all.filter(s => at(s) >= a && at(s) < b);
+  sendMotion(pg, part(0, 10));
+  $('recStop').dispatchEvent(new pg.w.Event('pointerdown'));
+  sendMotion(pg, part(10, 10.5)); // brushing the button: let go before the hold completes
+  await sleep(200); $('recStop').dispatchEvent(new pg.w.Event('pointerup'));
+  await sleep(900);
+  assert.equal($('recOverlay').dataset.phase, 'recording');
+  sendMotion(pg, part(10.5, 12));
+  $('recStop').dispatchEvent(new pg.w.Event('pointerdown'));
+  sendMotion(pg, part(12, 14)); // during the hold
+  await sleep(1100);
+  assert.equal($('recOverlay').dataset.phase, 'done');
+  // kept: everything up to 0.3 s before the finger came down, the brushed part included
+  const kept = all.filter(s => at(s) < 12 && s.ts <= part(10.5, 12).at(-1).ts - 300);
+  const cut = (all.at(-1).ts - kept.at(-1).ts) / 1000;
+  assert.ok(at(kept.at(-1)) > 11.6 && at(kept.at(-1)) < 11.75 && cut > 2.2 && cut < 2.45, at(kept.at(-1)) + ' ' + cut);
+  assert.match(text(pg, 'recInfo'), new RegExp('^' + kept.length + ' samples at about 6\\d Hz\\. The last ' + cut.toFixed(1).replace('.', '\\.') + ' s, from just before you touched Stop, was left out\\.$'));
+  $('recSteps').value = '10';
+  await submitRecording(pg);
+  assert.match(text(pg, 'valList'), new RegExp('Recorded with: 10 steps counted by hand\\. The last ' + cut.toFixed(1).replace('.', '\\.') + ' s, from just before Stop was touched, was left out\\.'));
+  let p = await saved();
+  assert.equal(p.meta.samples, String(kept.length)); assert.equal(p.meta.trimmed_end_s, cut.toFixed(2)); assert.equal(p.meta.stopped, 'user');
+  assert.deepEqual([...p.cols[0]], kept.map(s => (s.ts - kept[0].ts) / 1000));
+
+  // Enter stops at once and cuts nothing: no finger on the phone
+  await startRecording(pg);
+  const five = motionSamples(5);
+  sendMotion(pg, five);
+  $('recStop').dispatchEvent(new pg.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.doesNotMatch(text(pg, 'recInfo'), /left out/);
+  await submitRecording(pg);
+  assert.doesNotMatch(text(pg, 'valList'), /left out/);
+  p = await saved();
+  assert.equal(p.meta.samples, String(five.length)); assert.equal(p.meta.trimmed_end_s, undefined);
+});
+
 test('recorder: iPhone permission refused, and a computer without a sensor', async () => {
   const pg = makePage({ coarse: true, motion: true, permission: 'denied' });
   const $ = id => pg.d.getElementById(id);

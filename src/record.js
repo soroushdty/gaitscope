@@ -8,7 +8,7 @@
   'use strict';
   const C = window.StepCore;
   const $ = id => document.getElementById(id);
-  const COUNTDOWN_S = 3, HOLD_MS = 1000, NO_SENSOR_MS = 2500, MAX_S = 30 * 60;
+  const COUNTDOWN_S = 3, HOLD_MS = 1000, PRESS_MARGIN_MS = 300, NO_SENSOR_MS = 2500, MAX_S = 30 * 60;
 
   // Phones and tablets: a motion API and a touch screen as the main pointer. Desktops usually
   // have the API but no sensor, so they get a hint to open the page on a phone instead.
@@ -119,17 +119,29 @@
     else if (st.phase === 'countdown') { cleanup(); st = null; close(); }
   }
 
-  function stop(reason) {
+  /* pressAt: how many samples had arrived when the finger came down on Stop, when a hold
+     stopped the recording. Reaching for the button and pressing it move the phone, and a
+     detector can count that as a step (the owner's first recordings, 2026-10-07: a bump about
+     0.2 s before the touch and during it). So the samples from PRESS_MARGIN_MS before the
+     touch onwards are left out. */
+  function stop(reason, pressAt) {
     if (!st || st.phase !== 'recording') return;
     cleanup();
-    st.phase = 'done'; st.reason = reason;
+    st.phase = 'done'; st.reason = reason; st.trimmed = 0;
+    if (pressAt !== undefined && st.samples.length) {
+      const s = st.samples, end = pressAt > 0 ? s[pressAt - 1].ts - PRESS_MARGIN_MS : -Infinity;
+      const kept = s.slice(0, pressAt).filter(x => x.ts <= end);
+      st.trimmed = (s[s.length - 1].ts - (kept.length ? kept[kept.length - 1].ts : s[0].ts)) / 1000;
+      st.samples = kept;
+    }
     const rc = C.recordingChecks(st.samples, reason);
     if (!rc.ok) return fail(rc.checks[0].detail, rc.checks[0].fix);
     st.checks = rc.checks;
     const s = st.samples, dur = (s[s.length - 1].ts - s[0].ts) / 1000;
     st.rate = (s.length - 1) / dur;
     show('done', 'Recording finished', clock(dur), s.length + ' samples at about ' + Math.round(st.rate) + ' Hz.' +
-      (reason === 'hidden' ? ' It stopped early because the screen locked or the page was hidden; what was captured is kept.' : ''));
+      (reason === 'hidden' ? ' It stopped early because the screen locked or the page was hidden; what was captured is kept.' : '') +
+      (st.trimmed ? ' The last ' + C.fmt(st.trimmed, 1) + ' s, from just before you touched Stop, was left out.' : ''));
     $('recSteps').value = ''; $('recPos').value = '';
   }
 
@@ -140,7 +152,7 @@
     const d = st.started;
     const meta = {
       recorder: 'gaitscope (browser devicemotion)', started: d.toISOString(), device: navigator.userAgent,
-      sample_rate_hz: st.rate.toFixed(1), samples: st.samples.length, stopped: st.reason,
+      sample_rate_hz: st.rate.toFixed(1), samples: st.samples.length, stopped: st.reason, trimmed_end_s: st.trimmed ? st.trimmed.toFixed(2) : '',
       steps_counted: /^\d+$/.test(steps) ? Number(steps) : '', phone_position: C.PHONE_POSITIONS[pos] || '',
     };
     const name = 'recording_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '.csv';
@@ -150,12 +162,17 @@
     done({ csv, name, checks, position: pos });
   }
 
-  // Hold to stop: a pocket can tap, but rarely holds still on one spot for a second.
+  // Hold to stop: a pocket can tap, but rarely holds still on one spot for a second. Only a
+  // hold that stops the recording cuts the touch out of it; a touch let go early cuts nothing.
   function wireStop() {
     const b = $('recStop');
     let timer = 0;
     const release = () => { clearTimeout(timer); b.classList.remove('holding'); };
-    b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('holding'); timer = setTimeout(() => { release(); stop('user'); }, HOLD_MS); });
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault(); b.classList.add('holding');
+      const pressAt = st ? st.samples.length : 0;
+      timer = setTimeout(() => { release(); stop('user', pressAt); }, HOLD_MS);
+    });
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, release);
     b.addEventListener('contextmenu', e => e.preventDefault()); // long-press menu on phones
     b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop('user'); } });
