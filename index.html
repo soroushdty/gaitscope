@@ -15,7 +15,7 @@
 <header class="top">
   <div>
     <h1>Step detector</h1>
-    <p id="subtitle">Upload a walking recording from MATLAB (.mat), Physics Toolbox (.csv) or phyphox (.zip), tune the Lab 1 peak detector, and compare it with a corrected version.</p>
+    <p id="subtitle">Upload a walking recording from MATLAB (.mat), Physics Toolbox (.csv) or phyphox (.zip), or record one with your phone, tune the Lab 1 peak detector, and compare it with a corrected version.</p>
   </div>
   <div class="filechip" id="fileChip" hidden></div>
 </header>
@@ -30,6 +30,7 @@
         <span>or drop it here. MATLAB .mat, CSV or phyphox .zip, up to 50 MB.</span>
       </label>
       <p class="hint"><button class="link" id="demoBtn" type="button">Try a synthetic walk</button></p>
+      <button class="btn rec-btn" id="recBtn" type="button" hidden>Record a walk</button>
       <div id="dataControls" hidden>
         <label class="field" id="varRow">Variable<select id="varSel"></select></label>
         <label class="field">Signal to analyse<select id="chanSel"></select></label>
@@ -39,6 +40,7 @@
         </select></label>
         <p class="hint" id="posHint">Each peak is one step.</p>
         <label class="field" id="fsRow" hidden>Sampling rate (Hz)<input type="number" id="fsIn" value="100" min="1" max="10000" step="1"></label>
+        <button class="btn" id="saveRec" type="button" hidden>Download recording (CSV)</button>
       </div>
     </section>
 
@@ -253,12 +255,15 @@
       <div class="stack">
         <button class="btn primary" id="emptyPick" type="button">Choose a file</button>
         <button class="btn" id="emptyDemo" type="button">Try a synthetic walk</button>
+        <button class="btn" id="emptyRec" type="button" hidden>Record a walk</button>
       </div>
+      <p class="hint" id="recHint">To record a walk with the phone’s own sensors, open this page on your phone.</p>
       <div class="formats">
         <p><b>MATLAB .mat</b> files saved by MATLAB or Octave (v5 to v7, and v7.3, which loads a 41 KB reader the first time), like the lab's Walking.mat. Any variable name works. Samples should run down the rows; a time column first is optional.</p>
         <p><b>Physics Toolbox .csv</b> exports from the G-Force Meter, Linear Accelerometer, Gyroscope or Multi Record, with elapsed or clock time, comma or semicolon separated.</p>
         <p><b>phyphox .zip</b> exports (Export data → CSV) of Acceleration with g or without g, as phyphox saves them, or the <i>Raw Data.csv</i> inside. The phone, sensor and start time from its <i>meta</i> folder are listed with the checks.</p>
         <p><b>Other CSV files</b> with numbers in columns, with or without a header row.</p>
+        <p><b>Record a walk</b> on a phone: the page reads the motion sensors itself (about 60 Hz), with no app to install. The recording loads like a file and can be downloaded as CSV, with the steps you counted and where the phone was.</p>
       </div>
     </div>
 
@@ -334,8 +339,34 @@
   </main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="rec-overlay" id="recOverlay" role="dialog" aria-modal="true" aria-labelledby="recTitle" hidden>
+  <div class="rec-box" id="recBox">
+    <h2 id="recTitle">Get ready</h2>
+    <p class="rec-big" id="recBig" aria-live="polite"></p>
+    <p class="rec-info" id="recInfo"></p>
+    <button class="rec-stop" id="recStop" type="button" hidden><span class="rec-fill"></span><span class="rec-label">Hold to stop</span></button>
+    <form id="recForm" hidden>
+      <label class="field">How many steps did you count? (optional)<input type="number" id="recSteps" min="0" max="100000" step="1" inputmode="numeric"></label>
+      <label class="field">Where was the phone?<select id="recPos">
+        <option value="">Not saying</option>
+        <option value="hand">In the hand</option>
+        <option value="front pocket">Front trouser pocket</option>
+        <option value="back pocket">Back trouser pocket</option>
+        <option value="other">Somewhere else</option>
+      </select></label>
+      <p class="hint">Both answers are saved in the recording, so it can be used to check the step counters.</p>
+      <div class="stack"><button class="btn primary" type="submit">Load the recording</button><button class="btn" type="button" id="recDiscard">Discard</button></div>
+    </form>
+    <div id="recErr" hidden>
+      <p id="recErrText"></p>
+      <p class="hint" id="recErrFix"></p>
+      <div class="stack"><button class="btn" type="button" id="recClose">Close</button></div>
+    </div>
+  </div>
+</div>
 
 <script src="src/core.js"></script>
+<script src="src/record.js"></script>
 <script src="src/app.js"></script>
 </body>
 </html>

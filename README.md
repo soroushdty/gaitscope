@@ -17,6 +17,11 @@ fix individual steps by hand, and export the results.
   Record exports, comma or semicolon separated, elapsed or clock time), or phyphox
   export zips ("Acceleration with g" or "without g"; the phone, sensor chip and start
   time from its `meta/` folder are listed with the checks).
+- **Record a walk** on a phone with the browser's motion sensors, with no app to
+  install. Open the page on the phone, tap Record, walk, then hold to stop. The page asks
+  how many steps you counted and where the phone was. The recording loads like an
+  uploaded file and downloads as a CSV that both the dashboard and the Python port read.
+  It needs https, which GitHub Pages provides, and the screen on while recording.
 - **Validation.** Every file is checked against an [input schema](docs/schema.md)
   before analysis. Problems come with a concrete fix, such as the exact MATLAB line
   to re-save a file in a format the page can't read.

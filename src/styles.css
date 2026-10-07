@@ -178,4 +178,21 @@ tr.only-orig td { color: var(--muted); }
   .top { padding: 18px 16px 14px; flex-direction: column; align-items: flex-start; }
   .filechip { text-align: left; max-width: 100%; }
 }
+/* recorder overlay (#51): covers the page so touches in a pocket change nothing */
+.rec-btn { margin-top: 10px; width: 100%; justify-content: center; }
+#saveRec { margin-top: 12px; }
+body.recording { overflow: hidden; }
+.rec-overlay { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center; padding: 24px 16px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.rec-box { width: 100%; max-width: 420px; text-align: center; }
+.rec-box h2 { font-size: 20px; margin: 0 0 8px; }
+.rec-big { font-size: 64px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 8px 0; color: var(--signal); }
+.rec-big:empty { display: none; }
+.rec-info { color: var(--muted); margin: 0 0 20px; }
+.rec-box .field, .rec-box .hint { text-align: left; }
+.rec-box .stack { justify-content: center; }
+.rec-stop { position: relative; overflow: hidden; width: 100%; padding: 22px; border-radius: 12px; border: 2px solid var(--orig); background: var(--surface); color: var(--ink); font-size: 18px; font-weight: 600; cursor: pointer; touch-action: none; -webkit-touch-callout: none; }
+.rec-fill { position: absolute; inset: 0; width: 0; background: var(--orig); opacity: .35; transition: width 0s; }
+.rec-stop.holding .rec-fill { width: 100%; transition: width 1s linear; }
+.rec-label { position: relative; }
+#recErrText { font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
