@@ -1,5 +1,6 @@
 """Tests for python/lab_step_det.py.  Run: uv run pytest"""
 import json
+import re
 import os
 import sys
 
@@ -315,3 +316,68 @@ def test_csv_from_the_browser_recorder():
     W = _walk()
     assert np.allclose(D[:, 0], W[:, 0], atol=1e-12)
     assert np.allclose(D[:, 1:] * 9.80665, W[:, 1:] + [0, 9.80665, 0])
+
+
+# --- export (#53): the dashboard's content model, lab code only
+
+def _walk_model():
+    W = _walk()
+    A = W[:, 1]
+    return lab_step_det.export_model(W[:, 0], A, detect_steps(A)[1], {"file": "walk.mat", "signal": "column 2"},
+                                     {"algorithm": "lab code", "threshold_h": 1, "note": "naïve, ✓"})
+
+
+@pytest.mark.parametrize("ext", ["json", "mat", "npz", "zip"])
+def test_export_formats_read_back_with_the_same_numbers(tmp_path, ext):
+    import json
+    import zipfile
+    model, f = _walk_model(), str(tmp_path / f"walk.{ext}")
+    lab_step_det.write_export(model, f)
+    if ext == "json":
+        back = json.load(open(f))
+        col = lambda t, c: np.array([np.nan if v is None else v for v in back[t][c]], dtype=float if c != "metric" else str)
+        settings = back["settings"]
+    elif ext == "mat":
+        g = loadmat(f, simplify_cells=True)["gaitscope"]
+        col = lambda t, c: np.atleast_1d(g[t][c])
+        settings = g["settings"]
+    elif ext == "npz":
+        z = np.load(f, allow_pickle=False)
+        col = lambda t, c: z[f"{t}/{c}"]
+        settings = json.loads(str(z["settings"]))
+        assert z["steps/in_lab_code"].dtype == bool and z["metrics/metric"].dtype.kind == "U"
+    else:
+        zf = zipfile.ZipFile(f)
+        assert zf.namelist() == ["about.csv", "settings.csv", "params.csv", "signals.csv", "steps.csv", "metrics.csv", "notes.csv"]
+        import csv
+        import io
+        table = lambda t: list(csv.reader(io.StringIO(zf.read(f"{t}.csv").decode())))
+        col = lambda t, c: np.array([np.nan if r[table(t)[0].index(c)] == "" else r[table(t)[0].index(c)] for r in table(t)[1:]],
+                                    dtype=str if c == "metric" else float)
+        settings = dict(table("settings")[1:])
+        assert table("steps")[1][3] == "true" and table("metrics")[1][:2] == ["steps", "14"], "numbers and true/false as the dashboard writes them"
+    assert settings["note"] == "naïve, ✓"
+    for t, c in [("signals", "time_s"), ("signals", "signal"), ("steps", "sample_matlab"), ("steps", "value"), ("metrics", "lab_code")]:
+        assert np.array_equal(col(t, c), model[t][c], equal_nan=True), (ext, t, c)
+    assert list(col("metrics", "metric")) == model["metrics"]["metric"]
+
+
+def test_cli_export_and_its_errors(tmp_path, monkeypatch, capsys):
+    import json
+    f = tmp_path / "out.json"
+    out = run_cli(monkeypatch, capsys, "--file", os.path.join(FIX, "ptb_gforce.csv"), "--col", "3", "--export", str(f))
+    assert f"Exported:            {f}" in out
+    m = json.load(open(f))
+    assert m["about"]["signal_name"] == "gFy" and m["about"]["generator"] == "gaitscope python port"
+    assert m["steps"]["sample_matlab"] == [float(i) for i in re.search(r"Step indices:\s+\[(.*)\]", out)[1].split(", ")]
+    with pytest.raises(SystemExit):
+        run_cli(monkeypatch, capsys, "--file", os.path.join(FIX, "walk.mat"), "--export", str(tmp_path / "out.txt"))
+    assert "use .json, .mat, .npz or .zip" in capsys.readouterr().err
+
+
+def test_version_is_the_same_everywhere():
+    import tomllib
+    pyproject = tomllib.load(open(os.path.join(ROOT, "pyproject.toml"), "rb"))["project"]["version"]
+    package = json.load(open(os.path.join(ROOT, "package.json")))["version"]
+    core = re.search(r"const VERSION = '([^']+)'", open(os.path.join(ROOT, "src", "core.js")).read())[1]
+    assert lab_step_det.VERSION == pyproject == package == core

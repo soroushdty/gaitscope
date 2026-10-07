@@ -75,7 +75,9 @@ records at about 460 Hz. `--resample 100` linearly interpolates the recording on
 100 Hz grid first (MATLAB: `interp1(t, A, 0:0.01:t(end))`). `--resample-method pchip`
 uses a monotone cubic instead, and `--antialias` low-passes below the new Nyquist frequency
 first when going down in rate.
-The detector itself is unchanged. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
+The detector itself is unchanged. `--export FILE` saves the result in the dashboard's
+export layout ([docs/export.md](docs/export.md)) as `.json`, `.mat`, `.npz` or a `.zip` of
+CSV files, with the lab code's steps and metrics. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
 h5py. A missing or non-numeric `--var` says which variables the file has.
 
 ```bash
@@ -84,6 +86,7 @@ uv run python python/lab_step_det.py --file data/Walking.mat --col 2
 uv run python python/lab_step_det.py --file data/g_force_....csv --col 2 --w 60
 uv run python python/lab_step_det.py --file data/g_force_....csv --col 2 --w 60 --resample 100
 uv run python python/lab_step_det.py --file "data/Data from phyphox.zip" --col 4 --resample 100 --to-g
+uv run python python/lab_step_det.py --file data/Walking.mat --col 2 --export walking.mat   # or .json, .npz, .zip
 uv run python python/plot_walking.py data/Walking.mat --out walking_steps.png
 ```
 
