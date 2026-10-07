@@ -80,7 +80,7 @@ metrics are computed, so their columns compare directly.
 
 | Function | What it does |
 |---|---|
-| `lowpass(A, fs, fc)` | 2nd-order Butterworth low-pass run forwards and backwards (MATLAB `filtfilt`, scipy `filtfilt`), so peaks keep their timing. Gain ½ at the cut-off `fc`. Same output as scipy to 1e-13. Uses the median sampling rate; phone timing jitter is small next to a cut-off of a few Hz. |
+| `lowpass(A, fs, fc)` | 2nd-order Butterworth low-pass run forwards and backwards (MATLAB `filtfilt`, scipy `filtfilt`), so peaks keep their timing. Gain ½ at the cut-off `fc`. Same output as scipy to 1e-13. Uses the measured sampling rate (the mean of the typical intervals, `docs/schema.md` §6); phone timing jitter is small next to a cut-off of a few Hz. |
 | `dynamicThreshold(A, half)` | Sliding max and min and their midpoint. |
 
 ## Vertical and horizontal acceleration (`gravitySplit`)

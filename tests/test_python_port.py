@@ -381,3 +381,12 @@ def test_version_is_the_same_everywhere():
     package = json.load(open(os.path.join(ROOT, "package.json")))["version"]
     core = re.search(r"const VERSION = '([^']+)'", open(os.path.join(ROOT, "src", "core.js")).read())[1]
     assert lab_step_det.VERSION == pyproject == package == core
+
+
+def test_sampling_rate_from_typical_gaps():
+    """Whole-millisecond times from a 57.4 Hz clock (gaps of 17 and 18 ms) read as 57.4 Hz, not
+    the median's 58.8; dropped samples and a pause don't lower it (like gapRate in core.js)."""
+    t = np.round(np.arange(1200) * 1000 / 57.4) / 1000
+    assert sampling_rate(t) == pytest.approx(57.4, abs=0.01)
+    keep = np.array([v + 2 if v > 10 else v for k, v in enumerate(t) if k % 7 != 3])
+    assert sampling_rate(keep) == pytest.approx(57.4, abs=0.05)

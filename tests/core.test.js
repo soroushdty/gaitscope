@@ -1256,3 +1256,18 @@ test('unit inference from a quiet stretch', () => {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
   assert.ok(ds.checks.some(c => c.title === 'Units: gravity removed'));
 });
+
+test('the sampling rate comes from the typical gaps: rounded times and dropped samples', () => {
+  // a 57.4 Hz clock read in whole milliseconds, like Firefox on Android: gaps of 17 and 18 ms
+  const ms = n => Float64Array.from({ length: n }, (_, k) => Math.round(k * 1000 / 57.4) / 1000);
+  const t = ms(1200), A = Float64Array.from(t, v => Math.sin(2 * Math.PI * 1.6 * v));
+  const ds = C.buildDataset(['time', 'gFz (g)'], [t, A], 'csv');
+  const ch = C.prepareChannel(ds, 1);
+  assert.ok(Math.abs(ch.fs - 57.4) < 0.01, String(ch.fs)); // the median gap (17 ms) would say 58.8
+  assert.ok(Math.abs(C.datasetRate(ds) - 57.4) < 0.01);
+  assert.ok(ch.checks.some(c => c.title === 'Sampling rate about 57.4 Hz'));
+  // every 7th sample dropped and one 2 s pause: the rate stays the clock's, not the average
+  const keep = [...t].filter((_, k) => k % 7 !== 3).map(v => (v > 10 ? v + 2 : v));
+  const ds2 = C.buildDataset(['time', 'gFz (g)'], [Float64Array.from(keep), Float64Array.from(keep, v => Math.sin(v))], 'csv');
+  assert.ok(Math.abs(C.prepareChannel(ds2, 1).fs - 57.4) < 0.05);
+});

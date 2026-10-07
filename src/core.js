@@ -811,7 +811,20 @@
     if (!ds.t) return fsManual || 100;
     const dts = [];
     for (let i = 1; i < ds.n; i++) { const d = ds.t[i] - ds.t[i - 1]; if (d > 0) dts.push(d); }
-    return 1 / median(dts);
+    return gapRate(dts);
+  }
+  /* The sampling rate from the gaps between timestamps (all > 0): the mean of the gaps within
+     half to 1.5 times the median. The median alone is off when the times are rounded: Firefox
+     on Android gives whole milliseconds, so a 57.4 Hz recording has gaps of 16, 17 and 18 ms and
+     its median says 58.8 Hz (the owner's Pixel 9a, 2026-10-07). A plain mean would count dropped
+     samples and pauses (Physics Toolbox's Linear Accelerometer drops some: 50 instead of 57.4
+     Hz). Summed in order, like sampling_rate in python/lab_step_det.py, so both give the same
+     number. */
+  function gapRate(dts) {
+    const md = median(dts);
+    let s = 0, n = 0;
+    for (const d of dts) if (d >= 0.5 * md && d <= 1.5 * md) { s += d; n++; }
+    return n / s;
   }
   function gravitySplit(ds, fsManual) {
     const fs = datasetRate(ds, fsManual);
@@ -900,7 +913,7 @@
       let dup = 0;
       for (let i = 1; i < t.length; i++) { const d = t[i] - t[i - 1]; if (d > 0) dts.push(d); else dup++; }
       const md = median(dts);
-      fs = 1 / md;
+      fs = gapRate(dts);
       const jitter = std(dts) / md;
       let gaps = 0, maxGap = 0;
       for (const d of dts) if (d > 5 * md) { gaps++; maxGap = Math.max(maxGap, d); }
@@ -1232,7 +1245,7 @@
      forwards and then backwards (like MATLAB's filtfilt), so peaks stay at the same time; the
      gain at the cut-off is 1/2. Both ends are padded with a point reflection of 3·fs/fc
      samples, longer than sosfiltfilt's default, so slow cut-offs start settled. fs is the
-     median rate; phone jitter is small next to a few-Hz cut-off. A cut-off at or above fs/2
+     measured rate (gapRate); phone jitter is small next to a few-Hz cut-off. A cut-off at or above fs/2
      returns an unfiltered copy. */
   function lowpass(A, fs, fc) {
     if (!(fc > 0) || !(fc < fs / 2) || A.length < 3) return Float64Array.from(A);

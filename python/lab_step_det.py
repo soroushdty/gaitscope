@@ -305,7 +305,23 @@ def load_mat(path, var):
 
 
 def sampling_rate(t):
-    """Median sampling rate in Hz from a time column in seconds."""
+    """Sampling rate in Hz from a time column in seconds: the mean of the gaps within half to
+    1.5 times the median gap, like gapRate in src/core.js. The median alone is off when times
+    are rounded (Firefox on Android: whole milliseconds, so 58.8 Hz for a 57.4 Hz recording);
+    a plain mean would count dropped samples and pauses. Summed in order, as core.js does, so
+    both ports give the same number to the last bit."""
+    dt = np.diff(t)
+    dt = dt[dt > 0]
+    md = np.median(dt)
+    total, n = 0.0, 0
+    for d in dt[(dt >= 0.5 * md) & (dt <= 1.5 * md)]:
+        total += float(d)
+        n += 1
+    return n / total
+
+
+def _median_rate(t):
+    """1 / the median gap: the even grid's rate in _even_grid and core.js evenGrid."""
     dt = np.diff(t)
     return 1 / np.median(dt[dt > 0])
 
@@ -406,10 +422,10 @@ def resample(W, fs, method="linear", antialias=False):
         raise ValueError(f"Unknown resampling method {method!r}: use 'linear' or 'pchip'.")
     t, Y, _ = _merge_repeats(t, W[:, 1:])
     t2 = np.arange(int(np.floor(t[-1] * fs + 1e-9)) + 1) / fs
-    if antialias and fs < sampling_rate(t):
+    if antialias and fs < _median_rate(t):
         from scipy.signal import cheby1, sosfiltfilt
         t, Y = _even_grid(t, Y)
-        sos = cheby1(ANTIALIAS_ORDER, ANTIALIAS_RIPPLE, ANTIALIAS_FRACTION * fs / 2, fs=sampling_rate(t), output="sos")
+        sos = cheby1(ANTIALIAS_ORDER, ANTIALIAS_RIPPLE, ANTIALIAS_FRACTION * fs / 2, fs=_median_rate(t), output="sos")
         Y = sosfiltfilt(sos, Y, axis=0)
     if method == "pchip":
         from scipy.interpolate import PchipInterpolator
