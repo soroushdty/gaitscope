@@ -665,7 +665,8 @@
         : ' Hand counts usually include the first and last step, which detectors can miss at the start and stop.') });
     }
     const slow = g.stride ? [] : dets.filter(d => d.idx.length >= 3 && d.metrics.stepInterval > 0.85 && d.metrics.stepInterval < 1.6);
-    if (slow.length) out.push({ level: 'info', title: 'Steps may be strides', detail: slow.map(d => d.label + '’s steps are ' + fmt(d.metrics.stepInterval, 2) + ' s apart').join('; ') + ', slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; set Phone position to "One leg" under Recording.' });
+    // a careful walk can be this slow too: the owner's 10 counted steps at the chest took 0.97 s each
+    if (slow.length) out.push({ level: 'info', title: 'Steps may be strides, or the walk was slow', detail: slow.map(d => d.label + '’s steps are ' + fmt(d.metrics.stepInterval, 2) + ' s apart').join('; ') + ', slow for single steps (usually 0.45 to 0.7 s). Either the walk was slow (a careful walk can take a second per step), or each peak is a stride, a left plus a right step. Only for strides, set Phone position to "One leg" under Recording.' });
     return out;
   }
 
