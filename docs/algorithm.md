@@ -123,6 +123,7 @@ edges included, on a signal with spikes (`smoothing` in `tests/fixtures/filters.
 | Filter | What it does | Edges | Note |
 |---|---|---|---|
 | Moving average | Mean over the window (default 0.1 s) | Repeat the end sample (scipy `ndimage.uniform_filter1d`, `mode='nearest'`) | The simplest smoother; it also lowers peaks |
+| Median | Median over the window (default 0.05 s) | Repeat the end sample (scipy `ndimage.median_filter`, `mode='nearest'`) | Removes spikes shorter than half the window (a tap or knock) and keeps real peaks at their height. Not a frequency filter. |
 
 Settings, under Advanced: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
 kept below half the sampling rate), and an optional high-pass cut-off (default off). A
