@@ -1165,13 +1165,20 @@
      data-theme off, so the CSS follows the system setting; the plots redraw on any change
      (the observer below). Storage can be blocked (private windows), so every use is guarded. */
   const THEMES = ['system', 'light', 'dark'], THEME_KEY = 'gaitscope-theme';
-  const THEME_NAME = { system: 'System', light: 'Light', dark: 'Dark' }, THEME_ICON = { system: '\u25d0', light: '\u2600', dark: '\u263e' };
+  const THEME_NAME = { system: 'System', light: 'Light', dark: 'Dark' };
+  // drawn, not font glyphs: the page font has no half circle, sun or moon
+  const svgIcon = body => '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+  const THEME_ICON = {
+    system: svgIcon('<circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/>'),
+    light: svgIcon('<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"/>'),
+    dark: svgIcon('<path d="M13.5 9.6A5.8 5.8 0 1 1 6.4 2.5a4.6 4.6 0 0 0 7.1 7.1z"/>'),
+  };
   function storedTheme() { try { const v = window.localStorage.getItem(THEME_KEY); return THEMES.includes(v) ? v : 'system'; } catch (e) { return 'system'; } }
   function applyTheme(v) {
     if (v === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', v);
     const b = $('themeBtn'), next = THEMES[(THEMES.indexOf(v) + 1) % THEMES.length];
     b.dataset.theme = v;
-    b.textContent = THEME_ICON[v] + ' ' + THEME_NAME[v];
+    b.innerHTML = THEME_ICON[v] + THEME_NAME[v];
     b.title = 'Theme: ' + THEME_NAME[v] + '. Click for ' + THEME_NAME[next] + '.';
     b.setAttribute('aria-label', b.title);
   }
