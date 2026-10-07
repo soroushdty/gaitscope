@@ -131,9 +131,9 @@ function sosResponse(sos, f, fs) {
   return [re, im];
 }
 
-test('Butterworth, Bessel and Chebyshev I/II match scipy: design and zero-phase output', () => {
+test('Butterworth, Bessel, Chebyshev I/II and elliptic match scipy: design and zero-phase output', () => {
   const { cases } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
-  assert.equal(cases.length, 120);
+  assert.equal(cases.length, 150);
   for (const c of cases) {
     const label = JSON.stringify(c.spec);
     const { sos } = C.designFilter(c.spec);
@@ -150,7 +150,7 @@ test('Butterworth, Bessel and Chebyshev I/II match scipy: design and zero-phase 
 test('filter design refuses impossible settings with a fix', () => {
   const base = { type: 'butter', order: 4, fs: 50, lowpass: 3, highpass: 0 };
   const bad = [[{ lowpass: 25 }, /below half the sampling rate: under 25\.0 Hz/], [{ highpass: 3 }, /high-pass cut-off must be below the low-pass/],
-    [{ order: 0 }, /order/], [{ type: 'cheby1', rp: 0 }, /ripple/], [{ type: 'cheby2', rs: 0 }, /attenuation/], [{ lowpass: 0 }, /low-pass cut-off must be above 0/]];
+    [{ order: 0 }, /order/], [{ type: 'cheby1', rp: 0 }, /ripple/], [{ type: 'cheby2', rs: 0 }, /attenuation/], [{ type: 'ellip', rp: 1, rs: 1 }, /attenuation must be larger than the passband ripple/], [{ lowpass: 0 }, /low-pass cut-off must be above 0/]];
   for (const [chg, rx] of bad) assert.throws(() => C.designFilter(Object.assign({}, base, chg)), e => e instanceof RangeError && rx.test(e.message), JSON.stringify(chg));
 });
 
@@ -256,7 +256,7 @@ test('a filtered noisy walk gives the same steps as the clean walk, for every al
   // 25 Hz vibration plus a 60 Hz hum, both larger than the noise the algorithms are tuned for
   const noisy = clean.A.map((v, i) => v + 1.2 * Math.sin(2 * Math.PI * 25 * clean.t[i]) + 0.8 * Math.sin(2 * Math.PI * 60 * clean.t[i] + 1));
   const p = Object.assign({ fs: 460 }, ALGO_P);
-  for (const filter of ['butter', 'bessel', 'cheby1', 'cheby2']) {
+  for (const filter of ['butter', 'bessel', 'cheby1', 'cheby2', 'ellip']) {
     // gentle roll-offs (Bessel) and stopband-edge cut-offs (Chebyshev II) need a higher cut-off to leave the walk alone
     const f = C.applyFilter(noisy, clean.t, 460, Object.assign({}, FP, { filter, fLow: filter === 'cheby2' || filter === 'bessel' ? 8 : 4 }));
     assert.equal(f.applied, true); assert.equal(f.resampled, false, 'evenly sampled: no resampling');

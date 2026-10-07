@@ -720,6 +720,7 @@
     const m = Array.from({ length: N }, (_, i) => -N + 1 + 2 * i);
     if (type === 'butter') return { z: [], p: m.map(v => cx(-Math.cos(Math.PI * v / (2 * N)), -Math.sin(Math.PI * v / (2 * N)))), k: 1 };
     if (type === 'bessel') return { z: [], p: besselPoles(N), k: 1 };
+    if (type === 'ellip') return ellipPrototype(N, rp, rs);
     if (type === 'cheby1') {
       const eps = Math.sqrt(Math.pow(10, 0.1 * rp) - 1), mu = Math.asinh(1 / eps) / N;
       const p = m.map(v => { const th = Math.PI * v / (2 * N); return cx(-Math.sinh(mu) * Math.cos(th), -Math.cosh(mu) * Math.sin(th)); });
@@ -768,8 +769,82 @@
     return polyRoots(c).map(r => cScale(r, scale));
   }
 
+  // Elliptic integrals and functions for the elliptic prototype, parameter m = k² as in scipy.
+  function agm(a, b) {
+    for (let i = 0; i < 60 && Math.abs(a - b) > 1e-16 * a; i++) [a, b] = [(a + b) / 2, Math.sqrt(a * b)];
+    return (a + b) / 2;
+  }
+  const ellipK = m => Math.PI / (2 * agm(1, Math.sqrt(1 - m)));   // K(m)
+  const ellipKm1 = m1 => Math.PI / (2 * agm(1, Math.sqrt(m1)));   // K(1 − m1), exact for tiny m1
+  function carlsonRF(x, y, z) {
+    let ave, dx, dy, dz;
+    do {
+      const sx = Math.sqrt(x), sy = Math.sqrt(y), sz = Math.sqrt(z), lam = sx * (sy + sz) + sy * sz;
+      x = (x + lam) / 4; y = (y + lam) / 4; z = (z + lam) / 4;
+      ave = (x + y + z) / 3; dx = (ave - x) / ave; dy = (ave - y) / ave; dz = (ave - z) / ave;
+    } while (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) > 0.0008);
+    const e2 = dx * dy - dz * dz, e3 = dx * dy * dz;
+    return (1 + (e2 / 24 - 0.1 - 3 * e3 / 44) * e2 + e3 / 14) / Math.sqrt(ave);
+  }
+  // Jacobi sn, cn, dn by the descending Landen (AGM) method, as cephes ellpj (used by scipy).
+  function ellipj(u, m) {
+    if (m < 1e-9) {
+      const t = Math.sin(u), b = Math.cos(u), ai = 0.25 * m * (u - t * b);
+      return { sn: t - ai * b, cn: b + ai * t, dn: 1 - 0.5 * m * t * t };
+    }
+    if (m >= 0.9999999999) {
+      let ai = 0.25 * (1 - m);
+      const b = Math.cosh(u), t = Math.tanh(u), phi = 1 / b, twon = b * Math.sinh(u);
+      const sn = t + ai * (twon - u) / (b * b);
+      ai *= t * phi;
+      return { sn, cn: phi - ai * (twon - u), dn: phi + ai * (twon + u) };
+    }
+    const a = [1], c = [Math.sqrt(m)];
+    let b = Math.sqrt(1 - m), twon = 1, i = 0;
+    while (Math.abs(c[i] / a[i]) > 1.11022302462515654042e-16 && i <= 7) {
+      const ai = a[i]; i++;
+      c[i] = (ai - b) / 2; const t = Math.sqrt(ai * b); a[i] = (ai + b) / 2; b = t; twon *= 2;
+    }
+    let phi = twon * a[i] * u, prev = phi;
+    do { const t = c[i] * Math.sin(phi) / a[i]; prev = phi; phi = (Math.asin(t) + phi) / 2; } while (--i);
+    const sn = Math.sin(phi), cn = Math.cos(phi);
+    return { sn, cn, dn: cn / Math.cos(phi - prev) };
+  }
+  // Inverse of sc(u | 1 − m1) at w: F(atan w | 1 − m1) (scipy's _arc_jac_sc1)
+  function arcJacSc1(w, m1) {
+    const ph = Math.atan(w), sn = Math.sin(ph), cs = Math.cos(ph);
+    return sn * carlsonRF(cs * cs, cs * cs + m1 * sn * sn, 1);
+  }
+  // Degree equation by nomes (scipy's _ellipdeg): the m of an order-n filter with ripple ratio m1
+  function ellipdeg(n, m1) {
+    const q = Math.pow(Math.exp(-Math.PI * ellipKm1(m1) / ellipK(m1)), 1 / n);
+    let num = 0, den = 0;
+    for (let k = 0; k <= 7; k++) num += Math.pow(q, k * (k + 1));
+    for (let k = 1; k <= 8; k++) den += Math.pow(q, k * k);
+    return 16 * q * Math.pow(num / (1 + 2 * den), 4);
+  }
+  // Elliptic (Cauer) prototype, as scipy's ellipap(N, rp, rs).
+  function ellipPrototype(N, rp, rs) {
+    const epsSq = Math.pow(10, 0.1 * rp) - 1;
+    if (N === 1) { const p = -Math.sqrt(1 / epsSq); return { z: [], p: [cx(p)], k: -p }; }
+    const ck1 = epsSq / (Math.pow(10, 0.1 * rs) - 1);
+    const m = ellipdeg(N, ck1), capk = ellipK(m), EPS = 2e-16;
+    const js = []; for (let j = 1 - N % 2; j < N; j += 2) js.push(j);
+    const f = js.map(j => ellipj(j * capk / N, m));
+    const zs = f.filter(v => Math.abs(v.sn) > EPS).map(v => cx(0, 1 / (Math.sqrt(m) * v.sn)));
+    const z = zs.concat(zs.map(v => cx(v.re, -v.im)));
+    const v0 = capk * arcJacSc1(1 / Math.sqrt(epsSq), ck1) / (N * ellipK(ck1));
+    const { sn: sv, cn: cv, dn: dv } = ellipj(v0, 1 - m);
+    let p = f.map(({ sn, cn, dn }) => { const den = 1 - (dn * sv) * (dn * sv); return cx(-(cn * dn * sv * cv) / den, -(sn * dv) / den); });
+    const size = Math.sqrt(p.reduce((acc, v) => acc + v.re * v.re + v.im * v.im, 0));
+    p = p.concat((N % 2 ? p.filter(v => Math.abs(v.im) > EPS * size) : p).map(v => cx(v.re, -v.im)));
+    let k = cDiv(cProd(p.map(v => cScale(v, -1))), cProd(z.map(v => cScale(v, -1)))).re;
+    if (N % 2 === 0) k /= Math.sqrt(1 + epsSq);
+    return { z, p, k };
+  }
+
   /* Digital filter as second-order sections [b0, b1, b2, 1, a1, a2].
-     spec: {type: 'butter'|'bessel'|'cheby1'|'cheby2', order, fs, lowpass (Hz), highpass (Hz, 0 = none),
+     spec: {type: 'butter'|'bessel'|'cheby1'|'cheby2'|'ellip', order, fs, lowpass (Hz), highpass (Hz, 0 = none),
      rp (dB passband ripple, cheby1), rs (dB stopband attenuation, cheby2)}. With a high-pass
      cut-off it is a band-pass of twice the order, as in scipy. For Chebyshev I the cut-off is where
      the ripple band ends; for Chebyshev II it is where the stopband starts. Throws a
@@ -782,8 +857,9 @@
     if (hp < 0) throw new RangeError('The high-pass cut-off must be 0 (off) or above.');
     if (lp >= nyq) throw new RangeError('The low-pass cut-off must be below half the sampling rate: under ' + fmt(nyq, 1) + ' Hz for this recording.');
     if (hp > 0 && hp >= lp) throw new RangeError('The high-pass cut-off must be below the low-pass cut-off.');
-    if (type === 'cheby1' && !(spec.rp > 0)) throw new RangeError('The passband ripple must be above 0 dB.');
-    if (type === 'cheby2' && !(spec.rs > 0)) throw new RangeError('The stopband attenuation must be above 0 dB.');
+    if ((type === 'cheby1' || type === 'ellip') && !(spec.rp > 0)) throw new RangeError('The passband ripple must be above 0 dB.');
+    if ((type === 'cheby2' || type === 'ellip') && !(spec.rs > 0)) throw new RangeError('The stopband attenuation must be above 0 dB.');
+    if (type === 'ellip' && !(spec.rs > spec.rp)) throw new RangeError('The stopband attenuation must be larger than the passband ripple.');
     let { z, p, k } = prototype(type, N, spec.rp, spec.rs);
     const warp = f => 4 * Math.tan(Math.PI * f / fs); // pre-warped, bilinear transform with fs = 2
     const degree = p.length - z.length;
@@ -1147,6 +1223,8 @@
     iirEntry('bessel', 'Bessel', 'The most even delay across frequencies: steps keep their shape best, with the gentlest roll-off. The cut-off is where the phase is half delayed, not the -3 dB point.'),
     iirEntry('cheby1', 'Chebyshev I', 'A steeper roll-off, paid for with ripple in the passband that slightly reshapes peaks.', p => ', ' + fmt(p.fRipple, 1) + ' dB ripple'),
     iirEntry('cheby2', 'Chebyshev II', 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.', p => ', ' + fmt(p.fAtten, 0) + ' dB stopband'),
+    iirEntry('ellip', 'Elliptic', 'The steepest roll-off for its order, with ripple in both passband and stopband. The cut-off is where the passband ripple ends.',
+      p => ', ' + fmt(p.fRipple, 1) + ' dB ripple, ' + fmt(p.fAtten, 0) + ' dB stopband'),
   ];
   function filterLabel(p) {
     const f = FILTERS.find(x => x.id === p.filter);
