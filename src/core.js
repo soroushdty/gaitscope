@@ -2263,7 +2263,8 @@
     {
       id: 'cwt', kind: 'time', name: 'Continuous wavelet (CWT, Morlet)',
       params: [{ key: 'cwtB', label: 'Wavelet width (bandwidth B)', min: 0.5, max: 8, step: 0.5, default: 2, unit: '', dec: 1, hint: 'Wider: sharper in frequency, blurrier in time. 2 is the Morlet of Torrence & Compo (about 6 cycles).' }],
-      credit: [{ text: 'Torrence & Compo, 1998', doi: '10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2', note: 'Morlet CWT, power per scale, cone of influence' },
+      credit: [{ text: 'Grossmann & Morlet, 1984', doi: '10.1137/0515056', note: 'the continuous wavelet transform' },
+        { text: 'Torrence & Compo, 1998', doi: '10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2', note: 'Morlet CWT, power per scale, cone of influence' },
         { text: 'Lee et al., 2019', doi: '10.21105/joss.01237', note: 'PyWavelets, whose cwt this follows' }],
       tagline: 'A wavelet that stretches for slow rhythms and shrinks for fast ones, so it is sharp in time for fast changes and sharp in frequency for the slow stride at once. Dashed lines mark the ends, where edge effects matter.',
       compute: (A, t, p) => cwtGrid(A, t, p),

@@ -371,6 +371,7 @@ method is shown. Walking repeats, so its rhythm shows as a tall peak.
     whose wavelet is longer than the signal. One detail mattered: PyWavelets takes the
     wavelet grid's spacing as `x[1] − x[0]`, which differs from 16/4095 in the last digits
     and moves some resampling indices by one at large scales.
+  - The transform itself is Grossmann & Morlet's (1984): one wavelet, shifted and stretched.
   - `cwtGrid` runs it on the walking band (`walkingGrid`, as for the STFT) at each row's
     frequency from 0.3 Hz up. The power |W|² is divided by the scale: Torrence & Compo's
     energy density (1998, eq. 14), so equally strong swings look alike at any frequency.
@@ -561,6 +562,7 @@ trunk accelerations during human walking"). Don't use it.
 |---|---|---|
 | Welch's method | Welch, 1967 | [10.1109/TAU.1967.1161901](https://doi.org/10.1109/TAU.1967.1161901) |
 | FFT | Cooley & Tukey, 1965; Bluestein, 1970 (any length) | [10.1090/S0025-5718-1965-0178586-1](https://doi.org/10.1090/S0025-5718-1965-0178586-1); [10.1109/TAU.1970.1162132](https://doi.org/10.1109/TAU.1970.1162132) |
+| The continuous wavelet transform (#101) | Grossmann & Morlet, 1984 (read: §1–3, pp. 723–728): a signal tested against one wavelet shifted and stretched, lossless and invertible when the wavelet is admissible. The Morlet wavelet appears there only as a near-admissible example (Remark 2, p. 728); its use here follows Torrence & Compo | [10.1137/0515056](https://doi.org/10.1137/0515056) |
 | Continuous wavelet transform (Morlet), its power per scale and cone of influence (#101) | Torrence & Compo, 1998 (read: sections 3b–3h, the Morlet wavelet, normalisation, eq. 14, the cone of influence) | [10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2](https://doi.org/10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2) |
 | The CWT's discretisation and the DWT bands' wavedec/waverec, which the page follows exactly | Lee et al., 2019 (PyWavelets) | [10.21105/joss.01237](https://doi.org/10.21105/joss.01237) |
 | Harmonic ratio | Smidt et al., 1971 (the origin; PubMed 5141651, no DOI); Menz et al., 2003 | [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5) |
