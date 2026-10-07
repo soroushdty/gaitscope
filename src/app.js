@@ -53,6 +53,7 @@
     S.notes = []; closeNoteForm();
     S.recording = null; $('saveRec').hidden = true; S.counted = null; S.countedBy = null; // 'hand' or 'demo'
     dropPlainUndo();
+    S.recordingSaved = false; S.clean = null; // see Home
   }
 
   async function handleFile(file) {
@@ -84,6 +85,7 @@
       } else if (ext === 'zip') {
         return fatal('This file is named .zip but is not a zip archive.', 'Export it again, or upload the CSV or MAT file itself.');
       } else loadMat(buf);
+      if (S.ch) markClean();
     } catch (e) {
       if (e instanceof C.InputError) return fatal(e.message, e.fix);
       console.error(e);
@@ -103,6 +105,7 @@
     S.counted = d.steps; S.countedBy = 'demo'; // its true count, to score each detector against
     S.fileChecks = [{ level: 'info', title: 'Demo data', detail: 'A generated 22 s walk sampled near 100 Hz with irregular timing and values rounded to 0.01, like a phone recording.' }];
     setDataset(d.names, d.cols, 'csv');
+    markClean();
   }
 
   // jsfive reads HDF5 (MATLAB v7.3) in plain JavaScript; pinned like the other two libraries
@@ -179,6 +182,7 @@
     }
     S.recording = r;
     $('saveRec').hidden = false;
+    if (S.ch) markClean();
   }
 
   /* A JSON export (#53) reopened: its signal at its times, then every control and the notes
@@ -350,6 +354,7 @@
     const chip = $('fileChip');
     chip.hidden = false;
     $('subtitle').hidden = true; // the empty state explains this; once a file is in, the plot needs the room
+    $('homeBtn').hidden = false;
     chip.innerHTML = '<strong title="' + esc(S.file.name) + '">' + esc(S.file.name) + '</strong>' + (S.file.size ? '<br>' + (S.file.size < 1048576 ? (S.file.size / 1024).toFixed(1) + ' KB' : (S.file.size / 1048576).toFixed(1) + ' MB') : '');
   }
 
@@ -1019,11 +1024,60 @@
   function exportAs(fmt) {
     const model = exportModel({ signals: fmt === 'json' || $('expSignals').checked, envelope: $('expEnvelope').checked });
     const name = baseName() + '_gaitscope.' + fmt;
-    if (fmt === 'json') save(name, C.exportJson(model), 'application/json');
+    if (fmt === 'json') { save(name, C.exportJson(model), 'application/json'); markClean(); S.recordingSaved = true; } // it reopens all of this
     else if (fmt === 'mat') save(name, C.exportMat(model), 'application/octet-stream');
     else if (fmt === 'npz') save(name, C.exportNpz(model), 'application/octet-stream');
     else save(name, C.exportCsvZip(model), 'application/zip');
     $('expMenu').open = false;
+  }
+
+  /* Home (#79): back to the start screen, as if the page had just opened. Nothing is kept in
+     the browser, so when something would be lost it first offers to save it all as one JSON
+     export, which reopens this analysis: Export, Discard or Cancel. Lost means notes, a phone
+     recording not yet downloaded, or detectors and settings changed since the file loaded
+     (the channel choice doesn't count: it is quick to pick again). A JSON export counts as
+     saving everything. */
+  function setupSig() {
+    return JSON.stringify({ ind: S.ind.map(i => [i.kind, i.type, i.p, i.source, i.visible]), filter: $('filterSel').value,
+      opts: Array.from(optionInputs(), el => (el.type === 'checkbox' ? el.checked : el.value)),
+      rs: ['rsSel', 'rsRate', 'rsMethod'].map(id => $(id).value).concat($('rsAA').checked), pos: $('posSel').value });
+  }
+  function markClean() { S.clean = { setup: setupSig(), notes: JSON.stringify(S.notes) }; }
+  function unsaved() {
+    const out = [];
+    if (S.notes.length && (!S.clean || JSON.stringify(S.notes) !== S.clean.notes)) out.push(S.notes.length === 1 ? 'a note' : S.notes.length + ' notes');
+    if (S.recording && !S.recordingSaved) out.push('a phone recording that hasn\u2019t been downloaded');
+    if (S.clean && setupSig() !== S.clean.setup) out.push('changed detectors or settings');
+    return out;
+  }
+  function onHome() {
+    const lost = S.file ? unsaved() : [];
+    if (!lost.length) return goHome();
+    const list = lost.length === 1 ? lost[0] : lost.slice(0, -1).join(', ') + ' and ' + lost.at(-1);
+    $('homeText').textContent = 'You have ' + list + '. Nothing is kept in the browser, so going home loses ' + (lost.length > 1 ? 'them' : 'it') +
+      (S.ch ? '. Export saves everything as one JSON file, which reopens this analysis when you drop it on the page.' : '.');
+    $('homeExport').hidden = !S.ch;
+    $('homeDialog').hidden = false;
+    (S.ch ? $('homeExport') : $('homeDiscard')).focus();
+  }
+  function cancelHome() { $('homeDialog').hidden = true; $('homeBtn').focus(); }
+  function goHome() {
+    $('homeDialog').hidden = true;
+    resetAll();
+    S.file = null; S.varName = null; S.chanKey = null; S.cache = null; S.plotReady = false;
+    if (window.Plotly && window.Plotly.purge) { window.Plotly.purge($('plot')); window.Plotly.purge($('specPlot')); }
+    // the controls as the page opens them
+    defaultIndicators(); renderIndicators();
+    $('filterSel').value = 'none'; showFilter();
+    $('rsSel').value = 'off'; $('rsRate').value = ''; $('rsMethod').value = 'linear'; $('rsAA').checked = false; showRs();
+    resetParams(false);
+    for (const id of ['showIntervals', 'noteMode', 'specLog']) $(id).checked = false;
+    $('fsIn').value = '100'; $('expMenu').open = false;
+    valOpenedByUser = null;
+    $('fileChip').hidden = true; $('fileChip').innerHTML = ''; $('subtitle').hidden = false; $('homeBtn').hidden = true;
+    $('dataControls').hidden = true; $('analysis').hidden = true; $('work').hidden = true; $('empty').hidden = false;
+    setControlsEnabled(false);
+    (document.scrollingElement || document.documentElement).scrollTop = 0; // back to the top
   }
 
   function save(filename, data, type) {
@@ -1045,7 +1099,12 @@
   document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) handleFile(f); });
   $('demoBtn').addEventListener('click', loadDemo);
   window.StepRecorder.init(loadRecording);
-  $('saveRec').addEventListener('click', () => { if (S.recording) save(S.recording.name, S.recording.csv); });
+  $('saveRec').addEventListener('click', () => { if (S.recording) { save(S.recording.name, S.recording.csv); S.recordingSaved = true; } });
+  $('homeBtn').addEventListener('click', onHome);
+  $('homeExport').addEventListener('click', () => { exportAs('json'); goHome(); });
+  $('homeDiscard').addEventListener('click', goHome);
+  $('homeCancel').addEventListener('click', cancelHome);
+  $('homeDialog').addEventListener('keydown', e => { if (e.key === 'Escape') cancelHome(); });
   $('emptyDemo').addEventListener('click', loadDemo);
   $('emptyPick').addEventListener('click', () => $('fileIn').click());
   $('varSel').addEventListener('change', e => selectMatVar(Number(e.target.value)));

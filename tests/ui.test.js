@@ -983,3 +983,79 @@ test('Signal only takes away the extras and keeps the notes; Undo puts them back
   $('posSel').value = 'leg'; $('posSel').dispatchEvent(new pg.w.Event('change', { bubbles: true })); await sleep(20);
   assert.equal($('plainUndo').hidden, true);
 });
+
+// #79: Home goes back to the start screen; it asks first only when something would be lost
+const addNoteAt = async (pg, x, words) => {
+  const $ = id => pg.d.getElementById(id);
+  $('noteMode').checked = true; $('noteMode').dispatchEvent(new pg.w.Event('change'));
+  $('plot')._click({ points: [{ x, curveNumber: 0 }] });
+  $('noteText').value = words; $('noteForm').dispatchEvent(new pg.w.Event('submit', { cancelable: true })); await sleep(20);
+};
+test('Home with nothing to lose goes straight to the start screen, as the page opens (#79)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  assert.equal($('homeBtn').hidden, true, 'nothing to leave yet');
+  $('demoBtn').click(); await sleep(40);
+  assert.equal($('homeBtn').hidden, false);
+  $('chanSel').value = '2'; $('chanSel').dispatchEvent(new pg.w.Event('change')); await sleep(40); // a channel choice doesn't count
+  $('homeBtn').click(); await sleep(20);
+  assert.equal($('homeDialog').hidden, true, 'no question');
+  assert.equal($('empty').hidden, false); assert.equal($('work').hidden, true);
+  assert.equal($('fileChip').hidden, true); assert.equal($('subtitle').hidden, false); assert.equal($('homeBtn').hidden, true);
+  assert.deepEqual(indNames(pg, 'detList'), ['Coza', 'Coza (modified)']);
+  // the next file gives what a fresh page gives
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const fresh = makePage(); await upload(fresh, path.join(FIX, 'walk.mat'));
+  assert.equal(samples(pg, 'Coza (modified)'), samples(fresh, 'Coza (modified)'));
+  assert.equal(text(pg, 'valList'), text(fresh, 'valList'));
+});
+test('Home asks Export, Discard or Cancel when notes or changed settings would be lost (#79)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('demoBtn').click(); await sleep(40);
+  await addNoteAt(pg, 5, 'stairs');
+  $('homeBtn').click();
+  assert.equal($('homeDialog').hidden, false);
+  assert.match(text(pg, 'homeText'), /^You have a note\. Nothing is kept in the browser, so going home loses it\. Export saves everything as one JSON file/);
+  $('homeCancel').click();
+  assert.equal($('homeDialog').hidden, true); assert.equal($('work').hidden, false, 'Cancel stays'); assert.match(text(pg, 'noteList'), /stairs/);
+
+  await addInd(pg, 'envelope', 'hilbert');
+  $('homeBtn').click();
+  assert.match(text(pg, 'homeText'), /^You have a note and changed detectors or settings\. .*loses them/);
+  const n = pg.blobs.length;
+  $('homeExport').click(); await sleep(20);
+  assert.equal(pg.blobs.length, n + 1, 'one file');
+  const json = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  const m = Core.parseExportJson(json);
+  assert.deepEqual(m.notes.text, ['stairs']); assert.ok(m.indicators.type.includes('hilbert')); assert.ok(m.signals.signal.length > 1000, 'with the signal, so it reopens');
+  assert.equal($('empty').hidden, false, 'and home');
+
+  // Discard goes home without a file
+  $('demoBtn').click(); await sleep(40);
+  await addNoteAt(pg, 3, 'turned');
+  $('homeBtn').click(); const m2 = pg.blobs.length;
+  $('homeDiscard').click(); await sleep(20);
+  assert.equal(pg.blobs.length, m2); assert.equal($('empty').hidden, false);
+
+  // after a JSON export from Export…, nothing is lost, so no question
+  $('demoBtn').click(); await sleep(40);
+  await addNoteAt(pg, 4, 'kept');
+  $('expFmt').value = 'json'; $('expFmt').dispatchEvent(new pg.w.Event('change')); $('expGo').click(); await sleep(20);
+  $('homeBtn').click();
+  assert.equal($('homeDialog').hidden, true); assert.equal($('empty').hidden, false);
+});
+test('Home asks about a phone recording until it is downloaded (#79)', async () => {
+  const pg = makePage({ coarse: true, motion: true }), $ = id => pg.d.getElementById(id);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  await startRecording(pg);
+  sendMotion(pg, motionSamples(12)); await sleep(200);
+  $('recStop').dispatchEvent(new pg.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await submitRecording(pg);
+  $('homeBtn').click();
+  assert.match(text(pg, 'homeText'), /^You have a phone recording that hasn’t been downloaded\./);
+  $('homeDialog').dispatchEvent(new pg.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal($('homeDialog').hidden, true, 'Escape cancels');
+  $('saveRec').click();
+  $('homeBtn').click();
+  assert.equal($('homeDialog').hidden, true, 'downloaded: nothing to lose'); assert.equal($('empty').hidden, false);
+});

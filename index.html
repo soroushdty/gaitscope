@@ -19,6 +19,7 @@
   </div>
   <div class="top-tools">
     <div class="filechip" id="fileChip" hidden></div>
+    <button class="btn" id="homeBtn" type="button" hidden title="Back to the start screen, with no recording loaded"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7.5 8 2.5l6 5M3.5 6.5v7h3.5v-4h2v4h3.5v-7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Home</button>
     <button class="btn" id="themeBtn" type="button"></button>
   </div>
 </header>
@@ -272,6 +273,17 @@
   </main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="modal" id="homeDialog" role="dialog" aria-modal="true" aria-labelledby="homeTitle" aria-describedby="homeText" hidden>
+  <div class="modal-box">
+    <h2 id="homeTitle">Keep your work before going home?</h2>
+    <p id="homeText"></p>
+    <div class="stack">
+      <button class="btn primary" id="homeExport" type="button">Export and go home</button>
+      <button class="btn" id="homeDiscard" type="button">Discard and go home</button>
+      <button class="btn" id="homeCancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
 <div class="rec-overlay" id="recOverlay" role="dialog" aria-modal="true" aria-labelledby="recTitle" hidden>
   <div class="rec-box" id="recBox">
     <h2 id="recTitle">Get ready</h2>
