@@ -186,12 +186,17 @@ unless the course file is present in `data/`.
       `docs/algorithm.md`.)
 - [ ] Record walks with a known step count (e.g. 20 steps counted by hand, phone in the
       hand and in a pocket) to rank the algorithms (#11, decision 4). The dashboard's
-      recorder (#51) saves the count and position in the CSV and compares them.
-- [ ] #51 on the owner's Pixel 9a (Firefox 157, 2026-10-07; files in `data/`): 57.4 Hz, even
-      timing; face up reads +0.98 g on z (Android's direction). Walks of 10 steps (flat at the
-      chest) and 28 (front pocket): inside the walk every detector is within one step on the
-      vertical signal; the extras come from the ends. Locking the screen ends the recording and
-      keeps what came before (#86). Still to do: a Physics Toolbox recording of the same walk.
+      recorder (#51) saves the count and position in the CSV and compares them. Three so far
+      (2026-10-07, table on #68): 10 and 60 steps in the hand, 28 in a front pocket. On the
+      60-step walk four detectors find exactly 60; Coza finds 45 at the phone's 60 Hz (its
+      30-sample window is ±0.5 s there) and 60 after resampling to 100 Hz. Still missing: a
+      back pocket, slow and fast walks on purpose, other people, an iPhone.
+- [x] #51 on the owner's Pixel 9a (2026-10-07; files in `data/`; comments on #51). Firefox
+      157: 57.4 Hz, times in whole ms (16–18 ms gaps). Chrome 154: 60.0 Hz, times to 0.1 ms.
+      Face up reads +0.98 g on z (Android's direction). Against Physics Toolbox's G-Force
+      Meter and phyphox's linear acceleration recorded at the same time: every axis matches
+      (r ≥ 0.9999, RMS 0.002–0.005 g), so axes, signs and units are settled. Locking the
+      screen ends the recording and keeps what came before (#86).
 - [ ] #51 on an iPhone (no device yet): the same checks, plus the permission prompt and
       whether Safari inverts the axis signs.
 - [ ] Faint first and last steps (2026-10-07, owner's observation): the synthetic walk has
