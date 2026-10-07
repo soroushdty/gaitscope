@@ -270,3 +270,38 @@ def test_cli_reads_phyphox_zip(monkeypatch, capsys):
     W, _, _ = lab_step_det.load_phyphox(os.path.join(FIX, "phyphox.zip"))
     _, idx = detect_steps(lab_step_det.to_g(W)[:, 2])
     assert f"Step indices:        {idx.tolist()}" in out
+
+
+# --- resampling methods (#52)
+
+def test_resample_averages_repeated_timestamps():
+    W = np.array([[0.0, 1], [0.01, 2], [0.01, 4], [0.02, 5]])
+    assert resample(W, 100).tolist() == [[0.0, 1], [0.01, 3], [0.02, 5]]
+
+
+def test_resample_pchip_matches_scipy_and_never_overshoots():
+    from scipy.interpolate import PchipInterpolator
+    t = np.cumsum(np.full(300, 1 / 57) * (1 + 0.2 * np.sin(np.arange(300)))) - 1 / 57
+    a = np.where(np.sin(2 * np.pi * t) > 0, 1.0, 0.0)  # steps: a cubic spline would overshoot
+    R = resample(np.column_stack([t, a]), 100, method="pchip")
+    assert np.allclose(R[:, 1], PchipInterpolator(t - t[0], a)(R[:, 0]))
+    assert R[:, 1].min() >= 0 and R[:, 1].max() <= 1
+
+
+def test_resample_antialias_removes_a_tone_above_the_new_nyquist():
+    t = np.arange(460 * 8) / 460
+    a = np.sin(2 * np.pi * 1.8 * t) + 0.5 * np.sin(2 * np.pi * 70 * t)
+    amp = lambda R, f: 2 * abs(np.sum(R[50:-50, 1] * np.exp(-2j * np.pi * f * R[50:-50, 0]))) / (len(R) - 100)
+    plain, aa = resample(np.column_stack([t, a]), 100), resample(np.column_stack([t, a]), 100, antialias=True)
+    assert amp(plain, 30) > 0.3 and amp(aa, 30) < 0.005  # 70 Hz folds back to 30 Hz without it
+    assert np.array_equal(resample(np.column_stack([t, a]), 1000, antialias=True),
+                          resample(np.column_stack([t, a]), 1000)), "no filter when going up"
+
+
+def test_cli_resample_methods_and_notes(monkeypatch, capsys):
+    f = os.path.join(FIX, "ptb_gforce.csv")
+    out = run_cli(monkeypatch, capsys, "--file", f, "--resample", "50")
+    assert "(linear interpolation, like MATLAB interp1)" in out and "folds back in (aliasing). Add --antialias" in out
+    out = run_cli(monkeypatch, capsys, "--file", f, "--resample", "50", "--antialias", "--resample-method", "pchip")
+    assert "(pchip, a monotone cubic, low-passed at 20 Hz first)" in out and "aliasing" not in out
+    assert "upsampling adds no information" in run_cli(monkeypatch, capsys, "--file", f, "--resample", "200")

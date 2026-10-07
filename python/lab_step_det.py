@@ -14,6 +14,8 @@ Usage (from the repo root):
                                           # Physics Toolbox or phyphox CSV: --col 2/3/4 = x/y/z
     uv run python python/lab_step_det.py --file data/g_force_....csv --resample 100
                                           # phone recorded at ~460 Hz -> 100 Hz first
+    uv run python python/lab_step_det.py --file data/g_force_....csv --resample 100 --antialias
+                                          # ... low-passed below 50 Hz first (--resample-method pchip: cubic)
     uv run python python/lab_step_det.py --file "data/Data from phyphox.zip" --col 4 --resample 100 --to-g
                                           # phyphox export zip; m/s^2 -> g for h = 1
 
@@ -349,19 +351,76 @@ def rate_warning(data, w=30):
             f"instead of +/-{w / 100:.3g} s. Add --resample 100 to put the data on a 100 Hz grid first.")
 
 
-def resample(W, fs):
-    """Put every column of W (column 0 = time in s) on a uniform grid
-    t = 0, 1/fs, 2/fs, ... by linear interpolation.
+# Anti-aliasing before going down in rate: scipy.signal.decimate's IIR filter, a Chebyshev
+# type I low-pass of order 8 with 0.05 dB ripple at 0.8 x the new Nyquist frequency.
+ANTIALIAS_ORDER, ANTIALIAS_RIPPLE, ANTIALIAS_FRACTION = 8, 0.05, 0.8
+EVEN_JITTER = 0.01  # timing variation above which a filter needs an even grid (core.js RESAMPLE_JITTER)
 
-    For phone recordings that are not at the 100 Hz the lab code assumes.
-    MATLAB equivalent: t2 = (0:1/fs:t(end)-t(1))'; A2 = interp1(t-t(1), A, t2);
+
+def _merge_repeats(t, Y):
+    """Samples that share a timestamp, averaged into one. Returns (t, Y, merged count).
+
+    Interpolation needs one value per time (MATLAB interp1 refuses repeated points)."""
+    keep = np.r_[True, np.diff(t) > 0]
+    if keep.all():
+        return t, Y, 0
+    starts = np.flatnonzero(keep)
+    counts = np.diff(np.r_[starts, len(t)])
+    return t[starts], np.add.reduceat(Y, starts, axis=0) / counts[:, None], len(t) - len(starts)
+
+
+def _even_grid(t, Y):
+    """Y on an even grid at the median rate, like evenGrid in src/core.js: unchanged when the
+    timing varies by under 1%, or when long gaps would make the grid over 4x the recording."""
+    dt = np.diff(t)
+    dt = dt[dt > 0]
+    md = np.median(dt)
+    if not dt.std(ddof=1) / md > EVEN_JITTER:
+        return t, Y
+    m = int(np.floor((t[-1] - t[0]) / md)) + 1
+    if m > 4 * len(t):
+        return t, Y
+    tg = t[0] + np.arange(m) * md
+    return tg, np.column_stack([np.interp(tg, t, Y[:, c]) for c in range(Y.shape[1])])
+
+
+def resample(W, fs, method="linear", antialias=False):
+    """Put every column of W (column 0 = time in s) on a uniform grid
+    t = 0, 1/fs, 2/fs, ... by interpolation.
+
+    For phone recordings that are not at the rate an analysis assumes (the lab code: 100 Hz).
+    method: "linear" (MATLAB interp1, the default) or "pchip" (monotone cubic, MATLAB
+    interp1(..., 'pchip')). Samples sharing a timestamp are averaged first.
+    antialias: when going down in rate, low-pass the signal below the new Nyquist frequency
+    first (as MATLAB resample and scipy decimate do), so faster motion can't fold back in as
+    aliasing. The filter runs on an even grid at the recording's median rate.
+    MATLAB equivalent (linear): t2 = (0:1/fs:t(end)-t(1))'; A2 = interp1(t-t(1), A, t2);
+    The same steps as resampleChannel in src/core.js, which matches this bit for bit (linear).
     """
     t = W[:, 0] - W[0, 0]
     if np.any(np.diff(t) < 0):
         raise ValueError("The time column goes backwards, so the data cannot be resampled. "
                          "Check that the file holds a single recording.")
+    if method not in ("linear", "pchip"):
+        raise ValueError(f"Unknown resampling method {method!r}: use 'linear' or 'pchip'.")
+    t, Y, _ = _merge_repeats(t, W[:, 1:])
     t2 = np.arange(int(np.floor(t[-1] * fs + 1e-9)) + 1) / fs
-    return np.column_stack([t2] + [np.interp(t2, t, W[:, c]) for c in range(1, W.shape[1])])
+    if antialias and fs < sampling_rate(t):
+        from scipy.signal import cheby1, sosfiltfilt
+        t, Y = _even_grid(t, Y)
+        sos = cheby1(ANTIALIAS_ORDER, ANTIALIAS_RIPPLE, ANTIALIAS_FRACTION * fs / 2, fs=sampling_rate(t), output="sos")
+        Y = sosfiltfilt(sos, Y, axis=0)
+    if method == "pchip":
+        from scipy.interpolate import PchipInterpolator
+        return np.column_stack([t2, PchipInterpolator(t, Y, axis=0)(t2)])
+    return np.column_stack([t2] + [np.interp(t2, t, Y[:, c]) for c in range(Y.shape[1])])
+
+
+def gaps(t, factor=5):
+    """Gaps between samples longer than factor x the median interval: (count, longest in s)."""
+    dt = np.diff(t)
+    long = dt[dt > factor * np.median(dt[dt > 0])]
+    return len(long), (long.max() if len(long) else 0.0)
 
 
 def main():
@@ -374,8 +433,12 @@ def main():
     p.add_argument("--w", type=int, default=30, help="half-window in samples")
     p.add_argument("--h", type=float, default=1, help="peak threshold")
     p.add_argument("--resample", type=float, metavar="HZ",
-                   help="resample to HZ (e.g. 100) by linear interpolation first; "
-                        "needs time in column 1")
+                   help="resample to HZ (e.g. 100) first; needs time in column 1")
+    p.add_argument("--resample-method", choices=["linear", "pchip"], default="linear",
+                   help="linear (MATLAB interp1, the default) or pchip (monotone cubic)")
+    p.add_argument("--antialias", action="store_true",
+                   help="when --resample goes down in rate, low-pass below the new Nyquist "
+                        "frequency first (Chebyshev I, order 8, like scipy decimate)")
     p.add_argument("--to-g", action="store_true",
                    help="divide by 9.80665 (m/s^2 -> g) first, since h = 1 assumes g; "
                         "for phyphox or Linear Accelerometer data")
@@ -424,10 +487,28 @@ def main():
     if args.resample:
         if data.ndim != 2 or data.shape[1] < 2:
             p.error("--resample needs a time column in column 1 and data after it.")
-        before = sampling_rate(data[:, 0])
-        data = resample(data, args.resample)
-        print(f"Resampled:           about {before:.0f} Hz -> {args.resample:g} Hz "
-              f"(linear interpolation, like MATLAB interp1), {len(data)} samples")
+        before, t = sampling_rate(data[:, 0]), data[:, 0]
+        repeats = int(np.sum(np.diff(t) == 0))
+        n_gaps, longest = gaps(t)
+        try:
+            data = resample(data, args.resample, method=args.resample_method, antialias=args.antialias)
+        except ValueError as e:
+            p.error(str(e))
+        how = "linear interpolation, like MATLAB interp1" if args.resample_method == "linear" else "pchip, a monotone cubic"
+        down = args.resample < before
+        if args.antialias and down:
+            how += f", low-passed at {ANTIALIAS_FRACTION * args.resample / 2:g} Hz first"
+        print(f"Resampled:           about {before:.0f} Hz -> {args.resample:g} Hz ({how}), {len(data)} samples")
+        if repeats:
+            print(f"  {repeats} repeated timestamp{'s' * (repeats > 1)} averaged first.")
+        if n_gaps:
+            print(f"  Warning: {n_gaps} gap{'s' * (n_gaps > 1)} in the recording (longest {longest:.2f} s) "
+                  "filled with made-up values; steps found there are not real.")
+        if args.resample > before * 1.01:
+            print("  Note: upsampling adds no information; it only draws lines between the recorded samples.")
+        elif down and args.resample < before * 0.99 and not args.antialias:
+            print(f"  Note: anything faster than {args.resample / 2:g} Hz in the recording folds back in "
+                  "(aliasing). Add --antialias to low-pass first.")
     if args.to_g:
         data = to_g(data)
         print(f"Converted:           m/s^2 -> g (divided by {STANDARD_GRAVITY})")
