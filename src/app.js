@@ -246,7 +246,8 @@
       const said = [m.steps_counted ? m.steps_counted + ' steps counted by hand' : '', m.phone_position ? 'phone in the ' + m.phone_position.replace('front pocket', 'front trouser pocket').replace('back pocket', 'back trouser pocket').replace('other', 'phone somewhere else').replace(/^phone in the phone /, '') : ''].filter(Boolean);
       pre.push({ level: 'info', title: 'Recorded in the browser', detail: 'From the phone\u2019s motion sensors (devicemotion)' + (m.started ? ', started ' + m.started.replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : '') +
         (m.sample_rate_hz ? ', about ' + m.sample_rate_hz + ' Hz, every sample at its own time' : '') + '. x, y, z are in g with gravity, like Physics Toolbox\u2019s G-Force Meter; the ax and wx columns are linear acceleration (m/s²) and rotation (rad/s).' +
-        (said.length ? ' Recorded with: ' + said.join(', ') + '.' : '') });
+        (said.length ? ' Recorded with: ' + said.join(', ') + '.' : '') +
+        (Number(m.trimmed_end_s) > 0 ? ' The last ' + C.fmt(Number(m.trimmed_end_s), 1) + ' s, from just before Stop was touched, was left out.' : '') });
     }
     S.counted = /^\d+$/.test(m.steps_counted || '') && Number(m.steps_counted) > 0 ? Number(m.steps_counted) : null;
     S.countedBy = S.counted ? 'hand' : null;

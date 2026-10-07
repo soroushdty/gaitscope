@@ -52,6 +52,13 @@ Columns: `gFx`, `gFy`, `gFz`, `TgF` in g with gravity (accelerationIncludingGrav
 device, rate, how it stopped, and the two optional answers (`steps_counted`,
 `phone_position`).
 
+Holding Stop moves the phone: the hand reaches for it, then the finger presses. In the owner's
+first recordings (2026-10-07) that showed up as a bump starting about 0.2 s before the touch,
+and Coza, Coza (modified) and Peak-to-valley counted it as a step. So when a hold stops the
+recording, the samples from 0.3 s before the touch onwards are left out, and the file says how
+much (`trimmed_end_s`). A touch let go before the second is up stops nothing and cuts nothing,
+and Enter (a keyboard, no finger on the phone) stops at once without cutting.
+
 | Check | Level | Why / fix |
 |---|---|---|
 | Page not on https | error + link | Browsers only give motion data to secure pages. GitHub Pages serves the dashboard over http as well unless "Enforce HTTPS" is on, so the message links to the same page over https. |
@@ -60,7 +67,7 @@ device, rate, how it stopped, and the two optional answers (`steps_counted`,
 | No data within 2.5 s | error | No sensor (a computer). Fix: open the page on a phone. |
 | Recording under 3 s or 20 samples | error | Too short to analyse. Fix: record at least 10 s with the screen on. |
 | Screen locked or page hidden while recording | warn + fix | The phone stops sending data; what was captured is kept and loaded. A full-screen overlay (hold for a second to stop) keeps pocket touches from changing anything, and the Screen Wake Lock keeps the screen on where the browser allows it. |
-| Recorded in the browser | info | Says when, at what rate, and the counted steps and phone position if given. A front-pocket recording sets Phone position to *One leg*. |
+| Recorded in the browser | info | Says when, at what rate, and the counted steps and phone position if given, and how much was cut at the end for holding Stop. A front-pocket recording sets Phone position to *One leg*. |
 | Stopped at the 30-minute limit | info | |
 | Recorded on an iPhone | info | Safari has been reported (W3C list, 2014) to give acceleration with the opposite sign from Android and the spec; not yet checked on a current iPhone, so nothing is flipped. Magnitude, vertical and horizontal don't depend on the sign. |
 
