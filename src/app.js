@@ -255,7 +255,7 @@
     if (!out) return;
     const v = Number(el.value), u = out.dataset.unit;
     out.textContent = v === 0 && out.dataset.zero ? out.dataset.zero : u === 'order' ? ordinal(v) + ' order'
-      : fmt(v, Number(out.dataset.dec || 0)) + (u === '%' ? '%' : ' ' + u);
+      : fmt(v, Number(out.dataset.dec || 0)) + (u === '%' ? '%' : u ? ' ' + u : '');
   }
   function resetParams(run) {
     $('wIn').value = '30'; syncH(1);

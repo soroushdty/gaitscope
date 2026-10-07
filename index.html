@@ -107,6 +107,14 @@
         <input type="range" id="medWinIn" data-param="medWindow" min="0.01" max="0.3" value="0.05" step="0.01">
       </div>
       <p class="hint" data-only="median">Spikes shorter than half the window are removed.</p>
+      <div class="ctl" data-only="savgol">
+        <div class="ctl-head"><label for="sgWinIn">Window</label><output id="sgWinOut" for="sgWinIn" data-unit="s" data-dec="2">0.30 s</output></div>
+        <input type="range" id="sgWinIn" data-param="sgWindow" min="0.05" max="1" value="0.3" step="0.01">
+      </div>
+      <div class="ctl" data-only="savgol">
+        <div class="ctl-head"><label for="sgOrderIn">Polynomial order</label><output id="sgOrderOut" for="sgOrderIn" data-unit="" data-dec="0">3</output></div>
+        <input type="range" id="sgOrderIn" data-param="sgOrder" min="1" max="5" value="3" step="1">
+      </div>
       <div class="ctl" data-only="cheby1 ellip">
         <div class="ctl-head"><label for="fRippleIn">Passband ripple</label><output id="fRippleOut" for="fRippleIn" data-unit="dB" data-dec="1">0.5 dB</output></div>
         <input type="range" id="fRippleIn" data-param="fRipple" min="0.1" max="3" value="0.5" step="0.1">

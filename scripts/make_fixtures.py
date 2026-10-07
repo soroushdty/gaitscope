@@ -12,6 +12,7 @@ Run from the repo root:
 """
 import json
 import math
+from fractions import Fraction
 import os
 import sys
 
@@ -77,7 +78,30 @@ def smoothing_fixtures():
         for sec in (0.05, 0.15):
             y = ndimage.median_filter(x, odd_window(sec, fs), mode="nearest")
             cases.append({"filter": "median", "fs": fs, "p": {"medWindow": sec}, "idx": idx, "y": y[idx].tolist()})
+        # scipy's savgol_coeffs fits unscaled positions, which loses precision for long windows of
+        # high order (1.5e-10 at 231 samples, order 5); these cases stay within 1e-12 of exact.
+        for sec, order in ((0.3, 3), (0.15, 2), (0.2, 5)):
+            y = signal.savgol_filter(x, odd_window(sec, fs), order, mode="interp")
+            cases.append({"filter": "savgol", "fs": fs, "p": {"sgWindow": sec, "sgOrder": order}, "idx": idx, "y": y[idx].tolist()})
     return cases
+
+
+def savgol_exact_weights(w, order):
+    """Exact Savitzky-Golay centre weights by rational arithmetic: e0ᵀ (VᵀV)⁻¹ Vᵀ."""
+    h = (w - 1) // 2
+    xs = range(-h, h + 1)
+    P = order + 1
+    A = [[Fraction(sum(x ** (r + c) for x in xs)) for c in range(P)] + [Fraction(int(r == 0))] for r in range(P)]
+    for c in range(P):
+        piv = next(r for r in range(c, P) if A[r][c] != 0)
+        A[c], A[piv] = A[piv], A[c]
+        A[c] = [v / A[c][c] for v in A[c]]
+        for r in range(P):
+            if r != c and A[r][c] != 0:
+                f = A[r][c]
+                A[r] = [a - f * b for a, b in zip(A[r], A[c])]
+    coef = [A[r][P] for r in range(P)]
+    return [float(sum(coef[k] * Fraction(x) ** k for k in range(P))) for x in xs]
 
 
 def filter_fixtures():
@@ -185,7 +209,8 @@ def main():
     with open(p("filters.json"), "w") as f:
         json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures(),
                    "smoothing_source": "scipy.ndimage (mode='nearest') and scipy.signal.savgol_filter (mode='interp'); input: spiky_input()",
-                   "smoothing": smoothing_fixtures()}, f)
+                   "smoothing": smoothing_fixtures(),
+                   "savgol_exact": {"window": 231, "order": 5, "weights": savgol_exact_weights(231, 5)}}, f)
     print("Wrote fixtures to", OUT)
 
 

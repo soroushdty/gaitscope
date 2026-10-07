@@ -160,6 +160,16 @@ test('smoothing filters match scipy, edges included', () => {
   }
 });
 
+test('Savitzky–Golay weights are exact even for long windows of high order', () => {
+  // scipy loses precision here (1.5e-10), so the reference is exact rational arithmetic
+  const { savgol_exact: ex } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
+  const h = (ex.window - 1) / 2;
+  ex.weights.forEach((wt, j) => {
+    const x = new Float64Array(ex.window); x[j] = 1;
+    assert.ok(Math.abs(C.savgol(x, ex.window, ex.order)[h] - wt) < 1e-15, 'weight ' + j);
+  });
+});
+
 test('the median filter removes short spikes and keeps real peaks at their height', () => {
   const fs = 460, t = Float64Array.from({ length: 2300 }, (_, i) => i / fs);
   const walk = t.map(v => Math.sin(2 * Math.PI * 1.8 * v));

@@ -283,7 +283,7 @@ test('a filter feeds the algorithm, not the lab code, and is drawn over the fade
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
-  assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II', 'Elliptic', 'Moving average', 'Median']);
+  assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II', 'Elliptic', 'Moving average', 'Median', 'Savitzky–Golay']);
   assert.equal($('filterSel').value, 'none', 'off by default');
   assert.equal($('filterOpts').hidden, true);
   let last = pg.plots.at(-1);
