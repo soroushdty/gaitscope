@@ -1014,6 +1014,33 @@ test('the theme button cycles System, Light and Dark, redraws the plots and reme
   assert.equal(pg3.d.documentElement.getAttribute('data-theme'), 'light');
 });
 
+test('recorder: the countdown is a setting, remembered in the browser', async () => {
+  const storage = memoryStorage(), pg = makePage({ coarse: true, motion: true, storage }), $ = id => pg.d.getElementById(id);
+  assert.equal($('recCountRow').hidden, false); assert.equal($('recCount').value, '5');
+  $('recCount').value = '3'; $('recCount').dispatchEvent(new pg.w.Event('change'));
+  assert.equal(storage.m['gaitscope-countdown'], '3');
+  $('recBtn').click(); await sleep(20);
+  assert.equal(text(pg, 'recBig'), '3');
+  sendMotion(pg, motionSamples(0.1)); // the sensor answers during the countdown
+  await sleep(3100);
+  assert.equal($('recOverlay').dataset.phase, 'recording', 'starts when the countdown runs out');
+  $('recStop').dispatchEvent(new pg.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); // no timers left running
+  const esc = p => p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape' }));
+  const pg2 = makePage({ coarse: true, motion: true, storage: memoryStorage({ 'gaitscope-countdown': '15' }) });
+  assert.equal(pg2.d.getElementById('recCount').value, '15');
+  pg2.d.getElementById('recBtn').click(); await sleep(20);
+  assert.equal(text(pg2, 'recBig'), '15');
+  esc(pg2);
+  assert.equal(makePage({ coarse: true, motion: true, storage: memoryStorage({ 'gaitscope-countdown': '7' }) }).d.getElementById('recCount').value, '5', 'not one of the choices');
+  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
+  const pg3 = makePage({ coarse: true, motion: true, storage: blocked });
+  pg3.d.getElementById('recCount').value = '10'; pg3.d.getElementById('recCount').dispatchEvent(new pg3.w.Event('change'));
+  pg3.d.getElementById('recBtn').click(); await sleep(20);
+  assert.equal(text(pg3, 'recBig'), '10', 'used even when it cannot be remembered');
+  esc(pg3);
+  assert.equal(makePage().d.getElementById('recCountRow').hidden, true, 'not on a computer');
+});
+
 test('Signal only takes away the extras and keeps the notes; Undo puts them back (#79)', async () => {
   const pg = makePage(), $ = id => pg.d.getElementById(id);
   $('demoBtn').click(); await sleep(40);
