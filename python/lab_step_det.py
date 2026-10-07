@@ -11,7 +11,7 @@ Usage (from the repo root):
     uv run python python/lab_step_det.py --file data/Lab1Data.mat --var Lab1Data
     uv run python python/lab_step_det.py --no-plot           # print results only
     uv run python python/lab_step_det.py --file data/g_force_....csv --col 3 --w 60
-                                          # Physics Toolbox CSV: --col 2/3/4 = x/y/z
+                                          # Physics Toolbox or phyphox CSV: --col 2/3/4 = x/y/z
     uv run python python/lab_step_det.py --file data/g_force_....csv --resample 100
                                           # phone recorded at ~460 Hz -> 100 Hz first
 
@@ -61,16 +61,18 @@ def gait_metrics(step_idx, fs=100):
     }
 
 
-# --- Physics Toolbox CSV input (the MATLAB script only reads .mat) ---------
+# --- Physics Toolbox and phyphox CSV input (the MATLAB script only reads .mat)
 # Same rules as parseCsv/buildDataset in src/core.js, for the layouts the app
 # exports: '#' metadata lines, ',' or ';' or tab delimiters (decimal comma with ';' or tab),
 # units in headers ('ax (m/s^2)'), clock times ('13:05:10:006') and blank cells
 # where several sensors take turns.
 
 AXIS_NAMES = {  # header (unit suffix removed, lowercase) -> axis
-    "x": {"gfx", "ax", "x", "acc_x", "accx"},
-    "y": {"gfy", "ay", "y", "acc_y", "accy"},
-    "z": {"gfz", "az", "z", "acc_z", "accz"},
+    # Physics Toolbox (gFx: g with gravity; ax: m/s^2 without), generic names, and phyphox
+    # ('Acceleration x': m/s^2 with gravity; 'Linear Acceleration x': m/s^2 without)
+    "x": {"gfx", "ax", "x", "acc_x", "accx", "acceleration x", "linear acceleration x"},
+    "y": {"gfy", "ay", "y", "acc_y", "accy", "acceleration y", "linear acceleration y"},
+    "z": {"gfz", "az", "z", "acc_z", "accz", "acceleration z", "linear acceleration z"},
 }
 TIME_NAMES = {"time", "t", "elapsed", "timestamp", "seconds", "sec"}
 CLOCK = re.compile(r"^(\d{1,2}):(\d{2}):(\d{2})(?:[:.](\d+))?$")
@@ -93,8 +95,18 @@ def _number(tok, decimal_comma):
         return None
 
 
+def _phyphox_meta_file(header_line):
+    """Name of the phyphox metadata file this header belongs to, else None."""
+    h = "|".join(v.strip().strip('"').lower() for v in re.split(r"[,;\t]", header_line))
+    if h.startswith("event|experiment time|system time"):
+        return "meta/time.csv, which holds only the times the recording started and paused"
+    if h == "property|value":
+        return "meta/device.csv, which describes the phone and its sensors"
+    return None
+
+
 def load_csv(path):
-    """Read a Physics Toolbox CSV into the Walking.mat layout.
+    """Read a Physics Toolbox or phyphox CSV into the Walking.mat layout.
 
     Returns (W, names): W has columns [time, x, y, z] (time starts at 0 s), so
     MATLAB column 2/3/4 means x/y/z exactly as in Walking.mat. Rows where any
@@ -106,6 +118,9 @@ def load_csv(path):
     if len(lines) < 2:
         raise ValueError(f"{path} has fewer than 2 lines of data. "
                          "Record for longer, or check that the export completed.")
+    if meta := _phyphox_meta_file(lines[0]):
+        raise ValueError(f"{path} is phyphox's {meta}, not the sensor data. "
+                         "Use 'Raw Data.csv' from the zip that phyphox exported.")
 
     # Delimiter: the one that splits the first lines into the same, largest number of fields.
     sample = lines[:12]
@@ -142,7 +157,9 @@ def load_csv(path):
             raise ValueError(
                 f"{path}: no {', '.join(missing)} column among the headers {headers}. "
                 "Export the G-Force Meter (gFx, gFy, gFz) or Linear Accelerometer "
-                "(ax, ay, az) from Physics Toolbox with the time column included.")
+                "(ax, ay, az) from Physics Toolbox, or Acceleration with g / without g "
+                "(Acceleration x, Linear Acceleration x, ...) from phyphox, with the time "
+                "column included.")
         order = [cols["time"], cols["x"], cols["y"], cols["z"]]
     else:
         if data.shape[1] < 4:
@@ -242,7 +259,7 @@ def resample(W, fs):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--file", default="data/Walking.mat",
-                   help=".mat file, or a Physics Toolbox .csv export")
+                   help=".mat file, or a Physics Toolbox or phyphox .csv export")
     p.add_argument("--var", default="Walking", help="variable name inside the .mat")
     p.add_argument("--col", type=int, default=2,
                    help="MATLAB-style column number: 2, 3 or 4 (1 = time)")
@@ -260,9 +277,13 @@ def main():
         print(f"CSV columns:         time = {names[0]!r}, x = {names[1]!r}, "
               f"y = {names[2]!r}, z = {names[3]!r} (--col 2/3/4)")
         print(f"Sampling rate:       about {fs:.0f} Hz")
-        if names[1].lower().startswith("ax"):
-            print("  Note: Linear Accelerometer data is in m/s^2 without gravity; "
+        x_name = names[1].lower()
+        if x_name.startswith(("ax", "linear acceleration")):
+            print("  Note: linear acceleration is in m/s^2 without gravity; "
                   "h = 1 was chosen for G-Force Meter data (g, gravity included).")
+        elif x_name.startswith("acceleration"):
+            print("  Note: phyphox acceleration is in m/s^2 with gravity (a still phone reads "
+                  "about 9.8); h = 1 was chosen for data in g.")
     else:
         try:
             data = load_mat(args.file, args.var)
