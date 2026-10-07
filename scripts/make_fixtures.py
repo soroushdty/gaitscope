@@ -29,7 +29,7 @@ from scipy import interpolate, ndimage, signal
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "tests", "fixtures")
 sys.path.insert(0, os.path.join(ROOT, "python"))
-from lab_step_det import detect_steps, gait_metrics  # noqa: E402
+from lab_step_det import detect_steps, gait_metrics, load_csv, resample  # noqa: E402
 
 
 def synthetic_walk(seed=7, fs=100, dur=18.0):
@@ -181,6 +181,31 @@ def dwt_fixtures():
         back = pywt.idwt(cA, cD, "db4", mode="symmetric")
         out["cases"].append({"n": n, "cA": cA.tolist(), "cD": cD.tolist(), "back": back.tolist()})
     return out
+
+
+def resample_input(fs, dur=3.0, seed=11):
+    """t, a: uneven timing (±30%) starting at 0.0123 s, three repeated timestamps, a walk-like
+    1.8 Hz swing plus a 70 Hz tone (above 50 Hz, the Nyquist frequency of 100 Hz)."""
+    rng = np.random.default_rng(seed)
+    n = round(fs * dur)
+    t = 0.0123 + np.cumsum((1 + 0.6 * (rng.random(n) - 0.5)) / fs)
+    t[[n // 4, n // 2, 3 * n // 4]] = t[[n // 4 - 1, n // 2 - 1, 3 * n // 4 - 1]]
+    a = 1 + np.sin(2 * np.pi * 1.8 * t) + 0.3 * np.sin(2 * np.pi * 70 * t)
+    return t, a
+
+
+def resample_fixtures():
+    """python/lab_step_det.py resample() on resample_input(), which resampleChannel in
+    src/core.js must reproduce (linear: bit for bit)."""
+    cases = []
+    for src, target, method, aa in [(460, 100, "linear", False), (460, 100, "linear", True), (460, 100, "pchip", False),
+                                    (460, 100, "pchip", True), (57, 100, "linear", False), (57, 100, "pchip", False),
+                                    (100, 100, "linear", False), (460, 37.5, "linear", True)]:
+        t, a = resample_input(src)
+        R = resample(np.column_stack([t, a]), target, method=method, antialias=aa)
+        cases.append({"fs_in": src, "fs": target, "method": method, "antialias": aa,
+                      "t": t.tolist(), "a": a.tolist(), "out": R[:, 1].tolist()})
+    return cases
 
 
 def filter_fixtures():
@@ -412,6 +437,15 @@ def main():
         json.dump({"source": "scipy.interpolate.PchipInterpolator", "pchip": pchip_fixtures()}, f)
     with open(p("spectral.json"), "w") as f:
         json.dump({"source": "numpy.fft, scipy.signal; inputs: fft_input(), filter_input()", **spectral_fixtures()}, f)
+    with open(p("resample.json"), "w") as f:
+        # and the whole path: a CSV export through load_csv and resample, then the lab code
+        D, _ = load_csv(p("ptb_gforce.csv"))
+        lab = []
+        for fs in (100, 50):
+            R = resample(D, fs)
+            lab.append({"fs": fs, "x": R[:, 1].tolist(), "steps_x_matlab": detect_steps(R[:, 1], w=30, h=0.2)[1].tolist()})
+        json.dump({"source": "python/lab_step_det.py resample(); input: resample_input()", "cases": resample_fixtures(),
+                   "lab_source": "load_csv('ptb_gforce.csv'), resample(D, fs), detect_steps(x, w=30, h=0.2)", "lab": lab}, f)
     with open(p("filters.json"), "w") as f:
         json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures(),
                    "other_source": "scipy.ndimage (mode='nearest'), scipy.signal.savgol_filter (mode='interp'), iirnotch + sosfiltfilt; input: spiky_input()",

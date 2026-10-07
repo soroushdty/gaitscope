@@ -852,9 +852,8 @@
       checks.push({ level: fs < 10 ? 'warn' : 'pass', title: 'Sampling rate about ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz',
         detail: 'Measured from the timestamps. Timing varies by ' + Math.round(jitter * 100) + '% between samples' + (jitter > 0.25 ? ', which is typical of phone apps.' : '.') +
           (fs < 10 ? ' This is too slow to resolve individual steps reliably.' : '') });
-      if (Math.abs(fs - 100) / 100 > 0.05) {
-        checks.push({ level: 'warn', lab: true, title: 'Lab code assumes 100 Hz', detail: 'The original code divides by 100 to get seconds, so its durations are off by ' + Math.round(Math.abs(100 / fs - 1) * 100) + '% for this file. Coza uses the real timestamps.' });
-      }
+      const lab = labRateCheck(fs);
+      if (lab) checks.push(lab);
       if (dup) checks.push({ level: 'warn', title: dup + ' repeated timestamps', detail: 'Some consecutive samples share a timestamp. Durations still come from the timestamps, but those samples add no timing information.' });
       if (gaps) checks.push({ level: 'warn', title: gaps + ' gap' + (gaps > 1 ? 's' : '') + ' in the recording', detail: 'The longest pause between samples is ' + fmt(maxGap, 2) + ' s. Steps inside a gap cannot be detected.' });
     } else {
@@ -880,6 +879,12 @@
     const dur = t[t.length - 1] - t[0];
     if (dur < 3) checks.push({ level: 'warn', title: 'Short recording', detail: 'Only ' + fmt(dur, 1) + ' s long; step metrics need several steps to be meaningful.' });
     return { A, t, fs, checks, fatal: false, min: mn, max: mx };
+  }
+
+  // The lab code divides by 100 to get seconds; warn when what it receives is over 5% away.
+  function labRateCheck(fs, resampled) {
+    if (!(Math.abs(fs - 100) / 100 > 0.05)) return null;
+    return { level: 'warn', lab: true, id: 'labRate', title: 'Lab code assumes 100 Hz', detail: 'The original code divides by 100 to get seconds, so its durations are off by ' + Math.round(Math.abs(100 / fs - 1) * 100) + '% for ' + (resampled ? 'the ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz it receives after resampling' : 'this file') + '. Coza uses the real timestamps.' };
   }
 
   function interpolateNaN(A) {
@@ -1867,6 +1872,91 @@
   }
 
 
+  /* ----------------------------------------------------------- resampling (#52) */
+  // Anti-aliasing before going down in rate: scipy.signal.decimate's IIR filter, a Chebyshev
+  // type I low-pass of order 8 with 0.05 dB ripple at 0.8 × the new Nyquist frequency.
+  const ANTIALIAS = { order: 8, rp: 0.05, fraction: 0.8 };
+  const MAX_GRID = 2e6; // samples; beyond this the page would stall
+  const RESAMPLE_METHODS = { linear: 'straight lines between samples (like MATLAB interp1)', pchip: 'a monotone cubic through the samples (pchip)' };
+
+  // numpy.interp, operation for operation, so the lab code gets the same bits as from the
+  // Python port's resample(): xp strictly increasing, x increasing.
+  function interpLinear(xp, fp, x) {
+    const n = xp.length, out = new Float64Array(x.length);
+    let j = 0;
+    for (let i = 0; i < x.length; i++) {
+      const v = x[i];
+      if (v > xp[n - 1] || v === xp[n - 1]) { out[i] = fp[n - 1]; continue; }
+      if (v < xp[0]) { out[i] = fp[0]; continue; }
+      while (j + 1 < n && xp[j + 1] <= v) j++;
+      if (xp[j] === v) { out[i] = fp[j]; continue; }
+      const slope = (fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j]);
+      let r = slope * (v - xp[j]) + fp[j];
+      if (Number.isNaN(r)) { r = slope * (v - xp[j + 1]) + fp[j + 1]; if (Number.isNaN(r) && fp[j] === fp[j + 1]) r = fp[j]; }
+      out[i] = r;
+    }
+    return out;
+  }
+
+  // Samples sharing a timestamp averaged into one (interpolation needs one value per time).
+  function mergeRepeats(t, A) {
+    const ts = [], as = [];
+    for (let i = 0; i < t.length;) {
+      let j = i + 1, sum = A[i];
+      while (j < t.length && t[j] === t[i]) sum += A[j++];
+      ts.push(t[i]); as.push(sum / (j - i));
+      i = j;
+    }
+    return { t: Float64Array.from(ts), A: Float64Array.from(as), merged: t.length - ts.length };
+  }
+
+  /* A prepared channel on an even grid t0, t0 + 1/fs, … (#52), for analyses that count
+     samples (the lab code's w and /100) or need even spacing. opts: {mode: 'even' (the
+     recording's own median rate) or 'rate', rate (Hz), method: 'linear' | 'pchip',
+     antialias}. antialias low-passes below the new Nyquist frequency first when going down
+     in rate, on an even grid at the recording's median rate. Same steps as resample() in
+     python/lab_step_det.py; linear matches it bit for bit. Returns {applied, A, t, fs, from,
+     n, checks, min, max}; settings that can't be used give applied: false and a check. */
+  function resampleChannel(ch, opts) {
+    const fail = (title, detail, fix) => ({ applied: false, checks: [{ level: 'warn', title, detail, fix }] });
+    const fs = opts.mode === 'even' ? ch.fs : Number(opts.rate);
+    if (!(fs > 0) || !Number.isFinite(fs)) return fail('Resampling not applied', 'No rate is set.', 'Type a rate in Hz under Resample.');
+    const method = RESAMPLE_METHODS[opts.method] ? opts.method : 'linear';
+    const t0 = ch.t[0], tau = Float64Array.from(ch.t, v => v - t0);
+    const u = mergeRepeats(tau, ch.A);
+    const m = Math.floor(u.t[u.t.length - 1] * fs + 1e-9) + 1;
+    if (m > MAX_GRID) return fail('Resampling not applied', fmt(fs, 1) + ' Hz would make ' + Math.round(m).toLocaleString('en-US') + ' samples, more than the page can handle (' + MAX_GRID.toLocaleString('en-US') + ').', 'Pick a lower rate.');
+    if (m < MIN_ROWS) return fail('Resampling not applied', fmt(fs, 1) + ' Hz would leave only ' + m + ' samples.', 'Pick a higher rate.');
+    const dts = [];
+    for (let i = 1; i < u.t.length; i++) dts.push(u.t[i] - u.t[i - 1]);
+    const md = median(dts), from = 1 / md, down = fs < from;
+    let srcT = u.t, srcA = u.A, aa = null;
+    if (opts.antialias && down) {
+      const g = evenGrid(u.A, u.t), fc = ANTIALIAS.fraction * fs / 2;
+      srcT = g.t; srcA = sosfiltfilt(designFilter({ type: 'cheby1', order: ANTIALIAS.order, rp: ANTIALIAS.rp, fs: g.fs, lowpass: fc }).sos, g.A);
+      aa = { fc, gaps: g.gaps };
+    }
+    const xg = Float64Array.from({ length: m }, (_, k) => k / fs);
+    const A = method === 'pchip' ? pchip(srcT, srcA, xg) : interpLinear(srcT, srcA, xg);
+    const t = Float64Array.from(xg, v => t0 + v);
+    let mn = Infinity, mx = -Infinity;
+    for (const v of A) { if (v < mn) mn = v; if (v > mx) mx = v; }
+
+    const checks = [{ level: 'info', title: 'Resampled to ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz', detail: 'From about ' + fmt(from, from >= 100 ? 0 : 1) + ' Hz (' + ch.A.length + ' samples) to an even grid of ' + m + ' samples, by ' + RESAMPLE_METHODS[method] + '.' +
+      (aa ? ' Low-passed at ' + fmt(aa.fc, 1) + ' Hz first (Chebyshev I, order ' + ANTIALIAS.order + ', like scipy decimate) so faster motion can’t fold back in.' : '') +
+      ' The filter, the lab code, the algorithms and the spectrum all use the resampled signal; the plot shows the recording faded behind it.' }];
+    if (fs > from * 1.01) checks.push({ level: 'info', title: 'Upsampling adds no information', detail: 'Going from about ' + fmt(from, 0) + ' Hz up to ' + fmt(fs, 0) + ' Hz only draws ' + (method === 'pchip' ? 'curves' : 'lines') + ' between the recorded samples. It can’t recover motion faster than the recording caught.' });
+    if (down && fs < from * 0.99 && !aa) checks.push({ level: 'info', title: 'No anti-aliasing', detail: 'Going down to ' + fmt(fs, 0) + ' Hz, anything faster than ' + fmt(fs / 2, 1) + ' Hz in the recording folds back in as slower motion (aliasing). Walking has little above 20 Hz, but impacts can.', fix: 'Turn on Anti-aliasing under Advanced to low-pass first.' });
+    if (aa && aa.gaps) checks.push({ level: 'warn', title: 'Anti-aliasing filter run as if evenly sampled', detail: 'The recording has long gaps, so an even grid would be over 4 times its length; the filter’s cut-off is blurred.', fix: 'Trim the gaps or split the recording.' });
+    if (u.merged) checks.push({ level: 'info', title: u.merged + ' repeated timestamp' + (u.merged > 1 ? 's' : '') + ' averaged', detail: 'Samples that share a timestamp were averaged into one before resampling, since interpolation needs one value per time.' });
+    let gaps = 0, maxGap = 0;
+    for (const d of dts) if (d > 5 * md) { gaps++; maxGap = Math.max(maxGap, d); }
+    if (gaps) checks.push({ level: 'warn', title: 'Resampling fills ' + gaps + ' gap' + (gaps > 1 ? 's' : ''), detail: 'The longest is ' + fmt(maxGap, 2) + ' s. The resampled signal bridges ' + (gaps > 1 ? 'them' : 'it') + ' with made-up values, so steps found there are not real.', fix: 'Trim the gaps or split the recording.' });
+    const lab = labRateCheck(fs, true);
+    if (lab) checks.push(lab);
+    return { applied: true, A, t, fs, from, method, antialias: !!aa, n: m, checks, min: mn, max: mx };
+  }
+
   /* Envelopes: curves drawn around the signal the algorithm sees, to show how the size of
      each swing changes. A view only: they never change the detected steps or metrics.
      compute(A, t, p) -> {upper?, lower?, mid?}, arrays with one value per sample; midName
@@ -2031,7 +2121,7 @@
     return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m] };
   }
 
-  const api = { InputError, MAX_BYTES, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
+  const api = { InputError, MAX_BYTES, resampleChannel, interpLinear, labRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
