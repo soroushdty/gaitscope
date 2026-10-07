@@ -186,7 +186,7 @@
     S.varName = null;
     $('varRow').hidden = true;
     $('rsSel').value = 'off'; showRs(); // the exported signal is the analysed one, already resampled if it was
-    S.fileChecks.push({ level: 'info', title: 'gaitscope export reopened', detail: 'Exported ' + (a.exported || '').replace('T', ' ').replace(/\.\d+Z$/, ' UTC') + ' by the ' + a.generator.replace('gaitscope ', '') + ' (version ' + a.version + ') from "' + a.file + '"' +
+    S.fileChecks.push({ level: 'info', title: 'GaitScope export reopened', detail: 'Exported ' + (a.exported || '').replace('T', ' ').replace(/\.\d+Z$/, ' UTC') + ' by the ' + a.generator.replace('gaitscope ', '') + ' (version ' + a.version + ') from "' + a.file + '"' +
       (a.variable ? ', variable ' + a.variable : '') + ', signal ' + a.signal + '. The signal is loaded as it was analysed' + (/Hz/.test(st.resample || '') ? ' (already resampled: ' + st.resample + ')' : '') + ', and the settings and notes are restored.' });
     S.counted = Number(st.steps_counted_by_hand) > 0 ? Number(st.steps_counted_by_hand) : null;
     setDataset(['time', a.signal_name || a.signal || 'signal'], [m.signals.time_s, m.signals.signal], 'csv');

@@ -1080,7 +1080,7 @@ test('JSON export reads back exactly, NaN included', () => {
   }
   assert.ok(Number.isNaN(back.metrics.coza_modified[model.metrics.metric.indexOf('coza_pace')]), 'NaN, null in JSON, NaN again');
   assert.deepEqual(back.settings, model.settings); assert.deepEqual(back.params, model.params); assert.deepEqual(back.spectrum, model.spectrum);
-  assert.throws(() => C.parseExportJson('{"a": 1}'), e => /not a gaitscope export/.test(e.message) && !!e.fix);
+  assert.throws(() => C.parseExportJson('{"a": 1}'), e => /not a GaitScope export/.test(e.message) && !!e.fix);
   assert.throws(() => C.parseExportJson('{"about": {"format": "gaitscope-export", "format_version": 99}}'), /format version 99, newer/);
   assert.throws(() => C.parseExportJson('{oops'), /could not be read/);
   assert.throws(() => C.parseExportJson(C.exportJson(walkExport({ parts: { signals: false } }).model)), e => /no signals/.test(e.message) && /Signals ticked/.test(e.fix));

@@ -1,7 +1,7 @@
 [project]
 name = "gaitscope"
 version = "0.1.0"
-description = "Python port of the Wearable Devices Lab 1 step detector"
+description = "GaitScope's Python port of Coza, the Lab 1 step detector"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"

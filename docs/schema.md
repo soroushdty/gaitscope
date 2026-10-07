@@ -37,8 +37,8 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`, `read
 | phyphox recording paused and resumed | warn | phyphox's experiment time leaves out pauses, so the stretches are joined with no gap; the message gives the join times. A step across a join can be missed or doubled. |
 | Zip with no CSV (e.g. an Excel export), damaged or truncated, password-protected, ZIP64, or an unknown compression method | error | Fix: export again as CSV (comma, decimal point), or unzip and upload the CSV. |
 | File named `.zip` that isn't a zip | error | Fix: export again, or upload the CSV or MAT file itself. |
-| gaitscope JSON export (#53) | info, reopened | Its signal loads at its own times with Resample off (it is already the analysed signal), and every control and note is restored, so the same steps and metrics come out. See `docs/export.md`. |
-| JSON that isn't a gaitscope export, can't be parsed, has no signals, or has a newer `format_version` | error | Fix: export again from the dashboard (with Signals ticked), or reload the page for a newer version. |
+| GaitScope JSON export (#53) | info, reopened | Its signal loads at its own times with Resample off (it is already the analysed signal), and every control and note is restored, so the same steps and metrics come out. See `docs/export.md`. |
+| JSON that isn't a GaitScope export, can't be parsed, has no signals, or has a newer `format_version` | error | Fix: export again from the dashboard (with Signals ticked), or reload the page for a newer version. |
 
 ### Recording in the browser (#51)
 
