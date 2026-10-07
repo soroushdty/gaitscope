@@ -1335,7 +1335,7 @@ test('the spectrogram picture (#98): a PNG that decodes back to its pixels, the 
 
 test('Frequency domain methods (#101): one registry, both kinds, each explained and credited', () => {
   for (const kind of ['whole', 'time']) assert.ok(C.TRANSFORMS.some(d => d.kind === kind), kind);
-  assert.deepEqual(C.TRANSFORMS.map(d => d.id).slice(0, 2), ['welch', 'stft'], 'the defaults first');
+  for (const [kind, first] of [['whole', 'welch'], ['time', 'stft']]) assert.equal(C.TRANSFORMS.find(d => d.kind === kind).id, first, 'the default first');
   for (const d of C.TRANSFORMS) {
     assert.ok(d.name && d.tagline.length > 40 && Array.isArray(d.params) && Array.isArray(d.credit), d.id);
     assert.equal(new Set(C.TRANSFORMS.map(x => x.id)).size, C.TRANSFORMS.length);
@@ -1379,4 +1379,24 @@ test('the db4 multiresolution analysis matches PyWavelets’ wavedec + waverec (
     for (let i = 0; i < c.n; i++) assert.ok(Math.abs(r.details.reduce((s, d) => s + d[i], r.approx[i]) - x[i]) < 1e-12);
   }
   assert.ok(worst < 1e-12, String(worst));
+});
+
+const PER = JSON.parse(fs.readFileSync(path.join(FIX, 'periodicity.json'), 'utf8'));
+test('Lomb-Scargle matches scipy’s lombscargle (normalize, floating mean) on uneven times; autocorrelation matches numpy (#101)', () => {
+  let worst = 0;
+  for (const c of PER.lombscargle) {
+    const p = C.lombScargle(Float64Array.from(c.t), Float64Array.from(c.y), Float64Array.from(c.f));
+    c.p.forEach((v, k) => { worst = Math.max(worst, Math.abs(p[k] - v)); });
+  }
+  assert.ok(worst < 1e-12, 'lombscargle ' + worst);
+  for (const c of PER.acf) {
+    const r = C.acf(fftInput(c.n).map(v => v + 0.3), c.K);
+    c.r.forEach((v, k) => assert.ok(Math.abs(r[k] - v) < 1e-13, 'acf ' + k));
+  }
+  // on a recording: the main rhythm, on the samples' own times
+  const fs = 57.4, t = Float64Array.from({ length: 30 * 57 }, (_, i) => i / fs + 0.002 * Math.sin(i * 1.3)), A = t.map(v => 1 + 0.3 * Math.sin(2 * Math.PI * 1.6 * v));
+  const ls = C.lombScargleSpectrum(A, t);
+  assert.ok(Math.abs(ls.peak.freq - 1.6) <= 0.01 && ls.peak.clear && Math.max(...ls.psd) > 0.95, 'a pure sine explains nearly all the variance');
+  const ac = C.autocorrelation(A, t, 3);
+  assert.ok(Math.abs(ac.peaks[0].lag - 1 / 1.6) < 0.01 && Math.abs(ac.peaks[1].lag - 2 / 1.6) < 0.01, ac.peaks.map(q => q.lag).join());
 });

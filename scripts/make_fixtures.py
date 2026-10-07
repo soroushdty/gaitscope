@@ -217,6 +217,25 @@ def mra_fixtures():
     return out
 
 
+def lombscargle_fixtures():
+    """scipy.signal.lombscargle(t, y, 2 pi f, normalize=True, floating_mean=True) on uneven times
+    (resample_input: +-30% jitter, repeated timestamps), and numpy's autocorrelation (#101)."""
+    out = []
+    for fs in (57, 100):
+        t, a = resample_input(fs)
+        keep = np.r_[True, np.diff(t) > 0]  # lombscargle wants distinct times
+        t, a = t[keep], a[keep] + 0.4
+        f = np.arange(5, 400) / 100
+        out.append({"fs": fs, "t": t.tolist(), "y": a.tolist(), "f": f.tolist(),
+                    "p": signal.lombscargle(t, a, 2 * np.pi * f, normalize=True, floating_mean=True).tolist()})
+    acf = []
+    for n, K in ((200, 60), (57, 56)):
+        x = fft_input(n) + 0.3
+        xc = x - x.mean()
+        acf.append({"n": n, "K": K, "r": (np.correlate(xc, xc, "full")[n - 1:n + K] / np.dot(xc, xc)).tolist()})
+    return out, acf
+
+
 def resample_input(fs, dur=3.0, seed=11):
     """t, a: uneven timing (±30%) starting at 0.0123 s, three repeated timestamps, a walk-like
     1.8 Hz swing plus a 70 Hz tone (above 50 Hz, the Nyquist frequency of 100 Hz)."""
@@ -513,6 +532,10 @@ def main():
     with open(p("wavelets.json"), "w") as f:
         json.dump({"source": "PyWavelets pywt.cwt (cmorB-1.0, method='fft') and wavedec/waverec (db4, symmetric)",
                    "cwt": cwt_fixtures(), "mra": mra_fixtures()}, f)
+    ls, acf = lombscargle_fixtures()
+    with open(p("periodicity.json"), "w") as f:
+        json.dump({"source": "scipy.signal.lombscargle (normalize=True, floating_mean=True) on resample_input(fs); numpy.correlate / numpy.dot on fft_input(n) + 0.3",
+                   "lombscargle": ls, "acf": acf}, f)
     print("Wrote fixtures to", OUT)
 
 

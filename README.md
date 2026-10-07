@@ -71,9 +71,11 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
   rows marked "Coza's formula" reproduce the `.m` file's own outputs exactly.
 - **Frequency domain** (closed by default; when closed it still shows the main rhythm and
   the steps from the rhythm in one line). Two views, each with a choice of method:
-  - *Whole recording:* Welch's spectrum (like scipy). Walking shows as a peak, which gives a
-    cadence with no step detection at all, to cross-check the detectors. With a filter on,
-    it also shows what the filter removes.
+  - *Whole recording:* Welch's spectrum (like scipy), Lomb–Scargle on the samples' own
+    uneven times, or the autocorrelation (how often the walk repeats: a step, then a
+    stride). Walking shows as a peak, which gives a cadence with no step detection at all,
+    to cross-check the detectors. With a filter on, Welch also shows what the filter
+    removes.
   - *Over time:* the short-time Fourier spectrogram, a Morlet wavelet scalogram (CWT, with
     its cone of influence) or octave wavelet bands (DWT), with the main rhythm drawn on top.
     A steady walk is one bright band; swinging the phone brings out a second band at half

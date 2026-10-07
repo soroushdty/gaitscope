@@ -2236,6 +2236,72 @@
     return { grid: { t: Float64Array.from({ length: cols }, (_, c) => w.t0 + (c + 0.5) * hop / fs), hop: hop / fs, df, rows, P }, bands };
   }
 
+  /* The generalised Lomb-Scargle periodogram (#101) of Zechmeister & Kurster (2009, eqs. 7-20),
+     operation for operation as scipy.signal.lombscargle(t, y, 2 pi f, normalize=True,
+     floating_mean=True): at each frequency a sine plus an offset is fitted at the samples' own
+     times, with no even grid, and the power is the share of the variance it explains (0 to 1,
+     their eq. 4). Returns a Float64Array, one value per frequency (Hz). */
+  function lombScargle(t, y, freqs) {
+    const n = t.length, w = 1 / n, epsneg = Math.pow(2, -53), out = new Float64Array(freqs.length);
+    let Y = 0, YY = 0;
+    for (let i = 0; i < n; i++) { Y += w * y[i]; YY += w * y[i] * y[i]; }
+    YY -= Y * Y;
+    const cw = new Float64Array(n), sw = new Float64Array(n);
+    freqs.forEach((f, k) => {
+      const om = 2 * Math.PI * f;
+      let CC = 0, CS = 0, C = 0, S = 0;
+      for (let i = 0; i < n; i++) { const c = Math.cos(om * t[i]), si = Math.sin(om * t[i]); cw[i] = c; sw[i] = si; CC += w * c * c; CS += w * c * si; C += w * c; S += w * si; }
+      let SS = 1 - CC;
+      CC -= C * C; SS -= S * S; CS -= C * S;
+      const tau = 0.5 * Math.atan2(2 * CS, CC - SS);
+      let YC = 0, YS = 0, CCt = 0, Ct = 0, St = 0;
+      for (let i = 0; i < n; i++) { const c = Math.cos(om * t[i] - tau), si = Math.sin(om * t[i] - tau); YC += w * y[i] * c; YS += w * y[i] * si; CCt += w * c * c; Ct += w * c; St += w * si; }
+      let SSt = 1 - CCt;
+      YC -= Y * Ct; YS -= Y * St; CCt -= Ct * Ct; SSt -= St * St;
+      CCt = Math.max(CCt, epsneg); SSt = Math.max(SSt, epsneg);
+      out[k] = 2 * ((YC / CCt) * YC + (YS / SSt) * YS) * (0.5 / YY);
+    });
+    return out;
+  }
+  /* Lomb-Scargle on a recording: from 0.05 Hz to 10 Hz (or under half the rate) in 0.01 Hz
+     steps. Above about 25 samples a second, consecutive samples are first averaged in groups
+     (their mean time and value), down to about 20 a second, so a long recording stays quick
+     while its times stay uneven. Returns {f, psd, peak, fs} like spectrum. */
+  function lombScargleSpectrum(A, t) {
+    const n = A.length, dts = [];
+    for (let i = 1; i < n; i++) { const d = t[i] - t[i - 1]; if (d > 0) dts.push(d); }
+    const fs0 = gapRate(dts), q = Math.max(1, Math.floor(fs0 / RHYTHM_RATE)), m = Math.floor(n / q);
+    const tt = new Float64Array(m), yy = new Float64Array(m);
+    for (let k = 0; k < m; k++) { let st = 0, sy = 0; for (let j = k * q; j < (k + 1) * q; j++) { st += t[j]; sy += A[j]; } tt[k] = st / q; yy[k] = sy / q; }
+    const fs = fs0 / q, top = Math.min(10, fs / 2), f = [];
+    for (let k = 5; k / 100 < top; k++) f.push(k / 100);
+    const freqs = Float64Array.from(f), psd = lombScargle(tt, yy, freqs);
+    return { f: freqs, psd, peak: dominantFrequency(freqs, psd), fs };
+  }
+  /* Autocorrelation (#101): how well the signal matches itself delayed by each lag, as
+     numpy.correlate(x, x, 'full')[n-1:] / numpy.dot(x, x) with the mean removed. Run on the
+     walking band (walkingGrid), lags up to maxLag s. Peaks: the local maxima above 0 from
+     0.25 s on, each placed by a parabola through its three samples. Returns {lag (s), r,
+     peaks: [{lag, r}], fs}. */
+  // r[k] = sum x_i x_(i+k) / sum x_i^2 for k = 0..K, x with its mean removed
+  function acf(x0, K) {
+    const mu = mean(x0), x = Float64Array.from(x0, v => v - mu), n = x.length, r = new Float64Array(K + 1);
+    let den = 0; for (let i = 0; i < n; i++) den += x[i] * x[i];
+    for (let k = 0; k <= K; k++) { let sum = 0; for (let i = 0; i + k < n; i++) sum += x[i] * x[i + k]; r[k] = sum / den; }
+    return r;
+  }
+  function autocorrelation(A, t, maxLag) {
+    const w = walkingGrid(A, t), fs = w.fs, n = w.x.length, K = Math.min(n - 1, Math.round((maxLag || 3) * fs)), r = acf(w.x, K);
+    const peaks = [];
+    for (let k = Math.max(1, Math.ceil(0.25 * fs)); k < K; k++) {
+      if (r[k] > 0 && r[k] >= r[k - 1] && r[k] > r[k + 1]) {
+        const a = r[k - 1], b = r[k], c = r[k + 1], d = a - 2 * b + c, off = d < 0 ? 0.5 * (a - c) / d : 0;
+        peaks.push({ lag: (k + off) / fs, r: b - 0.25 * (a - c) * off });
+      }
+    }
+    return { lag: Float64Array.from({ length: K + 1 }, (_, k) => k / fs), r, peaks, fs };
+  }
+
   /* Frequency-domain methods (#101), shown in the Frequency domain section's two slots: kind
      'whole' (power by frequency over the whole recording) or 'time' (a time x frequency
      picture). They are views only: steps, metrics, the rhythm count and the checks always come
@@ -2251,6 +2317,17 @@
       credit: [{ text: 'Welch, 1967', doi: '10.1109/TAU.1967.1161901' }].concat(FFT_CREDIT),
       tagline: 'The average power at each frequency over the whole recording, from half-overlapping segments (Segment length, above). A steady walk shows as a tall peak at its rhythm.',
       compute: (A, t, p, ctx) => (ctx && ctx.spec) || spectrum(A, t, p),
+    },
+    {
+      id: 'lombscargle', kind: 'whole', name: 'Lomb\u2013Scargle (uneven timing)', params: [],
+      credit: [{ text: 'Zechmeister & K\u00fcrster, 2009', doi: '10.1051/0004-6361:200811296', note: 'generalised Lomb\u2013Scargle, as scipy computes it' }],
+      tagline: 'Fits a sine, plus an offset, at each frequency directly at the samples\u2019 own times, with no even grid, so a phone\u2019s wobbly timing is used as it is. Power is the share of the signal\u2019s variance that sine explains (0 to 1).',
+      compute: (A, t) => lombScargleSpectrum(A, t),
+    },
+    {
+      id: 'autocorr', kind: 'whole', name: 'Autocorrelation (repeats in time)', params: [], credit: [],
+      tagline: 'How well the walk matches itself after each delay, from 1 (the same) to \u22121 (opposite). A peak at a delay means the walk repeats that often: on the up-and-down signal the first is usually one step and the next one stride (two steps).',
+      compute: (A, t) => autocorrelation(A, t, 3),
     },
     {
       id: 'stft', kind: 'time', name: 'Short-time Fourier (STFT)', params: [], credit: FFT_CREDIT,
@@ -2846,7 +2923,7 @@
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, walkingGrid, cwtMorlet, cwtGrid, mra, dwtGrid, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, walkingGrid, cwtMorlet, cwtGrid, mra, dwtGrid, lombScargle, lombScargleSpectrum, acf, autocorrelation, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

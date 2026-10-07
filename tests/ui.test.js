@@ -747,7 +747,7 @@ test('Frequency domain: closed by default with a summary, its own settings, a me
   assert.equal(pg.spectra.length + pg.spectros.length, 0, 'nothing drawn while closed');
   assert.match(text(pg, 'freqSum'), /^Main rhythm 0\.9\d Hz \(5\d\/min\) · about 15 steps from the rhythm$/);
   assert.ok(metric(pg, 'Steps').at(-1).startsWith('≈ 15'), 'the numbers stay in the time view');
-  assert.deepEqual([...$('wholeSel').options].map(o => o.value), ['welch']);
+  assert.deepEqual([...$('wholeSel').options].map(o => o.value), ['welch', 'lombscargle', 'autocorr']);
   assert.deepEqual([...$('timeSel').options].map(o => o.value), ['stft', 'cwt', 'dwt']);
   assert.match(text(pg, 'wholeTag'), /average power at each frequency.*Credit: Welch, 1967; Cooley & Tukey, 1965 \(FFT\); Bluestein, 1970/);
   assert.equal($('wholeTag').querySelector('a').href, 'https://doi.org/10.1109/TAU.1967.1161901');
@@ -769,6 +769,32 @@ test('Frequency domain: closed by default with a summary, its own settings, a me
   $('homeBtn').click(); await sleep(20);
   if (!$('homeDialog').hidden) $('homeDiscard').click();
   assert.equal($('freqSec').open, false);
+});
+
+test('Whole recording: Lomb\u2013Scargle on the samples\u2019 own times, and the autocorrelation\u2019s delays (#101)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  $('demoBtn').click(); await sleep(40);
+  await openFreq(pg);
+  const choose = async v => { $('wholeSel').value = v; $('wholeSel').dispatchEvent(new pg.w.Event('change')); await sleep(40); };
+  await choose('lombscargle');
+  let sp = pg.spectra.at(-1);
+  assert.equal(sp.layout.yaxis.title.text, 'Share of variance explained');
+  assert.equal(sp.traces[2].visible, false, 'the filter gain goes with Welch');
+  assert.ok(sp.traces[1].y.every(v => v >= 0 && v <= 1));
+  assert.match(sp.layout.annotations[0].text, /^0\.9\d Hz = 5\d\/min$/, 'the same rhythm as Welch');
+  assert.match(text(pg, 'specNote'), /Lomb–Scargle at the samples’ own times \(about 2\d a second\), every 0\.01 Hz/);
+  assert.match(text(pg, 'wholeTag'), /Credit: Zechmeister & Kürster, 2009/);
+  await choose('autocorr');
+  sp = pg.spectra.at(-1);
+  assert.equal(sp.layout.xaxis.title.text, 'Delay (s)');
+  assert.equal(sp.traces[0].meta.role, 'acf'); assert.equal(sp.traces[0].y[0], 1, 'the same as itself at no delay');
+  assert.equal(sp.layout.shapes.length, 2, 'the first two repeats');
+  assert.match(sp.layout.annotations[0].text, /^1\.\d\d s = 5\d\/min$/, 'the synthetic walk repeats about every 1.1 s');
+  assert.equal($('specCard').querySelector('.plot-tools').hidden, true, 'no notes on a delay axis'); assert.equal($('specLog').disabled, true);
+  assert.match(text(pg, 'specNote'), /^The walk matches itself best after 1\.\d\d s/);
+  await choose('welch');
+  assert.equal($('specCard').querySelector('.plot-tools').hidden, false); assert.equal($('specLog').disabled, false);
+  assert.equal(pg.spectra.at(-1).layout.xaxis.title.text, 'Frequency (Hz)');
 });
 
 test('Over time: the CWT with its cone of influence and width, the DWT bands, kept in an export (#101)', async () => {
