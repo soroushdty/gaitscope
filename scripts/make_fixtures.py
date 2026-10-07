@@ -5,7 +5,8 @@ No course data is used, so every fixture can be committed publicly.
 Also writes tests/fixtures/expected.json with the Python port's results,
 which the JavaScript tests use to check that both ports agree, and
 tests/fixtures/filters.json with scipy's filter designs and zero-phase outputs,
-which the JavaScript filters (src/core.js designFilter, sosfiltfilt) must match.
+which the JavaScript filters (src/core.js designFilter, sosfiltfilt) must match, and
+tests/fixtures/envelopes.json with scipy's PchipInterpolator for the smooth envelope.
 
 Run from the repo root:
     python scripts/make_fixtures.py
@@ -18,7 +19,7 @@ import sys
 
 import numpy as np
 import scipy.io as sio
-from scipy import ndimage, signal
+from scipy import interpolate, ndimage, signal
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "tests", "fixtures")
@@ -106,6 +107,21 @@ def savgol_exact_weights(w, order):
                 A[r] = [a - f * b for a, b in zip(A[r], A[c])]
     coef = [A[r][P] for r in range(P)]
     return [float(sum(coef[k] * Fraction(x) ** k for k in range(P))) for x in xs]
+
+
+def pchip_fixtures():
+    """scipy's PchipInterpolator on point sets like an envelope's peaks: uneven spacing, sign
+    changes in the slope, a flat stretch, and two points (a straight line)."""
+    sets = [
+        ([0.2, 1.1, 2.3, 2.9, 4.0, 5.5, 6.1], [3.0, 3.6, 2.1, 2.1, 4.2, 3.9, 1.0]),
+        ([0.0, 0.5, 1.0, 1.4, 2.6], [1.0, 1.0, 2.0, 5.0, 5.5]),
+        ([1.0, 3.0], [-2.0, 4.0]),
+    ]
+    cases = []
+    for xs, ys in sets:
+        td = np.linspace(xs[0], xs[-1], 41)
+        cases.append({"x": xs, "y": ys, "at": td.tolist(), "value": interpolate.PchipInterpolator(xs, ys)(td).tolist()})
+    return cases
 
 
 def filter_fixtures():
@@ -210,6 +226,8 @@ def main():
         }
     with open(p("expected.json"), "w") as f:
         json.dump({"source": "walk.mat (synthetic), python/lab_step_det.py, w=30, h=1", "columns": expected}, f, indent=2)
+    with open(p("envelopes.json"), "w") as f:
+        json.dump({"source": "scipy.interpolate.PchipInterpolator", "pchip": pchip_fixtures()}, f)
     with open(p("filters.json"), "w") as f:
         json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures(),
                    "other_source": "scipy.ndimage (mode='nearest'), scipy.signal.savgol_filter (mode='interp'), iirnotch + sosfiltfilt; input: spiky_input()",

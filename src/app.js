@@ -263,7 +263,7 @@
   }
   function resetParams(run) {
     $('wIn').value = '30'; syncH(1);
-    for (const el of optionInputs()) { el.value = el.defaultValue; updateOptionOut(el); }
+    for (const el of optionInputs()) { if (el.type === 'checkbox') el.checked = el.defaultChecked; else el.value = el.defaultValue; updateOptionOut(el); }
     updateWOut(); updateCwOut();
     if (run !== false && S.ch) recompute();
   }
@@ -300,7 +300,7 @@
       filter: $('filterSel').value,
       stride: $('posSel').value === 'leg', // a peak per stride: left plus right step
     };
-    for (const el of optionInputs()) p[el.dataset.param] = Number(el.value);
+    for (const el of optionInputs()) p[el.dataset.param] = el.type === 'checkbox' ? el.checked : Number(el.value);
     return p;
   }
 
@@ -667,7 +667,7 @@
   $('chanSel').addEventListener('change', e => selectChannel(e.target.value));
   $('fsIn').addEventListener('change', () => { if (S.ds && !S.ds.t) selectChannel(S.chanKey); });
   $('wIn').addEventListener('input', () => { updateWOut(); schedule(); });
-  for (const el of optionInputs()) el.addEventListener('input', () => { updateOptionOut(el); if (el.id === 'cwIn') updateCwOut(); schedule(); });
+  for (const el of optionInputs()) el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => { updateOptionOut(el); if (el.id === 'cwIn') updateCwOut(); schedule(); });
   $('hIn').addEventListener('input', e => { $('hNum').value = e.target.value; schedule(); });
   $('hNum').addEventListener('input', e => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value !== '') { $('hIn').value = String(v); schedule(); } });
   for (const id of ['fxWeak', 'posSel']) $(id).addEventListener('change', schedule);

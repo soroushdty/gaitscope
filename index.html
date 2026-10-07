@@ -95,6 +95,8 @@
         <input type="range" id="envPeakIn" data-param="envPeakWindow" min="0.1" max="1" value="0.3" step="0.05">
       </div>
       <p class="hint">A peak is the highest point within this window; the same for troughs.</p>
+      <label class="check"><input type="checkbox" id="envSmoothIn" data-param="envSmooth"><span>Smooth joins</span>
+        <small>A monotone cubic through the peaks instead of straight lines. It never overshoots between them.</small></label>
       </div>
       <div class="filter-opts" id="filterOpts" hidden>
       <h3>Filter</h3>
