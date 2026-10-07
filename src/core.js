@@ -1935,40 +1935,51 @@
     return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / fs, hop: Math.max(1, Math.round(SPEC_HOP * fs)) / fs, f: sg.f, S: sg.S };
   }
 
-  /* The spectrogram as a picture (#98): rhythmOverTime's short-time spectra as an RGBA image,
-     time across (one column per window, at most maxCols, neighbours averaged beyond that) and
-     frequency up from 0 to fMax in rows of df Hz (the top row is the highest frequency). Each
+  /* Time-frequency pictures (#98, #101) share one layout, a grid: {t (column centres, s), hop
+     (s per column), df (Hz per row), rows (from 0 Hz up), P (one Float64Array of row power per
+     column)}. stftGrid turns rhythmOverTime's short-time spectra into it: frequency up to fMax in
+     rows of df Hz (the mean of the spectrum's bins in each row), at most maxCols columns
+     (neighbours averaged beyond that). Returns null when there are no windows. */
+  function stftGrid(r, opts) {
+    opts = opts || {};
+    const fMax = opts.fMax || 5, df = opts.df || 0.05, maxCols = opts.maxCols || 1200;
+    if (!r.S.length) return null;
+    const rows = Math.round(fMax / df), group = Math.ceil(r.S.length / maxCols), width = Math.ceil(r.S.length / group), P = [], t = new Float64Array(width);
+    for (let c = 0; c < width; c++) {
+      const sum = new Float64Array(rows), cnt = new Float64Array(rows), last = Math.min(r.S.length, (c + 1) * group);
+      for (let s = c * group; s < last; s++) {
+        for (let k = 0; k < r.f.length && r.f[k] < fMax; k++) { const row = Math.floor(r.f[k] / df); sum[row] += r.S[s][k]; cnt[row]++; }
+      }
+      P.push(sum.map((v, i) => (cnt[i] ? v / cnt[i] : 0)));
+      t[c] = r.t[c * group] + (group - 1) * r.hop / 2;
+    }
+    return { t, hop: r.hop * group, df, rows, P };
+  }
+  /* A grid as an RGBA image, time across and frequency up (the top row is the highest). Each
      pixel is the given colour with an opacity that grows with the power in decibels, from
      `range` dB below the strongest power in the walking band (transparent) up to it (opaque),
-     squared so faint power fades quickly; it reads on a light or a dark background. Returns {width, height, rgba, x0, x1 (s, the
-     image's left and right edges), fMax}, or null when there are no windows. */
+     squared so faint power fades quickly; it reads on a light or a dark background. Returns
+     {width, height, rgba, x0, x1 (s, the image's left and right edges), fMax}. */
   // 20 dB, with the opacity squared, keeps a steady walk's band clear of the rest; 30 dB and a
   // straight line washed the owner's pocket walk out (its heel strikes spread power widely)
   const SPECTRO_DB = 20, SPECTRO_GAMMA = 2;
-  function spectrogramImage(r, color, opts) {
+  function gridImage(grid, color, opts) {
     opts = opts || {};
-    const fMax = opts.fMax || 5, df = opts.df || 0.05, range = opts.range || SPECTRO_DB, gamma = opts.gamma || SPECTRO_GAMMA, maxCols = opts.maxCols || 1200;
-    if (!r.S.length) return null;
-    const rows = Math.round(fMax / df), group = Math.ceil(r.S.length / maxCols), width = Math.ceil(r.S.length / group);
-    // power in each row: the mean of the spectrum's bins in it (rhythmOverTime's bins are 0.01 Hz)
-    const cols = [];
-    for (let c = 0; c < width; c++) {
-      const P = new Float64Array(rows), cnt = new Float64Array(rows);
-      for (let s = c * group; s < Math.min(r.S.length, (c + 1) * group); s++) {
-        for (let k = 0; k < r.f.length && r.f[k] < fMax; k++) { const row = Math.floor(r.f[k] / df); P[row] += r.S[s][k]; cnt[row]++; }
-      }
-      cols.push(P.map((v, i) => (cnt[i] ? v / cnt[i] : 0)));
-    }
+    const range = opts.range || SPECTRO_DB, gamma = opts.gamma || SPECTRO_GAMMA, { P, rows, df } = grid, width = P.length;
     let top = 0;
-    for (const P of cols) for (let i = 0; i < rows; i++) if ((i + 0.5) * df >= GAIT_BAND[0] && (i + 0.5) * df <= GAIT_BAND[1] && P[i] > top) top = P[i];
+    for (const col of P) for (let i = 0; i < rows; i++) if ((i + 0.5) * df >= GAIT_BAND[0] && (i + 0.5) * df <= GAIT_BAND[1] && col[i] > top) top = col[i];
     const rgba = new Uint8Array(width * rows * 4);
     for (let c = 0; c < width; c++) for (let i = 0; i < rows; i++) {
-      const db = top > 0 && cols[c][i] > 0 ? 10 * Math.log10(cols[c][i] / top) : -Infinity;
+      const db = top > 0 && P[c][i] > 0 ? 10 * Math.log10(P[c][i] / top) : -Infinity;
       const a = Math.pow(Math.max(0, Math.min(1, 1 + db / range)), gamma), o = ((rows - 1 - i) * width + c) * 4;
       rgba[o] = color[0]; rgba[o + 1] = color[1]; rgba[o + 2] = color[2]; rgba[o + 3] = Math.round(255 * a);
     }
-    const span = r.hop * group;
-    return { width, height: rows, rgba, x0: r.t[0] - r.hop / 2, x1: r.t[0] - r.hop / 2 + span * width, fMax };
+    return { width, height: rows, rgba, x0: grid.t[0] - grid.hop / 2, x1: grid.t[0] - grid.hop / 2 + grid.hop * width, fMax: rows * df };
+  }
+  // the STFT picture in one call (#98)
+  function spectrogramImage(r, color, opts) {
+    const g = stftGrid(r, opts);
+    return g && gridImage(g, color, opts);
   }
 
   /* An RGBA image as PNG bytes, uncompressed (zlib stored blocks), so no deflate library is
@@ -2121,6 +2132,32 @@
     if (best < 0) return { freq: NaN, power: NaN, clear: false };
     return { freq: f[best], power: psd[best], clear: psd[best] >= 5 * median(inBand) };
   }
+
+  /* Frequency-domain methods (#101), shown in the Frequency domain section's two slots: kind
+     'whole' (power by frequency over the whole recording) or 'time' (a time x frequency
+     picture). They are views only: steps, metrics, the rhythm count and the checks always come
+     from Welch's spectrum and the STFT. Each entry: id, kind, name, tagline, credit, params (a
+     schema, as for ENVELOPES), and compute(A, t, p, ctx), where ctx holds what the page has
+     already computed ({spec, rhythm}), so the default methods cost nothing extra:
+       whole -> {f, psd, peak, segment?, fs, resampled?}   (as spectrum)
+       time  -> {grid (see stftGrid), line? {t, f} (the main rhythm), window, hop}, or null */
+  const FFT_CREDIT = [{ text: 'Cooley & Tukey, 1965', doi: '10.1090/S0025-5718-1965-0178586-1', note: 'FFT' }, { text: 'Bluestein, 1970', doi: '10.1109/TAU.1970.1162132', note: 'FFT of any length' }];
+  const TRANSFORMS = [
+    {
+      id: 'welch', kind: 'whole', name: 'Fourier: Welch\u2019s method', params: [],
+      credit: [{ text: 'Welch, 1967', doi: '10.1109/TAU.1967.1161901' }].concat(FFT_CREDIT),
+      tagline: 'The average power at each frequency over the whole recording, from half-overlapping segments (Segment length, above). A steady walk shows as a tall peak at its rhythm.',
+      compute: (A, t, p, ctx) => (ctx && ctx.spec) || spectrum(A, t, p),
+    },
+    {
+      id: 'stft', kind: 'time', name: 'Short-time Fourier (STFT)', params: [], credit: FFT_CREDIT,
+      tagline: 'The Fourier spectrum in a window that slides along the recording (Rhythm-over-time window, above). One window length for every frequency, so it is either sharp in time or sharp in frequency, not both.',
+      compute: (A, t, p, ctx) => {
+        const r = (ctx && ctx.rhythm) || rhythmOverTime(A, t, p), grid = stftGrid(r);
+        return grid && { grid, line: { t: r.t, f: r.freq }, window: r.window, hop: r.hop };
+      },
+    },
+  ];
 
   /* The signal on an even time grid at the median sampling rate, for methods that assume even
      spacing (IIR and smoothing filters, FFT). Returns {A, t, fs, resampled, jitter, gaps}:
@@ -2690,7 +2727,7 @@
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectralSteps, spectrogramImage, SPECTRO_DB, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

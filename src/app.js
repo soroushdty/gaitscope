@@ -251,7 +251,7 @@
   function restoreExport(m) {
     const pr = m.params || {};
     const pick = (id, v) => { if (v !== undefined && [...$(id).options].some(o => o.value === String(v))) $(id).value = String(v); };
-    pick('filterSel', pr.filter); pick('posSel', pr.phone_position);
+    pick('filterSel', pr.filter); pick('posSel', pr.phone_position); pick('wholeSel', pr.freqWhole); pick('timeSel', pr.freqTime); showMethodTags();
     for (const el of optionInputs()) {
       const v = pr[el.dataset.param];
       if (v === undefined || v === null) continue;
@@ -431,10 +431,11 @@
     for (const el of optionInputs()) updateOptionOut(el);
     renderIndicators(); // h's slider spans the signal; windows show their length in samples
   }
-  // The page-wide options under Advanced (filter, spectrum) carry data-param (their key in
+  // The page-wide options under Advanced (filter) and in Frequency domain (spectrum) carry data-param (their key in
   // params()). An <output for=…> with data-unit shows the value with data-dec decimals.
   // data-zero: text shown for 0 (e.g. "off"); data-unit="order": "4th order"; "ordinal": "10th".
-  const optionInputs = () => document.querySelectorAll('#advSec input[data-param]');
+  // the page-wide options: Advanced (filter) and the Frequency domain section's settings (#101)
+  const optionInputs = scope => document.querySelectorAll(scope === 'adv' ? '#advSec input[data-param]' : scope === 'freq' ? '#freqSec input[data-param]' : '#advSec input[data-param], #freqSec input[data-param]');
   const ordinal = n => n + ([, 'st', 'nd', 'rd'][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10] || 'th');
   function updateOptionOut(el) {
     const out = document.querySelector('output[for="' + el.id + '"][data-unit]');
@@ -443,8 +444,8 @@
     out.textContent = v === 0 && out.dataset.zero ? out.dataset.zero : u === 'order' ? ordinal(v) + ' order' : u === 'ordinal' ? ordinal(v)
       : fmt(v, Number(out.dataset.dec || 0)) + (u === '%' ? '%' : u ? ' ' + u : '');
   }
-  function resetParams(run) {
-    for (const el of optionInputs()) { if (el.type === 'checkbox') el.checked = el.defaultChecked; else el.value = el.defaultValue; updateOptionOut(el); }
+  function resetParams(run, scope) {
+    for (const el of optionInputs(scope)) { if (el.type === 'checkbox') el.checked = el.defaultChecked; else el.value = el.defaultValue; updateOptionOut(el); }
     if (run !== false && S.ch) recompute();
   }
   function updatePosHint() {
@@ -461,7 +462,8 @@
   }
   // page-wide settings; each indicator adds its own (indParams)
   function params() {
-    const p = { fs: S.ch ? S.ch.fs : 100, filter: $('filterSel').value, stride: $('posSel').value === 'leg' }; // stride: a peak per stride
+    const p = { fs: S.ch ? S.ch.fs : 100, filter: $('filterSel').value, stride: $('posSel').value === 'leg', // stride: a peak per stride
+      freqWhole: $('wholeSel').value, freqTime: $('timeSel').value }; // the Frequency domain views (#101)
     for (const el of optionInputs()) p[el.dataset.param] = el.type === 'checkbox' ? el.checked : Number(el.value);
     return p;
   }
@@ -728,8 +730,7 @@
   function render() {
     renderValidation(derivedChecks());
     renderPlot();
-    renderSpectrum();
-    renderSpectrogram();
+    renderFreq();
     renderMetrics();
     renderSteps();
     renderNotes();
@@ -848,8 +849,9 @@
         add({ role: 'intervals', uid: d.ind.uid }, { x, y, xaxis: 'x', yaxis: 'y2', mode: 'lines+markers', name: d.label + ' interval', line: { color: colorOf(d.ind), width: 1 },
           marker: { symbol: symbolOf(d.ind), size: 6, color: colorOf(d.ind) }, hovertemplate: esc(d.label) + ': %{y:.3f} s between steps<extra></extra>' });
       }
-      // the period of the spectrum's main rhythm over time (gaps where no clear peak)
-      add({ role: 'rhythm' }, { x: Array.from(S.res.rhythm.t), y: Array.from(S.res.rhythm.freq, f => Number.isFinite(f) ? 1 / f : null), mode: 'lines', name: 'Spectrum rhythm',
+      // the period of the spectrum's main rhythm over time (gaps where no clear peak), with the
+      // Frequency domain section open (#101: closed, the time view keeps only the numbers)
+      if ($('freqSec').open) add({ role: 'rhythm' }, { x: Array.from(S.res.rhythm.t), y: Array.from(S.res.rhythm.freq, f => Number.isFinite(f) ? 1 / f : null), mode: 'lines', name: 'Spectrum rhythm',
         xaxis: 'x', yaxis: 'y2', connectgaps: false, line: { color: colors.signal, width: 1.6 },
         hovertemplate: 'Spectrum: main rhythm every %{y:.3f} s (%{customdata:.0f}/min)<extra></extra>', customdata: Array.from(S.res.rhythm.freq, f => f * 60) });
     }
@@ -884,9 +886,34 @@
 
   // Spectrum panel: power of the signal the algorithm sees (and of the recording, faded, when a
   // filter changed it), the filter's gain on a second axis, and the dominant walking frequency.
+  /* The Frequency domain section (#101): closed by default, with a one-line summary; open, its
+     two views (whole recording, over time) are drawn with the chosen methods. The views never
+     change steps or metrics. */
+  const methodOf = sel => C.TRANSFORMS.find(d => d.id === $(sel).value) || C.TRANSFORMS.find(d => d.kind === (sel === 'wholeSel' ? 'whole' : 'time'));
+  function fillMethods() {
+    for (const [sel, kind] of [['wholeSel', 'whole'], ['timeSel', 'time']]) {
+      $(sel).innerHTML = C.TRANSFORMS.filter(d => d.kind === kind).map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
+    }
+    showMethodTags();
+  }
+  function showMethodTags() {
+    for (const [sel, tag] of [['wholeSel', 'wholeTag'], ['timeSel', 'timeTag']]) {
+      const d = methodOf(sel);
+      $(tag).innerHTML = esc(d.tagline) + (d.credit.length ? ' <span class="credit">' + creditHtml(d.credit) + '</span>' : '');
+    }
+  }
+  function renderFreq() {
+    const pk = S.res.spec.peak, sp = S.res.specSteps;
+    $('freqSum').textContent = (pk.clear ? 'Main rhythm ' + fmt(pk.freq, 2) + ' Hz (' + fmt(pk.freq * 60, 0) + '/min)' : 'No clear walking rhythm') +
+      (sp ? ' \u00b7 about ' + Math.round(sp.steps) + ' steps from the rhythm' : '');
+    if (!$('freqSec').open) return; // drawn when opened
+    renderSpectrum();
+    renderSpectrogram();
+  }
   function renderSpectrum() {
     if (typeof Plotly === 'undefined') return;
-    const { spec, specRaw, g: p } = S.res;
+    const { specRaw: raw0, g: p } = S.res, def = methodOf('wholeSel');
+    const spec = def.compute(S.res.filt.A, S.ch.t, p, { spec: S.res.spec }), specRaw = def.id === 'welch' ? raw0 : null;
     const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') };
     const top = Math.min(spec.fs / 2, 10), log = $('specLog').checked;
     const cut = r => { let k = 0; while (k < r.f.length && r.f[k] <= Math.min(spec.fs / 2, 25)) k++; return { f: Array.from(r.f.subarray(0, k)), psd: Array.from(r.psd.subarray(0, k)) }; };
@@ -934,14 +961,15 @@
   };
   function renderSpectrogram() {
     if (typeof Plotly === 'undefined') return;
-    const r = S.res.rhythm, el = $('spectroPlot'), { t } = S.ch;
+    const el = $('spectroPlot'), { t } = S.ch, def = methodOf('timeSel');
     const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') };
-    const im = C.spectrogramImage(r, hexRgb(colors.signal));
+    const res = def.compute(S.res.filt.A, t, S.res.g, { rhythm: S.res.rhythm }), im = res && C.gridImage(res.grid, hexRgb(colors.signal));
     el.hidden = !im;
-    if (!im) { $('spectroNote').textContent = 'The recording is shorter than one ' + fmt(r.window, 0) + ' s window (Rhythm-over-time window, under Advanced), so there is no spectrogram.'; return; }
-    const traces = [{ x: Array.from(r.t), y: Array.from(r.freq, f => (Number.isFinite(f) ? f : null)), type: 'scatter', mode: 'lines', name: 'Main rhythm', connectgaps: false,
-      line: { color: colors.algo, width: 1.6 }, meta: { role: 'rhythmLine' }, customdata: Array.from(r.freq, f => f * 60),
-      hovertemplate: '%{x:.1f} s: main rhythm %{y:.2f} Hz (%{customdata:.0f}/min)<extra></extra>' }];
+    if (!im) { $('spectroNote').textContent = 'The recording is shorter than one ' + fmt(S.res.rhythm.window, 0) + ' s window (Rhythm-over-time window, above), so there is no picture.'; return; }
+    const ln = res.line;
+    const traces = ln ? [{ x: Array.from(ln.t), y: Array.from(ln.f, f => (Number.isFinite(f) ? f : null)), type: 'scatter', mode: 'lines', name: 'Main rhythm', connectgaps: false,
+      line: { color: colors.algo, width: 1.6 }, meta: { role: 'rhythmLine' }, customdata: Array.from(ln.f, f => f * 60),
+      hovertemplate: '%{x:.1f} s: main rhythm %{y:.2f} Hz (%{customdata:.0f}/min)<extra></extra>' }] : [];
     const layout = {
       uirevision: S.file.name + '|' + S.chanKey, margin: { l: 58, r: 14, t: 8, b: 44 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: cssVar('--font') || 'sans-serif', color: colors.muted, size: 12 }, showlegend: false, hovermode: 'closest',
@@ -952,7 +980,7 @@
     };
     const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     Plotly.react(el, traces, layout, config);
-    $('spectroNote').textContent = 'How strongly each rhythm shows along the recording, in ' + fmt(r.window, 0) + ' s windows every ' + fmt(r.hop, 1) + ' s (Rhythm-over-time window, under Advanced): blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, full colour at it. The line is the main walking rhythm, as in the Step intervals strip. A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
+    $('spectroNote').textContent = 'How strongly each rhythm shows along the recording, in ' + fmt(res.window, 0) + ' s windows every ' + fmt(res.hop, 1) + ' s (Rhythm-over-time window, above): blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, full colour at it. The line is the main walking rhythm, as in the Step intervals strip. A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
   }
 
   /* ------------------------------------------------------------- notes */
@@ -1036,7 +1064,7 @@
     const n = S.notes.splice(i, 1)[0];
     renderNotes(); if (n) redrawNotes(n.plot);
   }
-  function redrawNotes(plot) { if (!S.ch || !S.res) return; if (plot === 'spectrum') renderSpectrum(); else renderPlot(); }
+  function redrawNotes(plot) { if (!S.ch || !S.res) return; if (plot !== 'spectrum') renderPlot(); else if ($('freqSec').open) renderSpectrum(); }
   function renderNotes() {
     for (const plot of Object.keys(NOTE_UI)) {
       const u = NOTE_UI[plot], list = S.notes.map((n, i) => [n, i]).filter(([n]) => n.plot === plot);
@@ -1119,7 +1147,7 @@
         { name: 'Gait asymmetry (Coza’s formula)', tip: 'mean(d(2:2:end)) / mean(d(1:2:end)) on the intervals in samples.', v: d => (d.script ? f(d.script.asymmetry, 3) : '—') });
     }
     $('cozaNote').hidden = !coza;
-    const spTip = 'Without detecting any steps: the walking rhythm in windows of ' + fmt(g.specWin || 4, 0) + ' s (Rhythm-over-time window, under Advanced) added up over the walk, one cycle per step' + (g.stride ? ' (× 2 with One leg)' : '') + '. The walk is the stretch where the rhythm is clear, its ends moved to where the walking swing starts and stops. An estimate: best on a steady walk, rougher when the phone is handled at the ends.';
+    const spTip = 'Without detecting any steps: the walking rhythm in windows of ' + fmt(g.specWin || 4, 0) + ' s (Rhythm-over-time window, in Frequency domain) added up over the walk, one cycle per step' + (g.stride ? ' (× 2 with One leg)' : '') + '. The walk is the stretch where the rhythm is clear, its ends moved to where the walking swing starts and stops. An estimate: best on a steady walk, rougher when the phone is handled at the ends.';
     $('metricsTable').innerHTML = '<thead><tr><th>Metric</th>' + dets.map(d => '<th class="num" style="color: var(' + d.ind.color + ')">' + esc(d.label) + '</th>').join('') +
       '<th class="num spec-col"><span class="tip" tabindex="0" title="' + esc(spTip) + '">From the rhythm</span></th></tr></thead><tbody>' +
       rows.map(r => '<tr><td><span class="tip" tabindex="0" title="' + esc(r.tip) + '">' + r.name + '</span></td>' + dets.map(d => '<td class="num">' + r.v(d) + '</td>').join('') +
@@ -1263,6 +1291,7 @@
     $('rsSel').value = 'off'; $('rsRate').value = ''; $('rsMethod').value = 'linear'; $('rsAA').checked = false; showRs();
     resetParams(false);
     for (const id of ['showIntervals', 'noteMode', 'specNoteMode', 'specLog']) $(id).checked = false;
+    $('freqSec').open = false; $('wholeSel').selectedIndex = 0; $('timeSel').selectedIndex = 0; showMethodTags();
     for (const id of ['noteSnap', 'specNoteSnap']) $(id).checked = true;
     for (const id of ['noteKind', 'specNoteKind']) $(id).value = 'time';
     renderNotes(); updateNoteUi();
@@ -1352,7 +1381,13 @@
   }
   // a spectrum note's rate follows Phone position
   $('posSel').addEventListener('change', renderNotes);
-  $('resetParams').addEventListener('click', () => resetParams(true));
+  $('resetParams').addEventListener('click', () => resetParams(true, 'adv'));
+  // the Frequency domain section (#101): views only, so a method change redraws just its view
+  fillMethods();
+  $('freqSec').addEventListener('toggle', () => { if (!S.ch || !S.res) return; renderFreq(); if ($('showIntervals').checked) renderPlot(); });
+  $('wholeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && $('freqSec').open) renderSpectrum(); });
+  $('timeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && $('freqSec').open) renderSpectrogram(); });
+  $('resetFreq').addEventListener('click', () => { $('wholeSel').selectedIndex = 0; $('timeSel').selectedIndex = 0; showMethodTags(); resetParams(true, 'freq'); });
   $('expSteps').addEventListener('click', exportSteps);
   $('expFmt').addEventListener('change', showExport);
   $('expMenu').addEventListener('toggle', showExport);
@@ -1388,7 +1423,7 @@
   });
   applyTheme(storedTheme());
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
-  const rerenderTheme = () => { if (S.ch && S.res) { renderPlot(); renderSpectrum(); renderSpectrogram(); } };
+  const rerenderTheme = () => { if (S.ch && S.res) { renderPlot(); renderFreq(); } };
   if (mq.addEventListener) mq.addEventListener('change', rerenderTheme);
   new MutationObserver(rerenderTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   setControlsEnabled(false);

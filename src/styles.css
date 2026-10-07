@@ -165,9 +165,17 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .steps[open] > summary { margin-bottom: 8px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
 .card h2 { font-size: 15px; margin-bottom: 8px; }
-.spectrum-card { margin-top: 18px; }
+.freq { margin-top: 18px; }
+.freq > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.freq > summary h2 { margin: 0; }
+.freq-sum { font-size: 13px; color: var(--muted); }
+.freq-opts { max-width: 560px; }
+.freq-view { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.freq-view h3 { font-size: 14px; margin: 0; }
+.card-head .field.method { display: inline-flex; align-items: baseline; gap: 6px; margin: 0; }
+.card-head .field.method select { display: inline-block; width: auto; margin: 0; padding: 4px 8px; font-size: 13px; }
+.method-tag { margin: 0 0 6px; }
 #specPlot { height: 280px; }
-.spectro-card { margin-top: 18px; }
 #spectroPlot { height: 240px; }
 #spectroPlot image { image-rendering: pixelated; } /* one block per window and row, not smeared between them */
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
