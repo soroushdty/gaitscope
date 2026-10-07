@@ -410,6 +410,20 @@ test('envelopes are drawn around the signal and never change steps, metrics or e
   assert.equal(text(pg, 'legEnvText'), 'Envelope, sliding 2.0 s');
   assert.equal(pg.plots.at(-1).traces[TR.algo].x.length, n, 'steps unchanged by the window');
 
+  // peak-trough: the smooth-joins checkbox changes the line, not the steps, and resets off
+  sel.value = 'peaktrough'; sel.dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  const straight = Array.from(pg.plots.at(-1).traces[TR.envUpper].y);
+  $('envSmoothIn').checked = true; $('envSmoothIn').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  assert.notDeepEqual(Array.from(pg.plots.at(-1).traces[TR.envUpper].y), straight);
+  assert.equal(text(pg, 'legEnvText'), 'Envelope, peak-trough (smooth)');
+  assert.equal(pg.plots.at(-1).traces[TR.algo].x.length, n);
+  $('resetParams').click();
+  assert.equal($('envSmoothIn').checked, false, 'reset turns it off');
+  sel.value = 'sliding'; sel.dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+
   // with a filter on, the envelope follows the filtered signal the algorithm sees
   $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
   await sleep(40);

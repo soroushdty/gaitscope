@@ -400,6 +400,22 @@ test('percentile band: q-th and (100 − q)-th percentile with linear interpolat
   assert.ok(Math.max(...e.upper) < 1.5 && Math.max(...slide.upper) > 4, 'spikes stretch the max/min band, not the percentile band');
 });
 
+test('smooth peak-trough joins match scipy PchipInterpolator and never overshoot', () => {
+  const { pchip } = JSON.parse(fs.readFileSync(path.join(FIX, 'envelopes.json'), 'utf8'));
+  for (const c of pchip) {
+    const v = C.pchip(Float64Array.from(c.x), Float64Array.from(c.y), Float64Array.from(c.at));
+    c.at.forEach((x, k) => assert.ok(Math.abs(v[k] - c.value[k]) < 1e-12, c.x.length + ' points, at ' + x));
+    // between two points the curve stays within their values
+    c.at.forEach((x, k) => { const j = c.x.findIndex((xx, q) => q + 1 < c.x.length && xx <= x && x <= c.x[q + 1]);
+      assert.ok(v[k] >= Math.min(c.y[j], c.y[j + 1]) - 1e-12 && v[k] <= Math.max(c.y[j], c.y[j + 1]) + 1e-12); });
+  }
+  const t = Float64Array.from({ length: 1000 }, (_, i) => i / 100), A = t.map(v => (1 + v / 5) * Math.sin(2 * Math.PI * v));
+  const sm = env('peaktrough').compute(A, t, Object.assign({}, ENV_P, { envSmooth: true }));
+  const peaks = C.localExtrema(A, C.halfWindow(0.3, 100), true);
+  for (const i of peaks) assert.ok(Math.abs(sm.upper[i] - A[i]) < 1e-12, 'passes through each peak');
+  assert.equal(env('peaktrough').label({ envSmooth: true }), 'Envelope, peak-trough (smooth)');
+});
+
 test('peak-trough envelope joins peaks and troughs by straight lines', () => {
   const t = Float64Array.from({ length: 1000 }, (_, i) => i / 100);
   const amp = v => 1 + v / 5, A = t.map(v => amp(v) * Math.sin(2 * Math.PI * v));

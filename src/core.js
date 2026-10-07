@@ -1401,10 +1401,49 @@
     for (let i = 1; i < A.length - 1; i++) if (A[i] === M[i] && (isMax ? A[i] > L[i] : A[i] < L[i])) out.push(i);
     return out;
   }
-  // Straight lines through the given samples, held flat before the first and after the last.
-  function joinPoints(idx, A, t) {
+  // Monotone cubic through (xs, ys), as scipy's PchipInterpolator: slopes are a weighted
+  // harmonic mean of the neighbouring secants (0 where they change sign), so the curve never
+  // overshoots between points; the end slopes use scipy's three-point rule. Evaluated at td,
+  // held flat before the first point and after the last.
+  function pchip(xs, ys, td) {
+    const n = xs.length, out = new Float64Array(td.length);
+    if (n === 1) return out.fill(ys[0]);
+    const h = [], m = [];
+    for (let k = 0; k < n - 1; k++) { h.push(xs[k + 1] - xs[k]); m.push((ys[k + 1] - ys[k]) / h[k]); }
+    const d = new Float64Array(n);
+    if (n === 2) d[0] = d[1] = m[0];
+    else {
+      for (let k = 1; k < n - 1; k++) {
+        if (Math.sign(m[k - 1]) !== Math.sign(m[k]) || m[k - 1] === 0 || m[k] === 0) { d[k] = 0; continue; }
+        const w1 = 2 * h[k] + h[k - 1], w2 = h[k] + 2 * h[k - 1];
+        d[k] = (w1 + w2) / (w1 / m[k - 1] + w2 / m[k]);
+      }
+      const edge = (h0, h1, m0, m1) => {
+        const e = ((2 * h0 + h1) * m0 - h0 * m1) / (h0 + h1);
+        if (Math.sign(e) !== Math.sign(m0)) return 0;
+        if (Math.sign(m0) !== Math.sign(m1) && Math.abs(e) > 3 * Math.abs(m0)) return 3 * m0;
+        return e;
+      };
+      d[0] = edge(h[0], h[1], m[0], m[1]);
+      d[n - 1] = edge(h[n - 2], h[n - 3], m[n - 2], m[n - 3]);
+    }
+    let k = 0;
+    for (let i = 0; i < td.length; i++) {
+      const x = td[i];
+      if (x <= xs[0]) { out[i] = ys[0]; continue; }
+      if (x >= xs[n - 1]) { out[i] = ys[n - 1]; continue; }
+      while (k + 1 < n - 1 && xs[k + 1] <= x) k++;
+      while (k > 0 && xs[k] > x) k--;
+      const u = (x - xs[k]) / h[k], u2 = u * u, u3 = u2 * u;
+      out[i] = (2 * u3 - 3 * u2 + 1) * ys[k] + (u3 - 2 * u2 + u) * h[k] * d[k] + (-2 * u3 + 3 * u2) * ys[k + 1] + (u3 - u2) * h[k] * d[k + 1];
+    }
+    return out;
+  }
+  // Straight lines (or a monotone cubic) through the given samples, held flat past the ends.
+  function joinPoints(idx, A, t, smooth) {
     if (!idx.length) return null;
-    return interpAt(Float64Array.from(idx, i => t[i]), Float64Array.from(idx, i => A[i]), t);
+    const xs = Float64Array.from(idx, i => t[i]), ys = Float64Array.from(idx, i => A[i]);
+    return smooth ? pchip(xs, ys, t) : interpAt(xs, ys, t);
   }
   // Moving mean and SD (population, N in the denominator: the RMS around the mean) over
   // A[i-half .. i+half], shortened at the ends. The running sums are of A minus its overall
@@ -1448,12 +1487,12 @@
     },
     {
       id: 'peaktrough', name: 'Peak-trough',
-      tagline: 'Straight lines joining successive peaks, and successive troughs.',
+      tagline: 'Lines joining successive peaks, and successive troughs: straight, or a smooth curve that never overshoots.',
       compute: (A, t, p) => {
         const h = halfWindow(p.envPeakWindow, p.fs);
-        return { upper: joinPoints(localExtrema(A, h, true), A, t), lower: joinPoints(localExtrema(A, h, false), A, t) };
+        return { upper: joinPoints(localExtrema(A, h, true), A, t, p.envSmooth), lower: joinPoints(localExtrema(A, h, false), A, t, p.envSmooth) };
       },
-      label: p => 'Envelope, peak-trough',
+      label: p => 'Envelope, peak-trough' + (p.envSmooth ? ' (smooth)' : ''),
     },
     {
       id: 'dynamic', name: 'Dynamic threshold',
@@ -1505,7 +1544,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles,
+    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
