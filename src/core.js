@@ -2497,25 +2497,30 @@
     },
   ];
 
-  /* Synthetic demo walk: 5 columns like the course's Walking.mat (t, x, y, z, |a|). */
+  /* Synthetic demo walk: 5 columns like the course's Walking.mat (t, x, y, z, |a|), and its
+     true step count (#81): the cycles of x's noise-free recipe, one peak each, counted while
+     the walk fades in and out, so the faint first and last steps count too. */
   function demoWalk() {
     const fs = 100, dur = 22, n = fs * dur;
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
     const t = new Float64Array(n), x = new Float64Array(n), y = new Float64Array(n), z = new Float64Array(n), m = new Float64Array(n);
-    let tt = 0, phase = 0;
+    let tt = 0, phase = 0, steps = 0, prev2 = 0, prev1 = 0;
     for (let i = 0; i < n; i++) {
       tt += (1 + 0.3 * rnd()) / fs; t[i] = tt;
       const env = Math.min(1, Math.max(0, (tt - 2) / 1.2)) * Math.min(1, Math.max(0, (20 - tt) / 1.2));
       const f = 0.92 + 0.04 * Math.sin(tt / 3);
       phase += 2 * Math.PI * f / fs;
       const r = n => Math.round(n * 100) / 100;
-      x[i] = r(env * (9 * Math.sin(phase) + 2.5 * Math.sin(2 * phase + 0.6)) + 0.35 * rnd());
+      const clean = env * (9 * Math.sin(phase) + 2.5 * Math.sin(2 * phase + 0.6));
+      if (i >= 2 && prev1 > 0 && prev1 >= prev2 && prev1 > clean) steps++; // a peak of the recipe at i - 1
+      prev2 = prev1; prev1 = clean;
+      x[i] = r(clean + 0.35 * rnd());
       y[i] = r(env * (-4 + 5 * Math.pow(Math.max(0, Math.sin(phase - 0.4)), 3) * 2 - 2 * Math.cos(phase)) + 0.35 * rnd());
       z[i] = r(env * (1.8 * Math.sin(4 * phase) + 1.1 * Math.sin(2 * phase)) + 0.5 * rnd());
       m[i] = r(Math.hypot(x[i], y[i], z[i]));
     }
-    return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m] };
+    return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m], steps };
   }
 
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,

@@ -57,7 +57,8 @@ kind. The ids name the columns of `steps` and `metrics` and the envelope columns
 
 What produced the result, readable as is: `signal`, `sampling_rate_hz`,
 `recorded_rate_hz`, `resample`, `filter`, `filter_resampled`, `spectrum_segment_s`,
-`phone_position` and, for a recording with a hand count (#51), `steps_counted_by_hand`.
+`phone_position` and, for a recording with a hand count (#51), `steps_counted_by_hand`, or for
+the synthetic walk its true count, `steps_in_synthetic_walk` (#81).
 The Python port writes `resample`, `to_g` and `sampling_rate_hz`.
 
 ### params

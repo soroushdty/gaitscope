@@ -87,7 +87,12 @@ test('a weak peak on the rhythm is kept; one out of rhythm is dropped', () => {
   const heightOnly = C.detectCoza(A, 30, 1, { ties: true, weak: true, weakRatio: C.WEAK_RATIO, t });
   assert.deepEqual(heightOnly.weakDropped, [140, 1000], 'without the rhythm check, both go (the old rule)');
 });
-
+test('the synthetic walk knows its true count, and Coza (modified) finds it (#81)', () => {
+  const d = C.demoWalk(), t = d.cols[0], A = d.cols[1];
+  assert.equal(d.steps, 17, 'cycles of the noise-free recipe, faint first and last included');
+  const run = id => { const def = C.ALGORITHMS.find(a => a.id === id); return def.detect(A, t, Object.assign({ fs: 1 / C.median(Array.from(t).slice(1).map((v, i) => v - t[i])) }, C.defaultParams(def))).idx.length; };
+  assert.equal(run('coza'), 17); assert.equal(run('coza_original'), 17);
+});
 test('fixed version removes tied duplicates and the stop artefact', () => {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
   const ch = C.prepareChannel(ds, 1);
