@@ -1058,6 +1058,34 @@ test('MAT export reads back in the page\'s own MAT reader with the same numbers'
   assert.equal(g.steps.fields.algorithm_status.cls, 'cell');
   assert.equal(g.about.fields.format_version.data[0], 1);
 });
+test('MAT export: struct field-name lengths are small data elements, as MATLAB writes them', () => {
+  const mat = C.exportMat(walkExport().model), hex = Buffer.from(mat).toString('hex');
+  assert.ok(hex.includes('0500040020000000'), 'miINT32, 4 bytes, value 32, in one 8-byte element');
+  assert.ok(!hex.includes('050000000400000020000000'), 'not a full tag plus padding, which Octave misreads');
+});
+// Octave reads the file as a MATLAB user would; skipped when octave-cli isn't installed (CI)
+const octave = (() => { try { require('child_process').execFileSync('octave-cli', ['--version'], { stdio: 'ignore' }); return true; } catch (e) { return false; } })();
+test('MAT export loads in GNU Octave with the same numbers and text', { skip: !octave && 'octave-cli not installed' }, () => {
+  const { model } = walkExport();
+  const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'gaitscope-octave-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'x.mat'), C.exportMat(model));
+    const out = require('child_process').execFileSync('octave-cli', ['-q', '--eval', [
+      'load x.mat; g = gaitscope;',
+      "printf('%s\\n', strjoin(fieldnames(g)', ','));",
+      "printf('%s %s %s\\n', class(g.signals.signal), class(g.steps.in_lab_code), class(g.steps.algorithm_status));",
+      "printf('%.17g\\n', g.signals.signal);", "printf('STATUS %s\\n', g.steps.algorithm_status{:});",
+      "printf('NOTE %s\\n', g.notes.text{1});", "printf('SET %s\\n', g.settings.note);",
+    ].join(' ')], { cwd: dir, encoding: 'utf8' }).split('\n');
+    assert.equal(out[0], Object.keys(model).join(','));
+    assert.equal(out[1], 'double logical cell');
+    const sig = out.slice(2, 2 + model.signals.signal.length).map(Number);
+    assert.ok(sameNum(sig, model.signals.signal), 'every sample, to 17 digits');
+    assert.deepEqual(out.filter(l => l.startsWith('STATUS ')).map(l => l.slice(7)), model.steps.algorithm_status);
+    assert.equal(out.find(l => l.startsWith('NOTE ')), 'NOTE turned "around", ✓');
+    assert.equal(out.find(l => l.startsWith('SET ')), 'SET naïve "quote", ✓ \uFFFD', 'beyond U+FFFF becomes U+FFFD');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 test('NPZ export: a zip of .npy arrays, numbers, true/false and text', () => {
   const { model } = walkExport();
   const entries = C.parseZip(C.exportNpz(model));

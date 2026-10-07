@@ -2221,7 +2221,11 @@
         if (!MAT_NAME.test(n)) throw new Error('Not a MATLAB field name: ' + n);
         nameBytes.set(ascii(n), 32 * k);
       });
-      return matrix(2, [1, 1], [el(5, i32([32])), el(1, nameBytes), ...names.map(n => fields[n])], { name });
+      // field name length: a small data element (tag and value in 8 bytes), as MATLAB writes
+      // it; Octave reads no padding after this one
+      const len = new Uint8Array(8), dv = new DataView(len.buffer);
+      dv.setUint32(0, (4 << 16) | 5, true); dv.setInt32(4, 32, true);
+      return matrix(2, [1, 1], [len, el(1, nameBytes), ...names.map(n => fields[n])], { name });
     };
     const value = v => (typeof v === 'boolean' ? logical([v], [1, 1]) : typeof v === 'number' ? dbl([v], [1, 1])
       : v && typeof v === 'object' ? record(v) : text(v === null || v === undefined ? '' : v));
