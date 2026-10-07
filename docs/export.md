@@ -64,7 +64,8 @@ The Python port writes `resample`, `to_g` and `sampling_rate_hz`.
 ### params
 
 The page-wide controls as they were, keyed as in the page (`filter`, `fOrder`, `fLow`, …,
-`specSeg`, `phone_position`). Reopening a JSON export sets them back. Empty from the
+`specSeg`, `phone_position`, and the Frequency domain methods shown, `freqWhole` and
+`freqTime`, #101). Reopening a JSON export sets them back. Empty from the
 Python port.
 
 ### spectrum

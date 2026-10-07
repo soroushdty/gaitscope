@@ -1223,7 +1223,7 @@ test('every detector, envelope and filter has a credit, with well-formed DOIs an
 });
 test('docs/algorithm.md lists every DOI and URL the page credits', () => {
   const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'algorithm.md'), 'utf8');
-  for (const d of [...C.ALGORITHMS, ...C.ENVELOPES, ...C.FILTERS])
+  for (const d of [...C.ALGORITHMS, ...C.ENVELOPES, ...C.FILTERS, ...C.TRANSFORMS])
     for (const c of d.credit) for (const ref of [c.doi, c.url].filter(Boolean)) assert.ok(doc.includes(ref), d.id + ': ' + ref + ' is in docs/algorithm.md');
 });
 test('the export\'s indicators table credits each indicator', () => {
@@ -1331,4 +1331,22 @@ test('the spectrogram picture (#98): a PNG that decodes back to its pixels, the 
   const many = C.spectrogramImage(r, [0, 0, 0], { maxCols: 10 });
   assert.ok(many.width <= 10 && Math.abs(many.x0 - im.x0) < 1e-9);
   assert.equal(C.spectrogramImage({ t: new Float64Array(0), S: [], f: new Float64Array(0), hop: 0.5 }, [0, 0, 0]), null);
+});
+
+test('Frequency domain methods (#101): one registry, both kinds, each explained and credited', () => {
+  for (const kind of ['whole', 'time']) assert.ok(C.TRANSFORMS.some(d => d.kind === kind), kind);
+  assert.deepEqual(C.TRANSFORMS.map(d => d.id).slice(0, 2), ['welch', 'stft'], 'the defaults first');
+  for (const d of C.TRANSFORMS) {
+    assert.ok(d.name && d.tagline.length > 40 && Array.isArray(d.params) && Array.isArray(d.credit), d.id);
+    assert.equal(new Set(C.TRANSFORMS.map(x => x.id)).size, C.TRANSFORMS.length);
+  }
+  // the defaults reuse what the page already computed, and agree with computing afresh
+  const fs = 60, t = Float64Array.from({ length: 30 * fs }, (_, i) => i / fs), A = t.map(v => 1 + 0.3 * Math.sin(2 * Math.PI * 1.6 * v));
+  const spec = C.spectrum(A, t, { specSeg: 8 }), rhythm = C.rhythmOverTime(A, t, { specWin: 4 });
+  const welch = C.TRANSFORMS.find(d => d.id === 'welch'), stft = C.TRANSFORMS.find(d => d.id === 'stft');
+  assert.equal(welch.compute(A, t, {}, { spec }), spec);
+  assert.ok(Math.abs(welch.compute(A, t, { specSeg: 8 }).peak.freq - 1.6) < 0.02);
+  const v = stft.compute(A, t, { specWin: 4 }, { rhythm });
+  assert.equal(v.grid.P.length, rhythm.S.length); assert.equal(v.line.f, rhythm.freq);
+  assert.deepEqual(C.gridImage(v.grid, [1, 2, 3]), C.spectrogramImage(rhythm, [1, 2, 3]));
 });

@@ -69,12 +69,15 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
 - **Metrics** for each detector: steps, average step duration, cadence, step-time
   variability, gait asymmetry, walking span and harmonic ratio. While a Coza is shown,
   rows marked "Coza's formula" reproduce the `.m` file's own outputs exactly.
-- **Spectrum** (Welch's method, like scipy). Walking shows as a peak, which gives a cadence
-  with no step detection at all, to cross-check the detectors. With a filter on, it also
-  shows what the filter removes.
-- **Spectrogram:** how strongly each rhythm shows along the recording, with the main
-  rhythm drawn on top. A steady walk is one bright band; swinging the phone brings out a
-  second band at half the height (the stride).
+- **Frequency domain** (closed by default; when closed it still shows the main rhythm and
+  the steps from the rhythm in one line). Two views, each with a choice of method:
+  - *Whole recording:* Welch's spectrum (like scipy). Walking shows as a peak, which gives a
+    cadence with no step detection at all, to cross-check the detectors. With a filter on,
+    it also shows what the filter removes.
+  - *Over time:* the short-time Fourier spectrogram, with the main rhythm drawn on top. A
+    steady walk is one bright band; swinging the phone brings out a second band at half the
+    height (the stride).
+  The views never change the steps or metrics.
 - **Step intervals** under the plot: the time between steps for each detector, next to the
   spectrum's main rhythm over time.
 - **Steps table:** every step any detector marked, and the weak peaks Coza (modified)

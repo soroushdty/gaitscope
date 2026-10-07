@@ -295,8 +295,14 @@ crossing can come up to about 0.07 s early.
 
 ## Spectrum and spectral cadence (`welch`, `spectrum`, #36)
 
-The **Spectrum** panel, under the plot, shows the signal as frequencies instead of
-values over time. Walking repeats, so its rhythm shows as a tall peak.
+The **Frequency domain** section (#101), under the metrics and closed by default, shows the
+signal as frequencies instead of values over time. Closed, it still shows one line: the
+main rhythm and the steps counted from it. Open, it has two views, each with a choice of
+method from `TRANSFORMS` in `core.js` (each with a kind, its settings and its credits):
+*Whole recording* (power by frequency; Welch below) and *Over time* (a time × frequency
+picture; the STFT below). The views never change steps or metrics: the spectral cadence,
+the steps from the rhythm and the checks always come from Welch and the STFT, whichever
+method is shown. Walking repeats, so its rhythm shows as a tall peak.
 
 * **Method:** Welch's method, as `scipy.signal.welch` (within 1e-12):
   - the signal is cut into half-overlapping segments (default 8 s, under Advanced)
@@ -522,7 +528,7 @@ trunk accelerations during human walking"). Don't use it.
 | Hilbert envelope | Gabor, 1946 (analytic signal); Marple, 1999 (computed with the FFT) | [10.1049/ji-3-2.1946.0074](https://doi.org/10.1049/ji-3-2.1946.0074); [10.1109/78.782222](https://doi.org/10.1109/78.782222) |
 | Sliding window, mean ± k·SD, percentile band | none needed (mean ± k·SD is like Bollinger bands in finance, from a book) | |
 
-**Spectrum and features** (in these docs; the page doesn't show credits for them yet)
+**Spectrum and features** (the page shows the credits of each Frequency domain method next to its chooser; the rest only here)
 
 | Method | Credit | DOI |
 |---|---|---|
