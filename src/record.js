@@ -80,7 +80,12 @@
         return fail('Motion access was not allowed.', 'On iPhone, Safari asks once per visit: close this tab, open the page again and tap Allow. If it doesn’t ask, go to Settings → Apps → Safari → Clear History and Website Data. On Android, check Chrome’s Site settings → Motion sensors.');
       }
     }
-    st = { phase: 'countdown', samples: [], started: null, timers: [], lock: null, gotData: false, onDone };
+    // iPhone and iPad browsers (all WebKit, the only ones that ask permission) give acceleration
+    // with the opposite sign from Android and Physics Toolbox: an iPad lying screen up read
+    // z = -0.98 g (2026-10-07). The owner chose to flip it to Android's directions (#96). Safari
+    // on an iPad presents itself as a Mac, so this test, not the user-agent string, decides.
+    const flip = typeof DeviceMotionEvent.requestPermission === 'function';
+    st = { phase: 'countdown', samples: [], started: null, timers: [], lock: null, gotData: false, onDone, flip };
     window.addEventListener('devicemotion', onMotion);
     document.addEventListener('visibilitychange', onVisibility);
     st.timers.push(setTimeout(() => {
@@ -136,8 +141,9 @@
     st.gotData = true;
     if (st.phase !== 'recording') return;
     const a = e.acceleration, r = e.rotationRate;
-    st.samples.push({ ts: e.timeStamp, g: [g.x, g.y, g.z],
-      a: a && a.x !== null && a.x !== undefined ? [a.x, a.y, a.z] : null,
+    const s = st.flip ? v => (v === 0 ? 0 : -v) : v => v; // rotation is kept as given
+    st.samples.push({ ts: e.timeStamp, g: [s(g.x), s(g.y), s(g.z)],
+      a: a && a.x !== null && a.x !== undefined ? [s(a.x), s(a.y), s(a.z)] : null,
       r: r && r.alpha !== null && r.alpha !== undefined ? [r.alpha, r.beta, r.gamma] : null });
     if ((e.timeStamp - st.samples[0].ts) / 1000 >= MAX_S) stop('limit');
   }
@@ -183,6 +189,7 @@
       recorder: 'gaitscope (browser devicemotion)', started: d.toISOString(), device: navigator.userAgent,
       sample_rate_hz: st.rate.toFixed(1), samples: st.samples.length, stopped: st.reason, trimmed_end_s: st.trimmed ? st.trimmed.toFixed(2) : '',
       steps_counted: /^\d+$/.test(steps) ? Number(steps) : '', phone_position: C.PHONE_POSITIONS[pos] || '',
+      acceleration_sign: st.flip ? 'flipped to Android\'s directions (this browser gives it reversed)' : '',
     };
     const name = 'recording_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '.csv';
     const done = st.onDone, checks = st.checks;
