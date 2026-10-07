@@ -11,7 +11,7 @@ format stores it. The code is `buildExport` and the `export*` writers in `src/co
 |---|---|---|---|
 | CSV, separate files | `<name>_metrics.csv`, `<name>_steps.csv` | Excel; the layout from before #53, unchanged | anything |
 | CSV, one zip | `<name>_gaitscope.zip` with `about.csv`, `settings.csv`, `params.csv`, `signals.csv`, `recorded.csv`, `steps.csv`, `metrics.csv`, `notes.csv` | Excel, R, anything | unzip, then any CSV reader |
-| MATLAB | `<name>_gaitscope.mat` (v5) | MATLAB, Octave | `load('x_gaitscope.mat')`, then `struct2table(gaitscope.steps)` |
+| MATLAB | `<name>_gaitscope.mat` (v5) | MATLAB, Octave | `load('x_gaitscope.mat')`, then `gaitscope.steps.time_s` etc.; in MATLAB, `struct2table(gaitscope.steps)` gives a table (Octave has no tables) |
 | NumPy | `<name>_gaitscope.npz` | Python | `np.load('x_gaitscope.npz', allow_pickle=False)` |
 | JSON | `<name>_gaitscope.json` | reopening in the dashboard; web tools | the dashboard (drop it in like a recording), `json.load`, `jsonlite::fromJSON` |
 
@@ -105,14 +105,17 @@ One row per metric. NaN (empty in CSV, `null` in JSON) where a version doesn't c
 ## How each format stores it
 
 * **JSON:** the model as one object, one line per part. NaN and infinities become `null`.
-  Numbers are written in full, so they read back exactly.
+  Numbers are written in full, so they read back exactly in JavaScript, Python and R. Octave's
+  `jsondecode` (11.1) can be one unit off in the last binary digit; in Octave, use the `.mat`.
 * **CSV zip:** a records file has `key,value` rows (a nested value as JSON text), and a table
   file has one header row of column names. Numbers are written in full; true/false are
   `true`/`false`; NaN is an empty cell. Text with commas or quotes is quoted, as usual in CSV.
 * **MATLAB:** one struct, `gaitscope`, with a field per part. A record becomes a struct of
   scalars, text and logicals; a table becomes a struct of n×1 columns. Numbers are
   `double`, true/false columns are `logical`, and text columns are cell arrays of `char`.
-  `struct2table(gaitscope.steps)` gives a table. Characters beyond U+FFFF (emoji) become
+  In MATLAB, `struct2table(gaitscope.steps)` gives a table; Octave has no table type, so use
+  the fields (`gaitscope.steps.time_s`). Checked by loading it in GNU Octave 11.1
+  (`tests/core.test.js`, run when `octave-cli` is installed). Characters beyond U+FFFF (emoji) become
   U+FFFD, since MATLAB's `char` holds them as two characters and scipy can't read them back.
 * **NumPy:** `about`, `settings` and `params` are 0-d text arrays holding JSON
   (`json.loads(str(z['settings']))`). Each table column is its own array, named
