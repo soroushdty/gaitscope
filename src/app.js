@@ -51,7 +51,7 @@
     showPass = false;
     S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.chRaw = null; S.rs = null; S.res = null;
     S.notes = []; closeNoteForm();
-    S.recording = null; $('saveRec').hidden = true;
+    S.recording = null; $('saveRec').hidden = true; S.counted = null;
   }
 
   async function handleFile(file) {
@@ -192,6 +192,7 @@
         (m.sample_rate_hz ? ', about ' + m.sample_rate_hz + ' Hz, every sample at its own time' : '') + '. x, y, z are in g with gravity, like Physics Toolbox\u2019s G-Force Meter; the ax and wx columns are linear acceleration (m/s²) and rotation (rad/s).' +
         (said.length ? ' Recorded with: ' + said.join(', ') + '.' : '') });
     }
+    S.counted = /^\d+$/.test(m.steps_counted || '') && Number(m.steps_counted) > 0 ? Number(m.steps_counted) : null;
     if (m.phone_position === 'front pocket') $('posSel').value = 'leg';
     else if (m.phone_position === 'hand') $('posSel').value = 'hand';
     updatePosHint();
@@ -453,6 +454,14 @@
       if (Math.abs(ratio - 2) < 0.2 || Math.abs(ratio - 0.5) < 0.05) {
         out.push({ level: 'info', title: 'Spectrum and steps differ by a factor of 2', detail: 'The spectrum\u2019s main rhythm gives ' + fmt(specCadence, 0) + ' steps/min and ' + S.res.algo.name + '\u2019s steps give ' + fmt(am.cadence, 0) + '. One of them is counting strides (left plus right step) rather than steps. With the phone on one leg the strongest rhythm is usually the stride; at the waist, the step.' });
       }
+    }
+    // a recording that says how many steps were counted by hand: how close each count comes
+    if (S.counted) {
+      const n = S.counted, found = S.res.algM.steps, off = (found - n) / n * 100;
+      out.push({ level: 'info', title: 'You counted ' + n + ' steps; ' + S.res.algo.name + ' finds ' + found, detail: (found === n ? 'Exactly right.' : (off > 0 ? '+' : '') + fmt(off, 0) + '%, ' + Math.abs(found - n) + ' step' + (Math.abs(found - n) === 1 ? '' : 's') + (found > n ? ' too many.' : ' too few.')) +
+        (p.stride ? ' Each peak counts as 2 steps (Phone position: one leg).' : '') +
+        (showLab() ? ' The lab code marks ' + orig.steps + ' peak' + (orig.steps === 1 ? '' : 's') + (p.stride ? ', each a stride, so about ' + 2 * orig.steps + ' steps' : '') + '.' : '') +
+        ' Hand counts usually include the first and last step, which detectors can miss at the start and stop.' });
     }
     if (finalIdx.length >= 3 && !p.stride) {
       const iv = S.res.algM.stepInterval;
@@ -806,6 +815,7 @@
       csvRow(['spectrum_segment_s', n(S.res.spec.segment)]),
       ...S.res.algo.settings(p, S.res.fx).map(csvRow),
       csvRow(['phone_position', p.stride ? 'one leg (each peak is a stride)' : 'hand or waist (each peak is a step)']),
+      csvRow(['steps_counted_by_hand', S.counted || '']),
     ];
     if (S.notes.length) L.push('', csvRow(['note_time_s', 'note']), ...S.notes.map(n => csvRow([n.t.toFixed(3), n.text])));
     save(baseName() + '_metrics.csv', L.join('\n') + '\n');

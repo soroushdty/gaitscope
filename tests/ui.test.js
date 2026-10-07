@@ -723,11 +723,19 @@ test('records a walk from motion events, loads it like a file, and downloads wha
   assert.ok(['x (gFx)', 'y (gFy)', 'z (gFz)', 'magnitude (TgF)', 'ax (linear accelerometer)', 'wx (gyroscope)', 'vertical (along gravity, computed)'].every(o => opts.includes(o)), opts.join(' | '));
   $('chanSel').value = '2'; $('chanSel').dispatchEvent(new pg.w.Event('change')); await sleep(40); // gFy carries gravity
   assert.ok(pg.plots.at(-1).traces[TR.algo].x.length >= 6, 'the walk is found');
+  const peaks = pg.plots.at(-1).traces[TR.algo].x.length, labPeaks = pg.plots.at(-1).traces[TR.lab].x.length;
+  assert.match(text(pg, 'valList'), new RegExp('You counted 14 steps; Coza finds ' + 2 * peaks + '.*Each peak counts as 2 steps \\(Phone position: one leg\\)\\. The lab code marks ' + labPeaks + ' peaks, each a stride, so about ' + 2 * labPeaks + ' steps\\.'));
 
   assert.equal($('saveRec').hidden, false);
   pg.w.HTMLAnchorElement.prototype.click = function () {};
   $('saveRec').click();
   const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  $('expMetrics').click();
+  const metrics = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(metrics, /\nsteps_counted_by_hand,14\n/);
+  $('saveRec').click();
+  const csv2 = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.equal(csv2, csv, 'the same recording each time');
   const p = Core.parseCsv(csv);
   assert.equal(p.meta.steps_counted, '14'); assert.equal(p.meta.phone_position, 'front pocket'); assert.equal(p.meta.stopped, 'user');
   assert.equal(p.meta.samples, String(samples.length));
@@ -735,6 +743,9 @@ test('records a walk from motion events, loads it like a file, and downloads wha
 
   await upload(pg, path.join(FIX, 'walk.mat'));
   assert.equal($('saveRec').hidden, true, 'only for a recording');
+  assert.doesNotMatch(text(pg, 'valList'), /You counted/);
+  await upload(pg, path.join(FIX, 'recorder.csv')); // a saved recording, uploaded again
+  assert.match(text(pg, 'valList'), /Recorded in the browser.*Recorded with: 12 steps counted by hand, phone in the hand\..*You counted 12 steps; Coza finds/);
 });
 
 test('recorder: hold to stop, too short, page hidden mid-recording', async () => {
