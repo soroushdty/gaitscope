@@ -32,6 +32,14 @@ function makePage(opts = {}) {
     w.pako = pako; w.TextDecoder = TextDecoder; w.TextEncoder = TextEncoder; // browsers have both; jsdom neither
     if (opts.hdf5 !== false) w.hdf5 = require('jsfive'); // the page loads it from jsDelivr when a v7.3 file arrives
     w.matchMedia = q => ({ matches: !!(opts.coarse && /pointer: coarse/.test(q)), addEventListener() {} }); // coarse: a phone
+    if (opts.wakeLock) { // the Screen Wake Lock; opts.wakeLock.grant = false refuses it
+      const wl = opts.wakeLock; wl.requests = 0;
+      Object.defineProperty(w.navigator, 'wakeLock', { configurable: true, value: { request: async () => {
+        wl.requests++;
+        if (wl.grant === false) throw new Error('NotAllowedError');
+        const s = new w.EventTarget(); s.release = async () => { s.dispatchEvent(new w.Event('release')); }; wl.sentinel = s; return s;
+      } } });
+    }
     if (opts.motion) { // the devicemotion API; permission: iPhone's prompt answer
       w.DeviceMotionEvent = function () {};
       if (opts.permission) w.DeviceMotionEvent.requestPermission = async () => opts.permission;
@@ -1021,6 +1029,7 @@ test('recorder: the countdown is a setting, remembered in the browser', async ()
   assert.equal(storage.m['gaitscope-countdown'], '3');
   $('recBtn').click(); await sleep(20);
   assert.equal(text(pg, 'recBig'), '3');
+  assert.match(text(pg, 'recInfo'), /Don’t lock the screen: the recording stops when it locks\./);
   sendMotion(pg, motionSamples(0.1)); // the sensor answers during the countdown
   await sleep(3100);
   assert.equal($('recOverlay').dataset.phase, 'recording', 'starts when the countdown runs out');
@@ -1039,6 +1048,38 @@ test('recorder: the countdown is a setting, remembered in the browser', async ()
   assert.equal(text(pg3, 'recBig'), '10', 'used even when it cannot be remembered');
   esc(pg3);
   assert.equal(makePage().d.getElementById('recCountRow').hidden, true, 'not on a computer');
+});
+
+test('recorder: says not to lock the screen, and asks again when the browser drops the screen-on lock (#86)', async () => {
+  const wl = {}, pg = makePage({ coarse: true, motion: true, wakeLock: wl }), $ = id => pg.d.getElementById(id);
+  await startRecording(pg);
+  sendMotion(pg, motionSamples(4));
+  await sleep(300);
+  assert.equal(wl.requests, 1);
+  assert.match(text(pg, 'recInfo'), /about 6\d Hz\. The screen stays on by itself; don’t lock it, or the recording stops\.$/);
+  for (let k = 0; k < 3; k++) { wl.sentinel.dispatchEvent(new pg.w.Event('release')); await sleep(30); } // e.g. battery saver
+  assert.equal(wl.requests, 4);
+  await sleep(300);
+  assert.match(text(pg, 'recInfo'), /The screen stays on by itself/);
+  wl.sentinel.dispatchEvent(new pg.w.Event('release')); await sleep(300);
+  assert.equal(wl.requests, 4, 'three times at most');
+  assert.match(text(pg, 'recInfo'), /The browser stopped keeping the screen on \(battery saver\?\): make the screen timeout longer, and don’t lock it, or the recording stops\.$/);
+  $('recStop').dispatchEvent(new pg.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal($('recOverlay').dataset.phase, 'done');
+
+  // our own release when the recording ends doesn't ask again
+  const wl2 = {}, pg2 = makePage({ coarse: true, motion: true, wakeLock: wl2 });
+  await startRecording(pg2);
+  sendMotion(pg2, motionSamples(4)); await sleep(30);
+  pg2.d.getElementById('recStop').dispatchEvent(new pg2.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(50);
+  assert.equal(wl2.requests, 1);
+
+  const wl3 = { grant: false }, pg3 = makePage({ coarse: true, motion: true, wakeLock: wl3 });
+  await startRecording(pg3);
+  sendMotion(pg3, motionSamples(4)); await sleep(300);
+  assert.match(text(pg3, 'recInfo'), /This browser can’t keep the screen on: make the screen timeout longer, and don’t lock it, or the recording stops\.$/);
+  pg3.d.getElementById('recStop').dispatchEvent(new pg3.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 });
 
 test('Signal only takes away the extras and keeps the notes; Undo puts them back (#79)', async () => {
