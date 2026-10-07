@@ -1920,18 +1920,92 @@
      4 s) every 0.5 s, on an even grid. Only the walking band (up to 3.5 Hz) matters here, so
      above 50 Hz the signal is low-passed at 8 Hz and kept every q-th sample (about 20 Hz),
      which makes a 10-minute 460 Hz recording about 20× quicker. Returns {t (window centres, in
-     the recording's time), freq (Hz, NaN where a window has no clear walking peak), window (s)}. */
+     the recording's time), freq (Hz, NaN where a window has no clear walking peak), window (s),
+     hop (s), f and S: the short-time spectra themselves (for spectrogramImage)}. */
   const SPEC_HOP = 0.5, RHYTHM_RATE = 20;
   function rhythmOverTime(A, t, p) {
     const g = evenGrid(A, t), q = Math.max(1, Math.floor(g.fs / RHYTHM_RATE));
     let x = g.A, fs = g.fs;
     if (q > 2) { const lp = lowpass(x, fs, 8); x = Float64Array.from({ length: Math.ceil(lp.length / q) }, (_, k) => lp[k * q]); fs /= q; }
     const nperseg = Math.round((p.specWin || 4) * fs);
-    if (x.length < nperseg) return { t: new Float64Array(0), freq: new Float64Array(0), window: nperseg / fs };
+    if (x.length < nperseg) return { t: new Float64Array(0), freq: new Float64Array(0), window: nperseg / fs, hop: SPEC_HOP, f: new Float64Array(0), S: [] };
     let nfft = 1; while (nfft < Math.max(nperseg, Math.ceil(fs / 0.01))) nfft *= 2;
     const sg = spectrogram(x, fs, { nperseg, noverlap: nperseg - Math.max(1, Math.round(SPEC_HOP * fs)), nfft });
     const freq = Float64Array.from(sg.S, P => { const pk = dominantFrequency(sg.f, P); return pk.clear ? pk.freq : NaN; });
-    return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / fs };
+    return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / fs, hop: Math.max(1, Math.round(SPEC_HOP * fs)) / fs, f: sg.f, S: sg.S };
+  }
+
+  /* The spectrogram as a picture (#98): rhythmOverTime's short-time spectra as an RGBA image,
+     time across (one column per window, at most maxCols, neighbours averaged beyond that) and
+     frequency up from 0 to fMax in rows of df Hz (the top row is the highest frequency). Each
+     pixel is the given colour with an opacity that grows with the power in decibels, from
+     `range` dB below the strongest power in the walking band (transparent) up to it (opaque),
+     squared so faint power fades quickly; it reads on a light or a dark background. Returns {width, height, rgba, x0, x1 (s, the
+     image's left and right edges), fMax}, or null when there are no windows. */
+  // 20 dB, with the opacity squared, keeps a steady walk's band clear of the rest; 30 dB and a
+  // straight line washed the owner's pocket walk out (its heel strikes spread power widely)
+  const SPECTRO_DB = 20, SPECTRO_GAMMA = 2;
+  function spectrogramImage(r, color, opts) {
+    opts = opts || {};
+    const fMax = opts.fMax || 5, df = opts.df || 0.05, range = opts.range || SPECTRO_DB, gamma = opts.gamma || SPECTRO_GAMMA, maxCols = opts.maxCols || 1200;
+    if (!r.S.length) return null;
+    const rows = Math.round(fMax / df), group = Math.ceil(r.S.length / maxCols), width = Math.ceil(r.S.length / group);
+    // power in each row: the mean of the spectrum's bins in it (rhythmOverTime's bins are 0.01 Hz)
+    const cols = [];
+    for (let c = 0; c < width; c++) {
+      const P = new Float64Array(rows), cnt = new Float64Array(rows);
+      for (let s = c * group; s < Math.min(r.S.length, (c + 1) * group); s++) {
+        for (let k = 0; k < r.f.length && r.f[k] < fMax; k++) { const row = Math.floor(r.f[k] / df); P[row] += r.S[s][k]; cnt[row]++; }
+      }
+      cols.push(P.map((v, i) => (cnt[i] ? v / cnt[i] : 0)));
+    }
+    let top = 0;
+    for (const P of cols) for (let i = 0; i < rows; i++) if ((i + 0.5) * df >= GAIT_BAND[0] && (i + 0.5) * df <= GAIT_BAND[1] && P[i] > top) top = P[i];
+    const rgba = new Uint8Array(width * rows * 4);
+    for (let c = 0; c < width; c++) for (let i = 0; i < rows; i++) {
+      const db = top > 0 && cols[c][i] > 0 ? 10 * Math.log10(cols[c][i] / top) : -Infinity;
+      const a = Math.pow(Math.max(0, Math.min(1, 1 + db / range)), gamma), o = ((rows - 1 - i) * width + c) * 4;
+      rgba[o] = color[0]; rgba[o + 1] = color[1]; rgba[o + 2] = color[2]; rgba[o + 3] = Math.round(255 * a);
+    }
+    const span = r.hop * group;
+    return { width, height: rows, rgba, x0: r.t[0] - r.hop / 2, x1: r.t[0] - r.hop / 2 + span * width, fMax };
+  }
+
+  /* An RGBA image as PNG bytes, uncompressed (zlib stored blocks), so no deflate library is
+     needed: a filter byte 0 before each row, then IHDR, IDAT and IEND with their CRCs. */
+  function pngBytes(width, height, rgba) {
+    const raw = new Uint8Array(height * (width * 4 + 1));
+    for (let y = 0; y < height; y++) { raw[y * (width * 4 + 1)] = 0; raw.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), y * (width * 4 + 1) + 1); }
+    const blocks = Math.max(1, Math.ceil(raw.length / 65535)), z = new Uint8Array(2 + raw.length + 5 * blocks + 4);
+    z[0] = 0x78; z[1] = 0x01;
+    let o = 2, a = 1, b = 0;
+    for (let k = 0; k < blocks; k++) {
+      const part = raw.subarray(k * 65535, Math.min(raw.length, (k + 1) * 65535)), n = part.length;
+      z[o] = k === blocks - 1 ? 1 : 0; z[o + 1] = n & 255; z[o + 2] = n >> 8; z[o + 3] = ~n & 255; z[o + 4] = (~n >> 8) & 255;
+      z.set(part, o + 5); o += 5 + n;
+    }
+    for (let i = 0; i < raw.length; i++) { a = (a + raw[i]) % 65521; b = (b + a) % 65521; } // Adler-32
+    const adler = ((b << 16) | a) >>> 0;
+    z[o] = adler >>> 24; z[o + 1] = (adler >>> 16) & 255; z[o + 2] = (adler >>> 8) & 255; z[o + 3] = adler & 255;
+    const u32 = v => [v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+    const chunk = (type, data) => {
+      const td = new Uint8Array(4 + data.length);
+      for (let i = 0; i < 4; i++) td[i] = type.charCodeAt(i);
+      td.set(data, 4);
+      return [...u32(data.length), ...td, ...u32(crc32(td))];
+    };
+    const ihdr = new Uint8Array([...u32(width), ...u32(height), 8, 6, 0, 0, 0]);
+    return Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, ...chunk('IHDR', ihdr), ...chunk('IDAT', z), ...chunk('IEND', new Uint8Array(0))]);
+  }
+  // bytes as base64, for a data: URL
+  function base64(u8) {
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let s = '';
+    for (let i = 0; i < u8.length; i += 3) {
+      const n = (u8[i] << 16) | ((u8[i + 1] || 0) << 8) | (u8[i + 2] || 0);
+      s += A[n >> 18] + A[(n >> 12) & 63] + (i + 1 < u8.length ? A[(n >> 6) & 63] : '=') + (i + 2 < u8.length ? A[n & 63] : '=');
+    }
+    return s;
   }
 
   /* A step count from the rhythm, without detecting any steps (#98): the local walking rhythm
@@ -2616,7 +2690,7 @@
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectralSteps, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectralSteps, spectrogramImage, SPECTRO_DB, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

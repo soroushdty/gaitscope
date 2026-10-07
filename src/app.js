@@ -729,6 +729,7 @@
     renderValidation(derivedChecks());
     renderPlot();
     renderSpectrum();
+    renderSpectrogram();
     renderMetrics();
     renderSteps();
     renderNotes();
@@ -921,6 +922,37 @@
     $('specNote').textContent = (pk.clear ? 'The strongest rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz is ' + fmt(pk.freq, 2) + ' Hz: ' + fmt(pk.freq * 60, 0) + ' per minute' + (p.stride ? ', counted as strides (One leg), so ' + fmt(pk.freq * 120, 0) + ' steps/min. ' : '. ') : 'No clear walking rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz. ') +
       'Welch\u2019s method, ' + fmt(spec.segment, 1) + ' s segments' + (spec.resampled ? ', on an even ' + fmt(spec.fs, 1) + ' Hz grid' : '') + '. ' +
       (gain ? 'The dashed line is the filter\u2019s gain: the share of each frequency\u2019s swing it keeps.' : p.filter === 'median' ? 'The median filter isn\u2019t linear, so it has no fixed gain to draw.' : '');
+  }
+
+  /* The spectrogram (#98): the rhythm-over-time spectra as a picture on Plotly's axes, since
+     the basic bundle the page loads has no heatmap. Time runs across, lined up with the signal
+     plot; frequency goes up to 5 Hz; the colour's strength is the power, from SPECTRO_DB below
+     the strongest walking rhythm (blank) up to it. The main rhythm is drawn on top as a line. */
+  const hexRgb = h => {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h || '') || /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(h || '');
+    return m ? m.slice(1, 4).map(v => parseInt(v.length === 1 ? v + v : v, 16)) : [61, 95, 130];
+  };
+  function renderSpectrogram() {
+    if (typeof Plotly === 'undefined') return;
+    const r = S.res.rhythm, el = $('spectroPlot'), { t } = S.ch;
+    const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') };
+    const im = C.spectrogramImage(r, hexRgb(colors.signal));
+    el.hidden = !im;
+    if (!im) { $('spectroNote').textContent = 'The recording is shorter than one ' + fmt(r.window, 0) + ' s window (Rhythm-over-time window, under Advanced), so there is no spectrogram.'; return; }
+    const traces = [{ x: Array.from(r.t), y: Array.from(r.freq, f => (Number.isFinite(f) ? f : null)), type: 'scatter', mode: 'lines', name: 'Main rhythm', connectgaps: false,
+      line: { color: colors.algo, width: 1.6 }, meta: { role: 'rhythmLine' }, customdata: Array.from(r.freq, f => f * 60),
+      hovertemplate: '%{x:.1f} s: main rhythm %{y:.2f} Hz (%{customdata:.0f}/min)<extra></extra>' }];
+    const layout = {
+      uirevision: S.file.name + '|' + S.chanKey, margin: { l: 58, r: 14, t: 8, b: 44 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { family: cssVar('--font') || 'sans-serif', color: colors.muted, size: 12 }, showlegend: false, hovermode: 'closest',
+      xaxis: { title: { text: 'Time (s)' }, range: [t[0], t[t.length - 1]], gridcolor: colors.line, zeroline: false },
+      yaxis: { title: { text: 'Frequency (Hz)' }, range: [0, im.fMax], gridcolor: colors.line, zeroline: false },
+      images: [{ source: 'data:image/png;base64,' + C.base64(C.pngBytes(im.width, im.height, im.rgba)), xref: 'x', yref: 'y', x: im.x0, y: im.fMax,
+        sizex: im.x1 - im.x0, sizey: im.fMax, sizing: 'stretch', xanchor: 'left', yanchor: 'top', layer: 'below' }],
+    };
+    const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
+    Plotly.react(el, traces, layout, config);
+    $('spectroNote').textContent = 'How strongly each rhythm shows along the recording, in ' + fmt(r.window, 0) + ' s windows every ' + fmt(r.hop, 1) + ' s (Rhythm-over-time window, under Advanced): blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, full colour at it. The line is the main walking rhythm, as in the Step intervals strip. A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
   }
 
   /* ------------------------------------------------------------- notes */
@@ -1356,7 +1388,7 @@
   });
   applyTheme(storedTheme());
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
-  const rerenderTheme = () => { if (S.ch && S.res) { renderPlot(); renderSpectrum(); } };
+  const rerenderTheme = () => { if (S.ch && S.res) { renderPlot(); renderSpectrum(); renderSpectrogram(); } };
   if (mq.addEventListener) mq.addEventListener('change', rerenderTheme);
   new MutationObserver(rerenderTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   setControlsEnabled(false);
