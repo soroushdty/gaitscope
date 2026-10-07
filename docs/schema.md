@@ -31,7 +31,7 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`, `read
 | MAT v4 | error | Obsolete. Fix: re-save with `-v7`. |
 | Text file named `.mat` | warn / error | Read as CSV if it parses; otherwise told to rename it. |
 | Random or corrupted bytes, truncated blocks | error | Detected from the header and element sizes. |
-| CSV lines starting with `#` | skipped | Newer Physics Toolbox exports start with metadata lines (`# sensor:g_force`, `# Requested Sample Rate: …`). |
+| CSV lines starting with `#` | skipped as data, kept as metadata | Newer Physics Toolbox exports start with metadata lines (`# sensor:g_force`, `# Requested Sample Rate: …`), and so do the dashboard's own recordings (`# steps_counted: 20`). `# key: value` lines are kept in `parseCsv`'s `meta`. |
 | phyphox `meta/time.csv` or `meta/device.csv` uploaded on its own | error | They hold start/pause times or the phone's details, not samples; `time.csv` would otherwise be read as a two-row recording. Fix: upload the whole zip, or `Raw Data.csv`. |
 | Zip file (phyphox export) | pass, read in the browser | The zip's directory is parsed in `core.js` and entries are inflated with pako, which is already loaded. `Raw Data.csv` is read (else the largest CSV outside `meta/`; other CSVs are listed as unused). `meta/device.csv` and `meta/time.csv` give the phone, phyphox version, sensor chip, start time and length. |
 | phyphox recording paused and resumed | warn | phyphox's experiment time leaves out pauses, so the stretches are joined with no gap; the message gives the join times. A step across a join can be missed or doubled. |

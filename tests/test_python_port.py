@@ -305,3 +305,13 @@ def test_cli_resample_methods_and_notes(monkeypatch, capsys):
     out = run_cli(monkeypatch, capsys, "--file", f, "--resample", "50", "--antialias", "--resample-method", "pchip")
     assert "(pchip, a monotone cubic, low-passed at 20 Hz first)" in out and "aliasing" not in out
     assert "upsampling adds no information" in run_cli(monkeypatch, capsys, "--file", f, "--resample", "200")
+
+
+# --- the dashboard's browser recorder (#51) writes this layout
+
+def test_csv_from_the_browser_recorder():
+    D, names = load_csv(os.path.join(FIX, "recorder.csv"))
+    assert names == ["time", "gFx (g)", "gFy (g)", "gFz (g)"]
+    W = _walk()
+    assert np.allclose(D[:, 0], W[:, 0], atol=1e-12)
+    assert np.allclose(D[:, 1:] * 9.80665, W[:, 1:] + [0, 9.80665, 0])

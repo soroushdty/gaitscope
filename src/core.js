@@ -373,11 +373,17 @@
 
   function parseCsv(text) {
     text = text.replace(/^\uFEFF/, '');
-    // Physics Toolbox (newer versions) starts with '# key: value' metadata lines; skip them.
-    const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '' && !l.trimStart().startsWith('#'));
+    // Physics Toolbox (newer versions) and the dashboard's recorder start with '# key: value'
+    // metadata lines: kept in meta, skipped as data.
+    const all = text.split(/\r\n|\n|\r/), meta = {};
+    for (const l of all) {
+      const m = /^\s*#\s*([^:]+?)\s*:\s*(.*?)\s*$/.exec(l);
+      if (m && !(m[1] in meta)) meta[m[1]] = m[2];
+    }
+    const lines = all.filter(l => l.trim() !== '' && !l.trimStart().startsWith('#'));
     if (lines.length < 2) throw new InputError('The CSV file has fewer than 2 lines of data.', 'Record for longer, or check that the export completed.');
-    const meta = phyphoxMetaFile(lines[0]);
-    if (meta) throw new InputError('This is phyphox\'s ' + meta + ', not the sensor data.', 'Upload the whole zip that phyphox exported, or the "Raw Data.csv" inside it.');
+    const metaFile = phyphoxMetaFile(lines[0]);
+    if (metaFile) throw new InputError('This is phyphox\'s ' + metaFile + ', not the sensor data.', 'Upload the whole zip that phyphox exported, or the "Raw Data.csv" inside it.');
     const sample = lines.slice(0, Math.min(lines.length, 12));
     // Prefer a delimiter that splits every sampled line (header included) into the same number of fields.
     let delim = null, bestFields = 1;
@@ -425,7 +431,7 @@
       if (headers && headers[k] === '' && cols[k].every(Number.isNaN)) continue;
       names.push(name); keep.push(cols[k]);
     }
-    return { names, cols: keep, hasHeader: !!headers, delim, decimalComma, dropped,
+    return { names, cols: keep, meta, hasHeader: !!headers, delim, decimalComma, dropped,
       clockTime: clockCol.some(c => c > body.length * 0.5) };
   }
 
@@ -541,6 +547,55 @@
   }
   // decimal comma in the "decimal comma" exports
   function metaNumber(s) { return s === undefined || s === '' ? NaN : Number(String(s).replace(',', '.')); }
+
+  /* ------------------------------------------------- browser recording (#51) */
+  const STANDARD_GRAVITY = 9.80665; // m/s² in 1 g
+  const PHONE_POSITIONS = { hand: 'hand', 'front pocket': 'front pocket', 'back pocket': 'back pocket', other: 'other' };
+
+  /* A recording from the browser's devicemotion events as CSV text, in the layout both
+     readers already take: '# key: value' metadata lines, then one row per event, every
+     sample with its own timestamp (no resampling). samples: [{ts (ms, event.timeStamp),
+     g: [x, y, z] (accelerationIncludingGravity, m/s²), a: [x, y, z] or null (acceleration,
+     gravity removed), r: [alpha, beta, gamma] or null (rotationRate, °/s)}]. Columns:
+     time (s from the first sample); gFx, gFy, gFz, TgF in g with gravity, like Physics
+     Toolbox's G-Force Meter (so x, y, z are these); ax, ay, az, aT in m/s² without
+     gravity, like its Linear Accelerometer; wx, wy, wz in rad/s, like its gyroscope. The
+     last two groups only when the browser gave them. Numbers are written in full, so the
+     file reads back to the same values. meta: {key: value} written as metadata lines. */
+  function recordingCsv(samples, meta) {
+    const has = k => samples.some(s => s[k] && s[k].every(Number.isFinite));
+    const lin = has('a'), rot = has('r');
+    const head = ['time', 'gFx (g)', 'gFy (g)', 'gFz (g)', 'TgF (g)'];
+    if (lin) head.push('ax (m/s^2)', 'ay (m/s^2)', 'az (m/s^2)', 'aT (m/s^2)');
+    if (rot) head.push('wx (rad/s)', 'wy (rad/s)', 'wz (rad/s)');
+    const num = v => (Object.is(v, -0) ? '-0' : Number.isFinite(v) ? String(v) : '');
+    const ts0 = samples.length ? samples[0].ts : 0, deg = Math.PI / 180;
+    const rows = samples.map(s => {
+      const g = s.g.map(v => v / STANDARD_GRAVITY), out = [(s.ts - ts0) / 1000, ...g, Math.hypot(...g)];
+      if (lin) out.push(...(s.a ? [...s.a, Math.hypot(...s.a)] : [NaN, NaN, NaN, NaN]));
+      // rotationRate: alpha about z, beta about x, gamma about y
+      if (rot) out.push(...(s.r ? [s.r[1] * deg, s.r[2] * deg, s.r[0] * deg] : [NaN, NaN, NaN]));
+      return out.map(num).join(',');
+    });
+    const metaLines = Object.entries(meta || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => '# ' + k + ': ' + String(v).replace(/[\r\n]+/g, ' '));
+    return metaLines.concat([head.join(',')], rows).join('\n') + '\n';
+  }
+
+  /* Checks for a finished recording, before it is loaded. {ok, checks}; ok false when it is
+     too short to analyse. stopped: 'user' | 'hidden' (screen locked, app switched) | 'limit'. */
+  function recordingChecks(samples, stopped) {
+    const checks = [], n = samples.length;
+    const dur = n > 1 ? (samples[n - 1].ts - samples[0].ts) / 1000 : 0;
+    if (n < MIN_ROWS || dur < 3) {
+      return { ok: false, checks: [{ level: 'error', title: 'Recording too short', detail: 'Only ' + n + ' sample' + (n === 1 ? '' : 's') + (n > 1 ? ' over ' + fmt(dur, 1) + ' s' : '') + ' were captured.' +
+        (stopped === 'hidden' ? ' It stopped because the screen locked or the page went to the background.' : ''),
+        fix: 'Record at least 10 s of walking, with the page open and the screen on.' }] };
+    }
+    if (stopped === 'hidden') checks.push({ level: 'warn', title: 'Recording stopped early', detail: 'The screen locked or the page went to the background after ' + fmt(dur, 1) + ' s, and the phone stops sending motion data then. What was captured up to that point is kept.', fix: 'Keep the page open with the screen on; the overlay keeps pocket touches from changing anything.' });
+    if (stopped === 'limit') checks.push({ level: 'info', title: 'Recording stopped at the time limit', detail: 'Recordings stop after ' + fmt(dur / 60, 0) + ' minutes.' });
+    return { ok: true, checks };
+  }
 
   /* -------------------------------------------------------- column roles */
   const RX = {
@@ -2122,7 +2177,7 @@
     return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m] };
   }
 
-  const api = { InputError, MAX_BYTES, resampleChannel, interpLinear, labRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
+  const api = { InputError, MAX_BYTES, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, labRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,

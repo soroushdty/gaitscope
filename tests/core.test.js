@@ -922,6 +922,69 @@ test('interpLinear is numpy.interp: ends held, exact at the samples', () => {
   assert.deepEqual(Array.from(C.interpLinear([0, 1, 3], [10, 20, 0], [-1, 0, 0.5, 1, 2, 3, 4])), [10, 10, 15, 20, 10, 0, 0]);
 });
 
+/* ------------------------------------------------- browser recording (#51) */
+// devicemotion-like samples: ~60 Hz with uneven timing, gravity on y, a 0.9 Hz walk
+function synthRecording(seconds = 20, opts = {}) {
+  const out = []; let ts = 12345.678, k = 0;
+  while ((ts - 12345.678) / 1000 < seconds) {
+    const t = (ts - 12345.678) / 1000, walk = t > 2 && t < seconds - 2 ? 1 : 0;
+    const a = [walk * 3 * Math.sin(2 * Math.PI * 0.9 * t), walk * 9 * Math.max(0, Math.sin(2 * Math.PI * 0.9 * t)) ** 3, walk * Math.cos(2 * Math.PI * 1.8 * t)];
+    out.push({ ts, g: [a[0], a[1] + 9.81, a[2]], a: opts.noLinear ? null : a, r: opts.noRotation || (opts.someRotation && k % 2) ? null : [10 * a[2], 20 * a[0], 5 * a[1]] });
+    ts += 1000 / 60 * (1 + 0.3 * Math.sin(k++ * 1.7));
+  }
+  return out;
+}
+test('a browser recording becomes CSV text that reads back to the same numbers', () => {
+  const rec = synthRecording();
+  const csv = C.recordingCsv(rec, { recorder: 'gaitscope (browser devicemotion)', steps_counted: 20, phone_position: 'front pocket', device: 'line\nbreak', empty: '' });
+  const fixtureHead = fs.readFileSync(path.join(FIX, 'recorder.csv'), 'utf8').split('\n').find(l => !l.startsWith('#'));
+  assert.equal(csv.split('\n').find(l => !l.startsWith('#')), fixtureHead, 'the layout the Python fixture (and so load_csv) is tested on');
+  const p = C.parseCsv(csv);
+  assert.deepEqual(p.meta, { recorder: 'gaitscope (browser devicemotion)', steps_counted: '20', phone_position: 'front pocket', device: 'line break' });
+  assert.equal(p.cols[0].length, rec.length);
+  rec.forEach((s, i) => {
+    assert.equal(p.cols[0][i], (s.ts - rec[0].ts) / 1000, 'time: seconds from the first event, as captured');
+    assert.equal(p.cols[1][i], s.g[0] / C.STANDARD_GRAVITY);
+    assert.equal(p.cols[5][i], s.a[0]);
+    assert.equal(p.cols[9][i], s.r[1] * (Math.PI / 180), 'wx from beta (rotation about x)');
+    assert.equal(p.cols[11][i], s.r[0] * (Math.PI / 180), 'wz from alpha (rotation about z)');
+  });
+  const ds = C.buildDataset(p.names, p.cols, 'csv');
+  assert.equal(ds.x.name, 'gFx (g)'); assert.equal(ds.mag.name, 'TgF (g)');
+  assert.ok(ds.checks.some(c => c.title === 'Units: g'));
+  assert.equal(C.gravitySplit(ds).ok, true, 'vertical and horizontal work on the g columns');
+  // the same steps and metrics as the same samples handed over directly
+  const t = Float64Array.from(rec, s => (s.ts - rec[0].ts) / 1000), gy = Float64Array.from(rec, s => s.g[1] / C.STANDARD_GRAVITY);
+  const direct = C.prepareChannel(C.buildDataset(['time', 'gFy'], [t, gy], 'csv'), 1), viaCsv = C.prepareChannel(ds, 2);
+  assert.deepEqual(viaCsv.A, direct.A);
+  assert.equal(viaCsv.fs, direct.fs);
+  const p0 = { h: 1.2, weak: true, cozaWindow: 0.3, fs: viaCsv.fs }, coza = C.ALGORITHMS.find(a => a.id === 'coza');
+  const a1 = coza.detect(viaCsv.A, viaCsv.t, p0).idx, a2 = coza.detect(direct.A, direct.t, p0).idx;
+  assert.deepEqual(a1, a2); assert.ok(a1.length >= 12, 'the walk is found');
+  assert.deepEqual(C.timingMetrics(a1, viaCsv.t, {}), C.timingMetrics(a2, direct.t, {}));
+  assert.ok(viaCsv.fs > 55 && viaCsv.fs < 65);
+});
+test('a recording without linear acceleration or with gaps in rotation still reads', () => {
+  const p = C.parseCsv(C.recordingCsv(synthRecording(5, { noLinear: true, someRotation: true }), {}));
+  assert.deepEqual(p.names, ['time', 'gFx (g)', 'gFy (g)', 'gFz (g)', 'TgF (g)', 'wx (rad/s)', 'wy (rad/s)', 'wz (rad/s)']);
+  assert.ok(Number.isNaN(p.cols[5][1]) && Number.isFinite(p.cols[5][0]), 'blank cells where a rotation rate was missing');
+  assert.deepEqual(C.parseCsv(C.recordingCsv(synthRecording(5, { noLinear: true, noRotation: true }), {})).names, ['time', 'gFx (g)', 'gFy (g)', 'gFz (g)', 'TgF (g)']);
+});
+test('recording checks: too short, stopped by the screen locking, time limit', () => {
+  const short = C.recordingChecks(synthRecording(2), 'user');
+  assert.equal(short.ok, false); assert.match(short.checks[0].detail, /samples over 2\.0 s/); assert.match(short.checks[0].fix, /at least 10 s/);
+  assert.match(C.recordingChecks([], 'hidden').checks[0].detail, /Only 0 samples were captured\. It stopped because the screen locked/);
+  const hidden = C.recordingChecks(synthRecording(8), 'hidden');
+  assert.equal(hidden.ok, true); assert.equal(hidden.checks[0].title, 'Recording stopped early'); assert.ok(hidden.checks[0].fix);
+  assert.deepEqual(C.recordingChecks(synthRecording(8), 'user'), { ok: true, checks: [] });
+});
+test('CSV metadata lines are kept: Physics Toolbox and the recorder', () => {
+  assert.deepEqual(loadCsvDataset(path.join(FIX, 'ptb_metadata_units.csv')).p.meta['Requested Sample Rate'], '50 Hz');
+  const { p, ds } = loadCsvDataset(path.join(FIX, 'recorder.csv'));
+  assert.equal(p.meta.steps_counted, '12'); assert.equal(p.meta.phone_position, 'hand');
+  assert.equal(ds.x.name, 'gFx (g)');
+});
+
 test('unit inference from a quiet stretch', () => {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
   assert.ok(ds.checks.some(c => c.title === 'Units: gravity removed'));

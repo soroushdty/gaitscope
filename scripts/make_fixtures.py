@@ -327,6 +327,12 @@ PHYPHOX_DEVICE = "".join(f'"{k}","{v}"\n' for k, v in [
     ("linear_acceleration Name", "Linear Acceleration Sensor"), ("humidity Name", "null")])
 
 
+RECORDER_META = ("# recorder: gaitscope (browser devicemotion)\n# started: 2026-10-07T14:03:00.000Z\n"
+                 "# device: Mozilla/5.0 (Linux; Android 16; Pixel 9a) Chrome/141.0 Mobile Safari/537.36\n"
+                 "# sample_rate_hz: 100.3\n# samples: 1800\n# stopped: user\n"
+                 "# steps_counted: 12\n# phone_position: hand\n")
+
+
 def write_zip(path, files):
     """Zip of (name, text, deflate) with a fixed date, so regenerating doesn't change it."""
     with zipfile.ZipFile(path, "w") as z:
@@ -411,6 +417,16 @@ def main():
         ("meta/time.csv", PHYPHOX_TIME_PAUSED, True),
     ])
     write_zip(p("bad_phyphox_excel.zip"), [("Raw Data.xls", "not really Excel", True)])
+    # the dashboard's browser recorder (#51): metadata lines, g with gravity, linear m/s^2, rad/s;
+    # recordingCsv in src/core.js writes this layout (its tests check the header matches)
+    with open(p("recorder.csv"), "w") as f:
+        f.write(RECORDER_META)
+        f.write("time,gFx (g),gFy (g),gFz (g),TgF (g),ax (m/s^2),ay (m/s^2),az (m/s^2),aT (m/s^2),wx (rad/s),wy (rad/s),wz (rad/s)\n")
+        lin = W[:, 1:4]
+        g = (lin + [0, 9.80665, 0]) / 9.80665
+        for k, r in enumerate(W):
+            row = [r[0] - W[0, 0], *g[k], np.linalg.norm(g[k]), *lin[k], np.linalg.norm(lin[k]), 0.1 * lin[k, 2], 0.1 * lin[k, 0], 0.1 * lin[k, 1]]
+            f.write(",".join(repr(float(v)) for v in row) + "\n")
     np.savetxt(p("plain_noheader.csv"), W, delimiter=",", fmt="%.5f")
     with open(p("bad_backwards_time.csv"), "w") as f:
         f.write("time,ax\n")
