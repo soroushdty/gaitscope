@@ -1067,6 +1067,26 @@
   showExport();
   $('expMetrics').addEventListener('click', exportMetrics);
   $('valToggle').addEventListener('click', () => { const open = $('valToggle').getAttribute('aria-expanded') !== 'true'; valOpenedByUser = open; setValOpen(open); });
+  /* Theme (#79): System, Light or Dark, remembered for this viewer only. System leaves
+     data-theme off, so the CSS follows the system setting; the plots redraw on any change
+     (the observer below). Storage can be blocked (private windows), so every use is guarded. */
+  const THEMES = ['system', 'light', 'dark'], THEME_KEY = 'gaitscope-theme';
+  const THEME_NAME = { system: 'System', light: 'Light', dark: 'Dark' }, THEME_ICON = { system: '\u25d0', light: '\u2600', dark: '\u263e' };
+  function storedTheme() { try { const v = window.localStorage.getItem(THEME_KEY); return THEMES.includes(v) ? v : 'system'; } catch (e) { return 'system'; } }
+  function applyTheme(v) {
+    if (v === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', v);
+    const b = $('themeBtn'), next = THEMES[(THEMES.indexOf(v) + 1) % THEMES.length];
+    b.dataset.theme = v;
+    b.textContent = THEME_ICON[v] + ' ' + THEME_NAME[v];
+    b.title = 'Theme: ' + THEME_NAME[v] + '. Click for ' + THEME_NAME[next] + '.';
+    b.setAttribute('aria-label', b.title);
+  }
+  $('themeBtn').addEventListener('click', () => {
+    const v = THEMES[(THEMES.indexOf($('themeBtn').dataset.theme) + 1) % THEMES.length];
+    applyTheme(v);
+    try { window.localStorage.setItem(THEME_KEY, v); } catch (e) { /* not remembered, still applied */ }
+  });
+  applyTheme(storedTheme());
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const rerenderTheme = () => { if (S.ch && S.res) { renderPlot(); renderSpectrum(); } };
   if (mq.addEventListener) mq.addEventListener('change', rerenderTheme);
