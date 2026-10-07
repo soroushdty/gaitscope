@@ -409,6 +409,30 @@ method is shown. Walking repeats, so its rhythm shows as a tall peak.
   levels to reach about 0.25 Hz. The band edges depend on the walking band's rate: at about
   29 Hz (a phone at 57 Hz) a 1.6 Hz step falls in 0.9–1.8 Hz and a 0.8 Hz stride in
   0.45–0.9 Hz, so the two show as separate blocks.
+* **Hilbert–Huang transform** (Over time → *Hilbert–Huang (HHT)*, #101): the walk split into
+  modes that each carry one rhythm, found from the signal itself (empirical mode
+  decomposition, EMD), then each mode's frequency read moment by moment from its analytic
+  signal.
+  - `emd` follows PyEMD's `EMD(FIXE=sifts, extrema_detection='simple', spline_kind='cubic',
+    nbsym=2)` line by line: simple extrema (flat runs included), two extrema mirrored past
+    each end with all of PyEMD's edge rules, scipy's not-a-knot `CubicSpline` envelopes (or
+    PyEMD's own spline for 3 points), the mean subtracted a fixed number of times per mode
+    (*Sifting rounds per mode*, default 10), and PyEMD's end condition. It matches PyEMD
+    within 1e-15 on walk-like signals with 1, 4 and 10 sifts, with the same number of modes
+    (`tests/fixtures/emd.json`; `cubicNotAKnot` matches scipy within 1e-13). A fixed number
+    of sifts keeps the result from depending on a stopping rule, which is where EMD
+    implementations differ most.
+  - `hhtGrid`: each mode except the slow rest goes through `hilbert`; its frequency at each
+    sample is the unwrapped phase's rate of turning (as `numpy.gradient`). In each 0.5 s
+    column a mode's power goes to the row of its power-weighted mean frequency there, spread
+    over ±0.1 Hz so its track shows. Binning sample by sample smeared the synthetic walk's
+    0.92 Hz up to about 1.1 Hz, because a mode's frequency swings within each cycle of a
+    walk, which isn't a pure sine. The line is the strongest mode's frequency, with a running
+    median over 2.5 s. The colour scale is gentler (30 dB, straight), since each mode is a
+    thin track.
+  - On the owner's walks the line sits within a row or two of Welch's rhythm: 1.63 Hz on the
+    noisy walk (Welch 1.64) and the 60-step Chrome walk (1.67). On the noisy walk the stride
+    mode near 0.9 Hz appears while the arm swings.
 * On 10 minutes at 460 Hz the CWT takes about 0.35 s, the bands 0.06 s and the STFT 0.16 s;
   each view's result is kept until the signal, the filter, the method or its setting changes.
 
@@ -593,5 +617,6 @@ trunk accelerations during human walking"). Don't use it.
 | The Lomb–Scargle periodogram (#101) | Scargle, 1982 (read: §IIb, eqs. 10–11, §III, appendices A–C): the modified periodogram, its equivalence with least-squares fitting and its statistics | [10.1086/160554](https://doi.org/10.1086/160554) |
 | Generalised Lomb–Scargle periodogram (floating mean, normalised power), as scipy computes it (#101) | Zechmeister & Kürster, 2009 (read: sections 1–3, eqs. 4–20): it also fits an offset at each frequency, which Lomb's and Scargle's fits to mean-removed data don't; this is what the page computes | [10.1051/0004-6361:200811296](https://doi.org/10.1051/0004-6361:200811296) |
 | Autocorrelation: the unbiased form, step and stride from its first two peaks, their regularity and symmetry (#101) | Moe-Nilssen & Helbostad, 2004 (read in full): unbiased autocorrelation of trunk acceleration (eq. 3), one step and one stride from the first two dominant peaks, their heights as step and stride regularity and their ratio as step symmetry. They used trunk (L3) acceleration in its vertical and forward directions; the page uses whichever signal is chosen, and places peaks between samples by a parabola, which is its own addition | [10.1016/S0021-9290(03)00233-1](https://doi.org/10.1016/S0021-9290(03)00233-1) |
+| Empirical mode decomposition (the HHT's first half), which the page follows exactly | PyEMD (Laszuk; its EMD code read: simple extrema, end mirroring, cubic splines, fixed sifts, end condition). Huang et al. 1998, the method's origin (DOI 10.1098/rspa.1998.0193 checked), is not credited until read: the publisher's page is not open | [github.com/laszukdawid/PyEMD](https://github.com/laszukdawid/PyEMD) |
 | Harmonic ratio | Smidt et al., 1971 (the origin; PubMed 5141651, no DOI); Menz et al., 2003 | [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5) |
 | Vertical acceleration from gravity (`gravitySplit`) | Mizell, 2003 | [10.1109/ISWC.2003.1241424](https://doi.org/10.1109/ISWC.2003.1241424) |

@@ -1400,3 +1400,18 @@ test('Lomb-Scargle matches scipy’s lombscargle (normalize, floating mean) on u
   const ac = C.autocorrelation(A, t, 3);
   assert.ok(Math.abs(ac.peaks[0].lag - 1 / 1.6) < 0.01 && Math.abs(ac.peaks[1].lag - 2 / 1.6) < 0.01, ac.peaks.map(q => q.lag).join());
 });
+
+const EMD = JSON.parse(fs.readFileSync(path.join(FIX, 'emd.json'), 'utf8'));
+test('EMD matches PyEMD (fixed sifts, simple extrema, cubic splines, 2 mirrored points); the spline matches scipy (#101)', () => {
+  const sp = EMD.spline, ys = C.cubicNotAKnot(sp.X, sp.Y, sp.xs);
+  sp.ys.forEach((v, k) => assert.ok(Math.abs(ys[k] - v) < 1e-13, 'spline ' + k));
+  for (const c of EMD.emd) {
+    const imfs = C.emd(Float64Array.from(c.x), { sifts: c.fixe });
+    assert.equal(imfs.length, c.imfs.length, 'modes for n = ' + c.n);
+    let worst = 0;
+    imfs.forEach((m, j) => m.forEach((v, i) => { worst = Math.max(worst, Math.abs(v - c.imfs[j][i])); }));
+    assert.ok(worst < 1e-9, 'n ' + c.n + ', ' + c.fixe + ' sifts: ' + worst);
+    // the modes add back up to the signal
+    for (let i = 0; i < c.n; i++) assert.ok(Math.abs(imfs.reduce((s, m) => s + m[i], 0) - c.x[i]) < 1e-12);
+  }
+});
