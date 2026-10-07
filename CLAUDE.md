@@ -55,6 +55,7 @@ uv sync                          # .venv from pyproject.toml + uv.lock; never th
 uv run pytest                    # Python port tests
 uv run python scripts/make_fixtures.py  # regenerate fixtures + expected.json after port changes
 bash scripts/octave_parity.sh    # needs data/LabStepDet_2025.m, data/Walking.mat, octave-cli
+sudo apt install --no-install-recommends octave   # dev only (~80 MB): parity script + Octave export test
 python3 -m http.server 8000      # serve the dashboard locally
 ```
 
@@ -132,8 +133,10 @@ unless the course file is present in `data/`.
   `loadmat`, `np.load(allow_pickle=False)`, zipfile, csv. The Python port's `--export` of
   walk.mat column 2 matches the dashboard's model exactly, except the metrics, which agree
   to 1e-12 because numpy sums pairwise. A JSON export reopened in a fresh page gives the same
-  steps, metrics, step table and notes (UI test). Octave was not available to check the
-  `.mat` there.
+  steps, metrics, step table and notes (UI test). GNU Octave 11.1 (installed 2026-10-07)
+  loads the `.mat` with the same numbers and text; that test runs when `octave-cli` exists
+  and is skipped in CI. Octave has no `struct2table`, and its `jsondecode` can be 1 ulp off.
+  The parity script still gives 15 / 12 / 21 identical steps under Octave 11.1.
 - Vertical / horizontal acceleration (#35) works on the G-Force export (gravity 0.98 g,
   steady); `Walking.mat` and Linear Accelerometer files have gravity removed, so the
   options are disabled there. Vertical rests at 0, so `h` needs to be about 0.1 g.
