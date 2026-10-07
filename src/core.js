@@ -266,17 +266,17 @@
   function readMat73Node(node, name) {
     const attrs = node.attrs || {}, cls = String(attrs.MATLAB_class || '');
     if (node.keys !== undefined && typeof node.get === 'function') { // group: struct (or sparse, or object)
-      if (attrs.MATLAB_sparse !== undefined) return { name, clsId: 5, cls: 'sparse' };
-      if (cls && cls !== 'struct') return { name, clsId: 17, cls: 'opaque', className: cls };
+      if (attrs.MATLAB_sparse !== undefined) return { name, clsId: 5, cls: 'sparse', dims: [] };
+      if (cls && cls !== 'struct') return { name, clsId: 17, cls: 'opaque', className: cls, dims: [] };
       const fields = {};
       for (const k of node.keys) fields[k] = readMat73Node(node.get(k), k);
-      return { name, clsId: 2, cls: 'struct', fields, structCount: 1 };
+      return { name, clsId: 2, cls: 'struct', fields, structCount: 1, dims: [1, 1] };
     }
-    if (attrs.MATLAB_object_decode !== undefined) return { name, clsId: 17, cls: 'opaque', className: cls };
-    const clsId = MATLAB_CLASS_ID[cls];
-    if (clsId === undefined) return { name, clsId: 17, cls: 'opaque', className: cls || 'object' };
-    if (clsId === 1 || clsId === 4 || clsId === 16) return { name, clsId, cls };
     const shape = node.shape || [];
+    if (attrs.MATLAB_object_decode !== undefined) return { name, clsId: 17, cls: 'opaque', className: cls, dims: [] };
+    const clsId = MATLAB_CLASS_ID[cls];
+    if (clsId === undefined) return { name, clsId: 17, cls: 'opaque', className: cls || 'object', dims: [] };
+    if (clsId === 1 || clsId === 4 || clsId === 16) return { name, clsId, cls, dims: shape.slice().reverse() };
     if (attrs.MATLAB_empty !== undefined) return { name, clsId, cls, dims: [0, 0], data: new Float64Array(0), logical: cls === 'logical' };
     // MATLAB is column-major: HDF5 shape [c, r] holds an r×c matrix, already in MATLAB's order
     const dims = shape.slice().reverse();
@@ -288,7 +288,7 @@
     if (complex) return Object.assign(v, { data: new Float64Array(0) });
     patchCompactStorage(node);
     try { v.data = Float64Array.from(node.value, Number); }
-    catch (e) { return { name, clsId: 0, unreadable: 'could not be read (' + String(e && e.message || e) + ')' }; }
+    catch (e) { return { name, clsId: 0, cls: cls || '?', dims: [], unreadable: 'could not be read (' + String(e && e.message || e) + ')' }; }
     return v;
   }
 
