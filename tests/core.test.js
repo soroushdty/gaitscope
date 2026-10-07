@@ -867,6 +867,61 @@ test('rejects joined recordings and empty exports', () => {
   assert.throws(() => loadCsvDataset(path.join(FIX, 'bad_empty.csv')), /fewer than 2 lines/);
 });
 
+/* ------------------------------------------------------ resampling (#52) */
+const RS = require('./fixtures/resample.json');
+const chanOf = (t, a) => ({ t: Float64Array.from(t), A: Float64Array.from(a), fs: 1 / C.median(Array.from(t).slice(1).map((v, i) => v - t[i]).filter(d => d > 0)) });
+test('resampling matches the Python port: linear bit for bit, pchip and anti-aliased within 1e-12', () => {
+  for (const c of RS.cases) {
+    const r = C.resampleChannel(chanOf(c.t, c.a), { mode: 'rate', rate: c.fs, method: c.method, antialias: c.antialias });
+    const name = c.fs_in + ' → ' + c.fs + ' Hz, ' + c.method + (c.antialias ? ', anti-aliased' : '');
+    assert.equal(r.applied, true, name); assert.equal(r.A.length, c.out.length, name);
+    if (c.method === 'linear' && !c.antialias) assert.deepEqual(Array.from(r.A), c.out, name);
+    else for (let i = 0; i < c.out.length; i++) assert.ok(close(r.A[i], c.out[i], 1e-12), name + ' at ' + i);
+    assert.ok(r.checks.some(k => k.title === '3 repeated timestamps averaged'), name);
+    assert.ok(Math.abs(r.t[1] - r.t[0] - 1 / c.fs) < 1e-12 && r.t[0] === c.t[0], 'grid starts at the first sample');
+  }
+});
+test('lab code on a resampled CSV export: same samples and steps as the Python port', () => {
+  const { ds } = loadCsvDataset(path.join(FIX, 'ptb_gforce.csv'));
+  for (const c of RS.lab) {
+    const r = C.resampleChannel(C.prepareChannel(ds, 1), { mode: 'rate', rate: c.fs, method: 'linear' });
+    assert.deepEqual(Array.from(r.A), c.x, c.fs + ' Hz');
+    assert.deepEqual(C.detectOriginal(r.A, 30, 0.2).map(i => i + 1), c.steps_x_matlab, c.fs + ' Hz');
+    assert.equal(r.checks.some(k => k.id === 'labRate'), c.fs !== 100, 'the 100 Hz check is on what the lab code receives');
+  }
+});
+test('anti-aliasing removes a tone above the new Nyquist frequency; without it the tone folds back', () => {
+  const fs = 460, n = 460 * 8, t = Float64Array.from({ length: n }, (_, i) => i / fs);
+  const A = Float64Array.from(t, v => Math.sin(2 * Math.PI * 1.8 * v) + 0.5 * Math.sin(2 * Math.PI * 70 * v));
+  const amp = (r, f) => { // amplitude of frequency f, away from the ends
+    let re = 0, im = 0, m = 0;
+    for (let i = 50; i < r.A.length - 50; i++) { re += r.A[i] * Math.cos(2 * Math.PI * f * r.t[i]); im += r.A[i] * Math.sin(2 * Math.PI * f * r.t[i]); m++; }
+    return 2 * Math.hypot(re, im) / m;
+  };
+  const plain = C.resampleChannel({ t, A, fs }, { mode: 'rate', rate: 100, method: 'linear' });
+  const aa = C.resampleChannel({ t, A, fs }, { mode: 'rate', rate: 100, method: 'linear', antialias: true });
+  assert.ok(amp(plain, 30) > 0.3, '70 Hz shows up at 100 − 70 = 30 Hz');
+  assert.ok(amp(aa, 30) < 0.005, 'and is gone after the low-pass');
+  assert.ok(Math.abs(amp(aa, 1.8) - 1) < 0.02, 'the walking rhythm passes (the window holds 14.04 cycles, so a little leaks)');
+  assert.ok(plain.checks.some(k => k.title === 'No anti-aliasing' && /folds back/.test(k.detail) && /Anti-aliasing/.test(k.fix)));
+  assert.match(aa.checks[0].detail, /Low-passed at 40\.0 Hz first/);
+});
+test('resampling: even timing, upsampling, gaps and settings that cannot be used', () => {
+  const t = Float64Array.from({ length: 600 }, (_, i) => i / 57 + (i % 3) * 0.004 + (i >= 300 ? 2 : 0)), A = Float64Array.from(t, v => Math.sin(v));
+  const ch = { t, A, fs: 57 };
+  const even = C.resampleChannel(ch, { mode: 'even', method: 'linear' });
+  assert.equal(even.fs, 57); assert.match(even.checks[0].title, /^Resampled to 57\.0 Hz/);
+  assert.ok(even.checks.some(k => k.title === 'Resampling fills 1 gap' && /2\.0\d s/.test(k.detail)));
+  assert.ok(C.resampleChannel(ch, { mode: 'rate', rate: 100 }).checks.some(k => k.title === 'Upsampling adds no information'));
+  for (const [rate, why] of [['', /No rate is set/], [5e5, /more than the page can handle/], [1, /only \d+ samples/]]) {
+    const r = C.resampleChannel(ch, { mode: 'rate', rate, method: 'linear' });
+    assert.equal(r.applied, false); assert.match(r.checks[0].detail, why); assert.ok(r.checks[0].fix);
+  }
+});
+test('interpLinear is numpy.interp: ends held, exact at the samples', () => {
+  assert.deepEqual(Array.from(C.interpLinear([0, 1, 3], [10, 20, 0], [-1, 0, 0.5, 1, 2, 3, 4])), [10, 10, 15, 20, 10, 0, 0]);
+});
+
 test('unit inference from a quiet stretch', () => {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
   assert.ok(ds.checks.some(c => c.title === 'Units: gravity removed'));
