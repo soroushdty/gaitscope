@@ -115,7 +115,8 @@ MATLAB-parity tests run as well; otherwise they are skipped.
 ## Contributing
 
 Changes go through a branch and a pull request with atomic commits. See
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](CONTRIBUTING.md). Who did what, including the use of AI, is in
+[docs/contributions.md](docs/contributions.md).
 
 ## Layout
 
@@ -127,7 +128,7 @@ src/styles.css        light and dark themes
 python/               Python port and plotting script
 tests/                Node and pytest suites, generated fixtures
 scripts/              fixture generator, Octave parity check
-docs/                 input schema and algorithm notes
+docs/                 input schema, algorithm notes, export formats, contributions
 data/                 local course files (git-ignored)
 ```
 

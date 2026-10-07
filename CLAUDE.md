@@ -42,6 +42,10 @@ behaviour when it matters.
 - **Every validation message says what went wrong and how to fix it.** See
   `docs/schema.md`; update that document when checks change.
 
+- **Keep the contribution record honest** (`docs/contributions.md`). In issues and PRs,
+  say when an idea or recommendation comes from the session, and record the owner's
+  decisions as theirs ("Decision (owner): …"). Update that page when roles change.
+
 - **Python dependencies are managed with uv only.** They live in `pyproject.toml` and
   are locked in `uv.lock`; the environment is the git-ignored `.venv/` (`uv sync`).
   Add packages with `uv add <pkg>` (or `uv add --dev`) and commit both files. Never
