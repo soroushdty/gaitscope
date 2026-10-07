@@ -933,14 +933,14 @@ test('credits show under each indicator\'s settings and under the filter, with n
 const memoryStorage = (init = {}) => { const m = Object.assign({}, init); return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; }, m }; };
 test('the theme button cycles System, Light and Dark, redraws the plots and remembers the choice (#79)', async () => {
   const storage = memoryStorage(), pg = makePage({ storage }), $ = id => pg.d.getElementById(id), root = pg.d.documentElement;
-  assert.equal($('themeBtn').textContent, '\u25d0 System'); assert.equal(root.getAttribute('data-theme'), null, 'follows the system at first');
+  assert.equal($('themeBtn').textContent, 'System'); assert.ok($('themeBtn').querySelector('svg'), 'a drawn icon'); assert.equal(root.getAttribute('data-theme'), null, 'follows the system at first');
   $('demoBtn').click(); await sleep(40);
   const drawn = pg.plots.length;
   $('themeBtn').click(); await sleep(20);
   assert.equal(root.getAttribute('data-theme'), 'light'); assert.equal(storage.m['gaitscope-theme'], 'light');
   assert.ok(pg.plots.length > drawn, 'the plots redraw in the new colours');
   assert.match($('themeBtn').title, /Theme: Light\. Click for Dark\./);
-  $('themeBtn').click(); assert.equal(root.getAttribute('data-theme'), 'dark'); assert.equal($('themeBtn').textContent, '\u263e Dark');
+  $('themeBtn').click(); assert.equal(root.getAttribute('data-theme'), 'dark'); assert.equal($('themeBtn').textContent, 'Dark');
   $('themeBtn').click(); assert.equal(root.getAttribute('data-theme'), null); assert.equal(storage.m['gaitscope-theme'], 'system');
   // a later visit starts with the remembered choice
   const pg2 = makePage({ storage: memoryStorage({ 'gaitscope-theme': 'dark' }) });
