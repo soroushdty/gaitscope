@@ -1,91 +1,123 @@
-# Step detector
+# GaitScope
 
-A browser dashboard and a Python port of the step-detection code from Lab 1 of
-*Wearable Devices for Sport, Health, and Wellness* (ASU, Fall 2026).
+Step detection and gait metrics from phone accelerometer recordings, in the browser.
 
-Upload a MATLAB `.mat` file, a [Physics Toolbox Sensor Suite](https://play.google.com/store/apps/details?id=com.chrystianvieyra.physicstoolboxsuite)
-CSV export or a [phyphox](https://phyphox.org) export zip. The dashboard checks that the file is usable, runs step detectors on it (Dr. Aurel
-Coza's Lab 1 peak detector, a corrected version, and textbook methods), and shows them
-side by side. You can then tune each one, add envelopes, pin notes, and export the
-results.
+**[Open GaitScope](https://soroushdianaty.com/gaitscope/)**. There is nothing to install, and
+your files never leave the browser.
 
-![Dashboard with a synthetic walk](docs/screenshot.png)
+GaitScope started as Lab 1 of *Wearable Devices for Sport, Health, and Wellness* (ASU, Fall
+2026): Dr. Aurel Coza's MATLAB step detector and a sample walk. It is now a dashboard that
+loads or records a walk, checks that the file is usable, and puts any number of step
+detectors and envelopes on the plot side by side, with filters, a spectrum, gait metrics
+and exports. A Python port of Coza's detector gives exactly the same steps as MATLAB.
 
-## Features
+![GaitScope with the synthetic walk: Coza and Coza (modified) on the plot, a peak-trough envelope, and the step intervals underneath](docs/screenshot.png)
 
-- **Upload** `.mat` files (MATLAB/Octave v5–v7, any variable name, structs searched)
-  or CSV files (Physics Toolbox G-Force, Linear Accelerometer, Gyroscope and Multi
-  Record exports, comma or semicolon separated, elapsed or clock time), or phyphox
-  export zips ("Acceleration with g" or "without g"; the phone, sensor chip and start
-  time from its `meta/` folder are listed with the checks).
-- **Record a walk** on a phone with the browser's motion sensors, with no app to
-  install. Open the page on the phone, tap Record, walk, then hold to stop. The page asks
-  how many steps you counted and where the phone was. The recording loads like an
-  uploaded file and downloads as a CSV that both the dashboard and the Python port read.
-  It needs https, which GitHub Pages provides, and the screen on while recording.
-- **Validation.** Every file is checked against an [input schema](docs/schema.md)
-  before analysis. Problems come with a concrete fix, such as the exact MATLAB line
-  to re-save a file in a format the page can't read.
+## What it does
+
+### Bring a walk
+
+- **Upload** a MATLAB `.mat` file (MATLAB or Octave, v5 to v7.3, any variable name,
+  structs searched), a [Physics Toolbox Sensor Suite](https://play.google.com/store/apps/details?id=com.chrystianvieyra.physicstoolboxsuite)
+  CSV export (G-Force Meter, Linear Accelerometer, Gyroscope or Multi Record; comma or
+  semicolon separated; elapsed or clock time), a [phyphox](https://phyphox.org) export zip
+  ("Acceleration with g" or "without g"), or any CSV with numbers in columns.
+- **Record a walk** on a phone with the browser's motion sensors, with no app to install.
+  Tap Record, walk, then hold to stop. The page asks how many steps you counted and where
+  the phone was, and compares your count with the detectors. The recording downloads as a
+  CSV that both the dashboard and the Python port read. It needs https (the live page has
+  it) and the screen on. So far it has been tested with emulated sensors; the checks on
+  real phones are in [#51](https://github.com/soroushdty/gaitscope/issues/51).
+- **Validation.** Every file is checked against an [input schema](docs/schema.md) before
+  analysis. Each problem comes with a concrete fix, such as the exact MATLAB line to re-save
+  a file in a format the page can read.
+
+### Prepare the signal
+
+- **Signal to analyse:** x, y, z or the magnitude. When the recording includes gravity,
+  also the vertical (along gravity) and horizontal (across it) acceleration.
 - **Resample** to a rate you choose, or just even out a phone's uneven timing, before
   anything else runs. This is linear (like MATLAB `interp1`) or monotone cubic, with an
   optional anti-aliasing low-pass. It matches the Python port's `--resample` bit for bit,
   so Coza finds the same steps in both.
+- **Filter:** Butterworth, Bessel, Chebyshev I and II, and elliptic (low-pass or band-pass,
+  order 2 to 6), moving average, median, Savitzky–Golay, wavelet denoising (Daubechies-4)
+  and notch. Each matches scipy (or PyWavelets) within 1e-9. Every detector and envelope
+  can use either the filtered or the recorded signal.
+
+### Detect steps
+
 - **Step detectors and envelopes as chart indicators.** Put any number on the plot at
-  once, in any mix, like indicators on a trading chart. Each has its own settings,
-  colour, source signal (filtered or not), show/hide and remove, and gets its own metrics
-  column. The page opens with **Coza**, Dr. Aurel Coza's Lab 1 detector exactly as
-  written, bugs included, beside **Coza (modified)**, the same detector with its bugs
-  fixed: it counts tied peaks once, drops start/stop artefacts, uses real timestamps, and
-  reports cadence. Set Phone position to *One leg* and each peak counts as a stride.
-  Three textbook detectors and six envelopes and bands can be added.
-  See [docs/algorithm.md](docs/algorithm.md).
-- **Notes on the plot.** Pin a short note to a moment in the recording ("turned
-  around", "stairs"). Notes are listed under the plot and included in the metrics
-  export; they never change the detected steps.
-- **Export** in the format each tool wants: the two CSV files as before, a zip with one CSV
-  per table, MATLAB `.mat` (a struct, for MATLAB or Octave), NumPy `.npz` (no
-  pickle), or JSON, which reopens the whole analysis in the dashboard. Each holds the
-  signals, both versions' steps and metrics, the settings and the notes, with 1-based
-  sample numbers ([docs/export.md](docs/export.md)).
-- **Private.** Files are processed in the browser and never uploaded.
+  once, in any mix, like indicators on a trading chart. Each has its own settings, colour,
+  source signal, show/hide and remove, and gets its own metrics column.
+  - **Coza:** Dr. Aurel Coza's Lab 1 detector exactly as written, bugs included.
+  - **Coza (modified):** the same detector with its bugs fixed. It counts tied peaks once,
+    drops start/stop artefacts, uses real timestamps, and reports cadence.
+  - **Threshold peaks, Peak-to-valley and Zero-crossing:** three textbook detectors.
+  - **Envelopes and bands:** sliding window, peak-trough, dynamic threshold, mean ± k·SD,
+    Hilbert envelope and percentile band. They are a view only and never change the steps.
 
-## Run it
+  The page opens with Coza beside Coza (modified). How each one works, and what is wrong
+  with Coza's code, is in [docs/algorithm.md](docs/algorithm.md).
+- **Phone position:** hand or waist (each peak is a step) or one leg (each peak is a
+  stride).
 
-The dashboard is a static page with no build step.
+### Read the results
+
+- **Metrics** for each detector: steps, average step duration, cadence, step-time
+  variability, gait asymmetry, walking span and harmonic ratio. While a Coza is shown,
+  rows marked "Coza's formula" reproduce the `.m` file's own outputs exactly.
+- **Spectrum** (Welch's method, like scipy). Walking shows as a peak, which gives a cadence
+  with no step detection at all, to cross-check the detectors. With a filter on, it also
+  shows what the filter removes.
+- **Step intervals** under the plot: the time between steps for each detector, next to the
+  spectrum's main rhythm over time.
+- **Steps table:** every step any detector marked, and the weak peaks Coza (modified)
+  dropped.
+- **Notes on the plot.** Pin a short note to a moment in the recording ("turned around",
+  "stairs"). Notes are listed under the plot and exported; they never change the steps.
+- **Export** in the format each tool wants: CSV files, a zip with one CSV per table,
+  MATLAB `.mat` (a struct, for MATLAB or Octave), NumPy `.npz` (no pickle), or JSON, which
+  reopens the whole analysis in GaitScope. Sample numbers are 1-based, as in MATLAB
+  ([docs/export.md](docs/export.md)).
+
+## Run it locally
+
+GaitScope is a static page with no build step.
 
 ```bash
 python3 -m http.server 8000     # or: npm run serve
 # open http://localhost:8000
 ```
 
-Opening `index.html` directly from disk also works. Plotly and pako load from the
-jsDelivr CDN, so an internet connection is needed.
-
-**To publish it for classmates:** in the GitHub repo, go to *Settings → Pages* and
-deploy from the `main` branch, root folder. The page will be at
-`https://<user>.github.io/<repo>/`.
+Opening `index.html` directly from disk also works. Plotly and pako load from the jsDelivr
+CDN, so an internet connection is needed; jsfive, for MATLAB v7.3 files, loads only when
+one is opened. The live copy is served by GitHub Pages from `main`.
 
 ## Python port
 
-`python/lab_step_det.py` is a 1:1 translation of `LabStepDet_2025.m`. It also reads
-Physics Toolbox CSV exports and phyphox export zips (or the `Raw Data.csv` inside): the
-time, x, y and z columns are put in the Walking.mat layout, so `--col 2/3/4` picks x/y/z.
-For a zip it also prints the phone, sensor chip, start time and length from `meta/`, and
-warns if the recording was paused (phyphox's time leaves pauses out, so the stretches are
-joined with no gap). phyphox records in m/s², while Coza's `h = 1` assumes g:
-`--to-g` divides x, y and z by 9.80665 first. It warns when the data reaching Coza's algorithm is not
-within 5% of 100 Hz, because it divides by 100 to get seconds and counts its
-window `w` in samples. The rate comes from the time column of CSV exports and of `.mat`
-files in the Walking.mat layout, after any `--resample` (so `--resample 50` warns too).
-Physics Toolbox only lets you choose the rate in the paid version, and the free version
-records at about 460 Hz. `--resample 100` linearly interpolates the recording onto a
-100 Hz grid first (MATLAB: `interp1(t, A, 0:0.01:t(end))`). `--resample-method pchip`
-uses a monotone cubic instead, and `--antialias` low-passes below the new Nyquist frequency
-first when going down in rate.
-The detector itself is unchanged. `--export FILE` saves the result in the dashboard's
-export layout ([docs/export.md](docs/export.md)) as `.json`, `.mat`, `.npz` or a `.zip` of
-CSV files, with Coza's steps and metrics. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
-h5py. A missing or non-numeric `--var` says which variables the file has.
+`python/lab_step_det.py` is a 1:1 translation of Coza's `LabStepDet_2025.m`. On
+`Walking.mat` it gives the same steps and metrics as the original script running in GNU
+Octave, and as the dashboard's Coza.
+
+- **Files:** `.mat` files of any version (v5 to v7 with scipy, v7.3 with h5py), Physics
+  Toolbox CSV exports, and phyphox zips (or the `Raw Data.csv` inside). Time, x, y and z
+  are put in the Walking.mat layout, so `--col 2/3/4` picks x/y/z. A missing or
+  non-numeric `--var` says which variables the file has.
+- **phyphox:** prints the phone, sensor chip, start time and length from `meta/`, and warns
+  if the recording was paused (phyphox's time leaves pauses out, so the stretches are joined
+  with no gap). phyphox records in m/s², while Coza's `h = 1` assumes g: `--to-g` divides
+  x, y and z by 9.80665 first.
+- **Sampling rate:** Coza divides by 100 to get seconds and counts its window `w` in
+  samples, so the port warns when the data is not within 5% of 100 Hz. The rate comes from
+  the time column, after any `--resample`. The free Physics Toolbox records at about
+  460 Hz. `--resample 100` linearly interpolates onto a 100 Hz grid first (MATLAB:
+  `interp1(t, A, 0:0.01:t(end))`); `--resample-method pchip` uses a monotone cubic instead,
+  and `--antialias` low-passes below the new Nyquist frequency first when going down in
+  rate. The detector itself is unchanged.
+- **Export:** `--export FILE` saves Coza's steps and metrics in the dashboard's export
+  layout ([docs/export.md](docs/export.md)), as `.json`, `.mat`, `.npz` or a `.zip` of CSV
+  files.
 
 ```bash
 uv sync                          # once per clone: creates .venv from uv.lock (Python ≥ 3.12)
@@ -106,15 +138,17 @@ uv run python scripts/make_fixtures.py  # regenerate tests/fixtures after changi
 bash scripts/octave_parity.sh    # original .m in GNU Octave vs the Python port
 ```
 
+The filters, spectra, envelopes and resampling are checked against scipy, numpy and
+PyWavelets, and the exports are read back with scipy, numpy, Python's `zipfile` and `csv`,
+and Octave. All fixtures are generated from a synthetic walk. The course files
+(`Walking.mat`, `LabStepDet_2025.m`) are **not** committed. If you put them in `data/`, the
+MATLAB-parity tests run as well; otherwise they are skipped.
+
 GNU Octave is only for these developer checks: the parity script, and a test that loads a
 `.mat` export in Octave (skipped when Octave is missing, as in CI). Nobody needs it to use
 the dashboard or the Python port, which write `.mat` files themselves. It isn't a Python
 package, so it isn't in `pyproject.toml`; on Ubuntu or Debian, install the command-line
 version (about 80 MB) with `sudo apt install --no-install-recommends octave`.
-
-All fixtures are generated from a synthetic walk. The course files (`Walking.mat`,
-`LabStepDet_2025.m`) are **not** committed. If you put them in `data/`, the
-MATLAB-parity tests run as well; otherwise they are skipped.
 
 ## Contributing
 
@@ -125,20 +159,29 @@ Changes go through a branch and a pull request with atomic commits. See
 ## Layout
 
 ```
-index.html            dashboard page
-src/core.js           parsing, validation and detection (no DOM; also runs in Node)
-src/app.js            dashboard UI: controls, Plotly figure, export
+index.html            the dashboard page
+src/core.js           parsing, validation, filters, spectra, detectors, export (no DOM; also runs in Node)
+src/app.js            dashboard UI: controls, indicators, Plotly figures, export
+src/record.js         recording a walk with the phone's motion sensors
 src/styles.css        light and dark themes
 python/               Python port and plotting script
-tests/                Node and pytest suites, generated fixtures
+tests/                Node (jsdom) and pytest suites, generated fixtures
 scripts/              fixture generator, Octave parity check
-docs/                 input schema, algorithm notes, export formats, contributions
+docs/                 input schema, algorithms, export formats, contributions
 data/                 local course files (git-ignored)
 ```
 
+## Credits and license
+
+- **Coza** and the Lab 1 sample walk: Dr. Aurel Coza. The page's sample is a synthetic walk
+  of our own; the course files stay out of this repository.
+- **Coza (modified):** Dr. Soroush Dianaty.
+
+MIT License; see [LICENSE](LICENSE).
+
 ## Notes
 
-- The algorithm is a port of course material provided by the instructor. Check the
-  course policy before making this repository public.
-- MATLAB v7.3 files (HDF5) are read with jsfive, loaded only when one is opened. Cell
-  arrays, strings, sparse and complex data inside them are listed but not analysed.
+- MATLAB v7.3 files (HDF5) are read with jsfive. Cell arrays, strings, sparse and complex
+  data inside them are listed but not analysed.
+- Files with no time column are assumed to be at 100 Hz; the rate can be changed on the
+  page.
