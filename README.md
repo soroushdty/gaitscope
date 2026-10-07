@@ -83,6 +83,11 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
   reopens the whole analysis in GaitScope. Sample numbers are 1-based, as in MATLAB
   ([docs/export.md](docs/export.md)).
 
+### Around the page
+
+- **Theme:** follows the system, or pick Light or Dark with the button in the header. The
+  choice is remembered in this browser only.
+
 ## Run it locally
 
 GaitScope is a static page with no build step.

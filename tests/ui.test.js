@@ -28,6 +28,7 @@ function makePage(opts = {}) {
   vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
   const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, url: opts.url, beforeParse(w) {
     if (opts.insecure) Object.defineProperty(w, 'isSecureContext', { value: false });
+    if (opts.storage) Object.defineProperty(w, 'localStorage', { value: opts.storage, configurable: true }); // a stand-in, or one that throws
     w.pako = pako; w.TextDecoder = TextDecoder; w.TextEncoder = TextEncoder; // browsers have both; jsdom neither
     if (opts.hdf5 !== false) w.hdf5 = require('jsfive'); // the page loads it from jsDelivr when a v7.3 file arrives
     w.matchMedia = q => ({ matches: !!(opts.coarse && /pointer: coarse/.test(q)), addEventListener() {} }); // coarse: a phone
@@ -926,4 +927,27 @@ test('credits show under each indicator\'s settings and under the filter, with n
     $('filterSel').value = f.id; $('filterSel').dispatchEvent(new pg.w.Event('change')); await sleep(20);
     assert.ok(!EMAIL.test(pg.d.documentElement.outerHTML), 'no email address with the ' + f.id + ' filter');
   }
+});
+
+// #79: the theme button cycles System, Light, Dark and remembers the choice for this viewer
+const memoryStorage = (init = {}) => { const m = Object.assign({}, init); return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; }, m }; };
+test('the theme button cycles System, Light and Dark, redraws the plots and remembers the choice (#79)', async () => {
+  const storage = memoryStorage(), pg = makePage({ storage }), $ = id => pg.d.getElementById(id), root = pg.d.documentElement;
+  assert.equal($('themeBtn').textContent, '\u25d0 System'); assert.equal(root.getAttribute('data-theme'), null, 'follows the system at first');
+  $('demoBtn').click(); await sleep(40);
+  const drawn = pg.plots.length;
+  $('themeBtn').click(); await sleep(20);
+  assert.equal(root.getAttribute('data-theme'), 'light'); assert.equal(storage.m['gaitscope-theme'], 'light');
+  assert.ok(pg.plots.length > drawn, 'the plots redraw in the new colours');
+  assert.match($('themeBtn').title, /Theme: Light\. Click for Dark\./);
+  $('themeBtn').click(); assert.equal(root.getAttribute('data-theme'), 'dark'); assert.equal($('themeBtn').textContent, '\u263e Dark');
+  $('themeBtn').click(); assert.equal(root.getAttribute('data-theme'), null); assert.equal(storage.m['gaitscope-theme'], 'system');
+  // a later visit starts with the remembered choice
+  const pg2 = makePage({ storage: memoryStorage({ 'gaitscope-theme': 'dark' }) });
+  assert.equal(pg2.d.documentElement.getAttribute('data-theme'), 'dark'); assert.equal(pg2.d.getElementById('themeBtn').dataset.theme, 'dark');
+  // blocked storage (a private window): it still switches, it just isn't remembered
+  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
+  const pg3 = makePage({ storage: blocked });
+  pg3.d.getElementById('themeBtn').click();
+  assert.equal(pg3.d.documentElement.getAttribute('data-theme'), 'light');
 });

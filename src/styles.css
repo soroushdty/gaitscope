@@ -39,6 +39,8 @@ button, input, select { font: inherit; color: inherit; }
 .top h1 { font-size: 22px; letter-spacing: -0.01em; }
 .top p { margin: 4px 0 0; color: var(--muted); max-width: 68ch; font-size: 14px; }
 .filechip { font-size: 13px; color: var(--muted); text-align: right; max-width: 40ch; min-width: 0; }
+.top-tools { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.top-tools .btn { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
 .filechip strong { display: block; color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: calc(100% - 90px); }
@@ -184,6 +186,8 @@ tr.only-orig td { color: var(--muted); }
   main { padding: 16px; border-left: 0; }
   .top { padding: 18px 16px 14px; flex-direction: column; align-items: flex-start; }
   .filechip { text-align: left; max-width: 100%; }
+  .top-tools { width: 100%; }
+  .top-tools .filechip { flex: 1; }
 }
 /* indicators: step detectors and envelopes on the plot, each a row with its colour */
 aside h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 0; }
