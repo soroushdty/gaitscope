@@ -1009,7 +1009,7 @@
     const key = JSON.stringify([def.id, S.res.g.specWin, def.params.map(q => S.res.g[q.key])]);
     S.cache.views = S.cache.views || new Map();
     if (!S.cache.views.has(key)) S.cache.views.set(key, def.compute(S.res.filt.A, t, S.res.g, { rhythm: S.res.rhythm }));
-    const res = S.cache.views.get(key), im = res && C.gridImage(res.grid, hexRgb(colors.signal));
+    const res = S.cache.views.get(key), im = res && C.gridImage(res.grid, hexRgb(colors.signal), res.image);
     el.hidden = !im;
     if (!im) { $('spectroNote').textContent = def.id === 'stft' ? 'The recording is shorter than one ' + fmt(S.res.rhythm.window, 0) + ' s window (Rhythm-over-time window, above), so there is no picture.' : 'The recording is too short for this method (it needs a few seconds).'; return; }
     const ln = res.line, fMax = im.fMax;
@@ -1038,7 +1038,8 @@
     const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     Plotly.react(el, traces, layout, config);
     const scale = 'blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, full colour at it.', stride = ' A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
-    $('spectroNote').textContent = def.id === 'cwt' ? 'Wavelet power at each frequency along the recording, divided by the scale so equally strong swings look alike at any frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The line is the strongest walking rhythm at each moment. Outside the dashed lines the wavelet runs past the ends of the recording, so the picture there is weaker than it should be.' + stride
+    $('spectroNote').textContent = def.id === 'hht' ? 'Each mode\u2019s power at its moment-by-moment frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: blank at 30 dB below the strongest walking rhythm, full colour at it (a gentler scale than the others, since each mode is a thin track). The EMD found ' + res.modes + ' mode' + (res.modes === 1 ? '' : 's') + ' in the walking band (the slow rest left out). The line is the strongest walking rhythm at each moment. Each mode follows its own rhythm as it changes, so a speed-up shows as a band that bends; speckle is a mode switching between rhythms.' + stride
+      : def.id === 'cwt' ? 'Wavelet power at each frequency along the recording, divided by the scale so equally strong swings look alike at any frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The line is the strongest walking rhythm at each moment. Outside the dashed lines the wavelet runs past the ends of the recording, so the picture there is weaker than it should be.' + stride
       : def.id === 'dwt' ? 'Each band\u2019s power along the recording, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The bands halve in frequency going down (dotted lines). Where they fall depends on the sampling rate: here ' + fmt(res.bands[0].hi * 2, 0) + ' Hz, after the signal is reduced to its walking band. When the step and the stride land in neighbouring bands, they show as separate blocks.'
       : 'How strongly each rhythm shows along the recording, in ' + fmt(res.window, 0) + ' s windows every ' + fmt(res.hop, 1) + ' s (Rhythm-over-time window, above): ' + scale + ' The line is the main walking rhythm, as in the Step intervals strip.' + stride;
   }

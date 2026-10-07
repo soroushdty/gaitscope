@@ -2307,6 +2307,190 @@
     return { lag: Float64Array.from({ length: K + 1 }, (_, k) => k / fs), r, peaks, fs };
   }
 
+  /* Empirical mode decomposition (#101), the first half of the Hilbert-Huang transform, as
+     PyEMD's EMD(FIXE=sifts, extrema_detection='simple', spline_kind='cubic', nbsym=2): each
+     mode (IMF) is sifted a fixed number of times, so the result doesn't depend on a stopping
+     rule. A sift finds the local maxima and minima, mirrors two of each past both ends (PyEMD's
+     prepare_points_simple, edge cases included), draws a cubic spline through each set (scipy's
+     not-a-knot CubicSpline, or PyEMD's own spline for 3 points) and subtracts their mean. Modes
+     are taken until the rest has at most 2 extrema, or is flat (range under 0.001 or total
+     |rest| under 0.005, PyEMD's end condition), or maxImf modes. Returns the modes, the last
+     being the rest when it isn't zero. */
+  const pySlice = (a, start, end) => { // Python's a[start:end]
+    const n = a.length, from = start < 0 ? Math.max(0, n + start) : Math.min(start, n), to = end === undefined ? n : end < 0 ? Math.max(0, n + end) : Math.min(end, n);
+    return a.slice(from, Math.max(from, to));
+  };
+  const roundHalfEven = v => { const f = Math.floor(v), d = v - f; return d > 0.5 ? f + 1 : d < 0.5 ? f : f % 2 === 0 ? f : f + 1; };
+  function findExtremaSimple(S) {
+    const n = S.length, d = new Float64Array(n - 1);
+    for (let i = 0; i < n - 1; i++) d[i] = S[i + 1] - S[i];
+    let indmin = [], indmax = [];
+    for (let i = 0; i < n - 2; i++) { const d1 = d[i], d2 = d[i + 1]; if (d1 * d2 < 0) { if (d1 < 0) indmin.push(i + 1); if (d1 > 0) indmax.push(i + 1); } }
+    if (d.some(v => v === 0)) { // flat runs: an extremum at their middle
+      let debs = [], fins = [];
+      for (let k = 0; k <= d.length; k++) { const prev = k > 0 && d[k - 1] === 0, cur = k < d.length && d[k] === 0; if (cur && !prev) debs.push(k); if (!cur && prev) fins.push(k); }
+      if (debs.length && debs[0] === 1) { if (debs.length > 1) { debs = debs.slice(1); fins = fins.slice(1); } else { debs = []; fins = []; } }
+      if (debs.length && fins[fins.length - 1] === n - 1) { if (debs.length > 1) { debs = debs.slice(0, -1); fins = fins.slice(0, -1); } else { debs = []; fins = []; } }
+      const at = k => d[k < 0 ? d.length + k : k];
+      debs.forEach((b, j) => {
+        const before = at(b - 1), after = at(fins[j]), mid = roundHalfEven((fins[j] + b) / 2);
+        if (before > 0 && after < 0) indmax.push(mid);
+        if (before < 0 && after > 0) indmin.push(mid);
+      });
+      indmax.sort((a, b) => a - b); indmin.sort((a, b) => a - b);
+    }
+    return { indmax, indmin };
+  }
+  function cubicNotAKnot(X, Y, xs) { // scipy.interpolate.CubicSpline(X, Y)(xs), X increasing, 4+ points
+    const n = X.length, dx = new Float64Array(n - 1), sl = new Float64Array(n - 1);
+    for (let i = 0; i < n - 1; i++) { dx[i] = X[i + 1] - X[i]; sl[i] = (Y[i + 1] - Y[i]) / dx[i]; }
+    const lo = new Float64Array(n), di = new Float64Array(n), up = new Float64Array(n), r = new Float64Array(n);
+    for (let i = 1; i < n - 1; i++) { di[i] = 2 * (dx[i - 1] + dx[i]); up[i] = dx[i - 1]; lo[i] = dx[i]; r[i] = 3 * (dx[i] * sl[i - 1] + dx[i - 1] * sl[i]); }
+    let d0 = X[2] - X[0]; di[0] = dx[1]; up[0] = d0; r[0] = ((dx[0] + 2 * d0) * dx[1] * sl[0] + dx[0] * dx[0] * sl[1]) / d0;
+    const d1 = X[n - 1] - X[n - 3]; di[n - 1] = dx[n - 3]; lo[n - 1] = d1; r[n - 1] = (dx[n - 2] * dx[n - 2] * sl[n - 3] + (2 * d1 + dx[n - 2]) * dx[n - 3] * sl[n - 2]) / d1;
+    for (let i = 1; i < n; i++) { const m = lo[i] / di[i - 1]; di[i] -= m * up[i - 1]; r[i] -= m * r[i - 1]; } // tridiagonal solve
+    const sd = new Float64Array(n); sd[n - 1] = r[n - 1] / di[n - 1];
+    for (let i = n - 2; i >= 0; i--) sd[i] = (r[i] - up[i] * sd[i + 1]) / di[i];
+    const out = new Float64Array(xs.length);
+    let i = 0;
+    for (let k = 0; k < xs.length; k++) {
+      const v = xs[k];
+      while (i < n - 2 && v >= X[i + 1]) i++;
+      while (i > 0 && v < X[i]) i--;
+      const tt = (sd[i] + sd[i + 1] - 2 * sl[i]) / dx[i], c0 = tt / dx[i], c1 = (sl[i] - sd[i]) / dx[i] - tt, z = v - X[i];
+      let res = 0, zz = 1; // scipy's evaluate_poly1: c3 + c2 z + c1 z^2 + c0 z^3, term by term
+      res += Y[i] * zz; zz *= z; res += sd[i] * zz; zz *= z; res += c1 * zz; zz *= z; res += c0 * zz;
+      out[k] = res;
+    }
+    return out;
+  }
+  function cubic3pts(X, Y, xs) { // PyEMD's cubic_spline_3pts
+    const [x0, x1, x2] = X, [y0, y1, y2] = Y, x1x0 = x1 - x0, x2x1 = x2 - x1, y1y0 = y1 - y0, y2y1 = y2 - y1, a = 1 / x1x0, b = 1 / x2x1;
+    const M = [[2 * a, a, 0], [a, 2 * (a + b), b], [0, b, 2 * b]], v1 = 3 * y1y0 * a * a, v3 = 3 * y2y1 * b * b, v = [v1, v1 + v3, v3];
+    for (let c = 0; c < 3; c++) { // Gaussian elimination with partial pivoting, as numpy.linalg.solve
+      let p = c; for (let rr = c + 1; rr < 3; rr++) if (Math.abs(M[rr][c]) > Math.abs(M[p][c])) p = rr;
+      [M[c], M[p]] = [M[p], M[c]]; [v[c], v[p]] = [v[p], v[c]];
+      for (let rr = c + 1; rr < 3; rr++) { const f = M[rr][c] / M[c][c]; for (let k = c; k < 3; k++) M[rr][k] -= f * M[c][k]; v[rr] -= f * v[c]; }
+    }
+    const k = [0, 0, 0]; for (let c = 2; c >= 0; c--) { let sum = v[c]; for (let j = c + 1; j < 3; j++) sum -= M[c][j] * k[j]; k[c] = sum / M[c][c]; }
+    const a1 = k[0] * x1x0 - y1y0, b1 = -k[1] * x1x0 + y1y0, a2 = k[1] * x2x1 - y2y1, b2 = -k[2] * x2x1 + y2y1;
+    return Float64Array.from(xs, tv => {
+      if (tv < x1) { const t1 = (tv - x0) / x1x0, t11 = 1 - t1; return t11 * y0 + t1 * y1 + t1 * t11 * (a1 * t11 + b1 * t1); }
+      const t2 = (tv - x1) / x2x1, t22 = 1 - t2; return t22 * y1 + t2 * y2 + t2 * t22 * (a2 * t22 + b2 * t2);
+    });
+  }
+  function envelopes(S, indmax, indmin, nbsym) { // PyEMD: prepare_points_simple + spline_points
+    const N = S.length, endMax = indmax.length, endMin = indmin.length, rev = a => a.slice().reverse();
+    let lmax, lmin, lsym, rmax, rmin, rsym;
+    if (indmax[0] < indmin[0]) {
+      if (S[0] > S[indmin[0]]) { lmax = rev(pySlice(indmax, 1, Math.min(endMax, nbsym + 1))); lmin = rev(pySlice(indmin, 0, Math.min(endMin, nbsym))); lsym = indmax[0]; }
+      else { lmax = rev(pySlice(indmax, 0, Math.min(endMax, nbsym))); lmin = rev(pySlice(indmin, 0, Math.min(endMin, nbsym - 1))).concat([0]); lsym = 0; }
+    } else if (S[0] < S[indmax[0]]) { lmax = rev(pySlice(indmax, 0, Math.min(endMax, nbsym))); lmin = rev(pySlice(indmin, 1, Math.min(endMin, nbsym + 1))); lsym = indmin[0]; }
+    else { lmax = rev(pySlice(indmax, 0, Math.min(endMax, nbsym - 1))).concat([0]); lmin = rev(pySlice(indmin, 0, Math.min(endMin, nbsym))); lsym = 0; }
+    if (indmax[endMax - 1] < indmin[endMin - 1]) {
+      if (S[N - 1] < S[indmax[endMax - 1]]) { rmax = rev(pySlice(indmax, Math.max(endMax - nbsym, 0))); rmin = rev(pySlice(indmin, Math.max(endMin - nbsym - 1, 0), -1)); rsym = indmin[endMin - 1]; }
+      else { rmax = rev(pySlice(indmax, Math.max(endMax - nbsym + 1, 0)).concat([N - 1])); rmin = rev(pySlice(indmin, Math.max(endMin - nbsym, 0))); rsym = N - 1; }
+    } else if (S[N - 1] > S[indmin[endMin - 1]]) { rmax = rev(pySlice(indmax, Math.max(endMax - nbsym - 1, 0), -1)); rmin = rev(pySlice(indmin, Math.max(endMin - nbsym, 0))); rsym = indmax[endMax - 1]; }
+    else { rmax = rev(pySlice(indmax, Math.max(endMax - nbsym, 0))); rmin = rev(pySlice(indmin, Math.max(endMin - nbsym + 1, 0)).concat([N - 1])); rsym = N - 1; }
+    if (!lmin.length) lmin = indmin; if (!rmin.length) rmin = indmin; if (!lmax.length) lmax = indmax; if (!rmax.length) rmax = indmax;
+    const mir = (sym, a) => a.map(v => 2 * sym - v); // T is the sample index here
+    let tlmin = mir(lsym, lmin), tlmax = mir(lsym, lmax), trmin = mir(rsym, rmin), trmax = mir(rsym, rmax);
+    if (tlmin[0] > 0 || tlmax[0] > 0) {
+      if (lsym === indmax[0]) lmax = rev(pySlice(indmax, 0, Math.min(endMax, nbsym))); else lmin = rev(pySlice(indmin, 0, Math.min(endMin, nbsym)));
+      if (lsym === 0) throw new Error('EMD: left edge');
+      lsym = 0; tlmin = mir(lsym, lmin); tlmax = mir(lsym, lmax);
+    }
+    if (trmin[trmin.length - 1] < N - 1 || trmax[trmax.length - 1] < N - 1) {
+      if (rsym === indmax[endMax - 1]) rmax = rev(pySlice(indmax, Math.max(endMax - nbsym, 0))); else rmin = rev(pySlice(indmin, Math.max(endMin - nbsym, 0)));
+      if (rsym === N - 1) throw new Error('EMD: right edge');
+      rsym = N - 1; trmin = mir(rsym, rmin); trmax = mir(rsym, rmax);
+    }
+    const pts = (tl, ind, tr, l, r) => {
+      let t = tl.concat(ind, tr), z = l.map(i => S[i]).concat(ind.map(i => S[i]), r.map(i => S[i]));
+      const keep = t.map((v, i) => i === t.length - 1 || t[i + 1] !== v); // drop the first of two equal times
+      return { t: t.filter((_, i) => keep[i]), z: z.filter((_, i) => keep[i]) };
+    };
+    const spline = ({ t, z }) => {
+      const xs = []; for (let k = 0; k < N; k++) if (k >= t[0] && k <= t[t.length - 1]) xs.push(k);
+      if (xs.length !== N) throw new Error('EMD: the envelope does not cover the signal');
+      return t.length > 3 ? cubicNotAKnot(t, z, xs) : cubic3pts(t, z, xs);
+    };
+    return { upper: spline(pts(tlmax, indmax, trmax, lmax, rmax)), lower: spline(pts(tlmin, indmin, trmin, lmin, rmin)) };
+  }
+  function emd(S0, opts) {
+    const sifts = (opts && opts.sifts) || 10, maxImf = (opts && opts.maxImf) || -1, N = S0.length, S = Float64Array.from(S0), IMF = [];
+    let extNo = -1, finished = false;
+    const restOf = () => { const r = Float64Array.from(S); for (const m of IMF) for (let i = 0; i < N; i++) r[i] -= m[i]; return r; };
+    while (!finished) {
+      const imf = restOf();
+      let n = 0;
+      for (;;) {
+        n++;
+        if (n >= 1000) break;
+        const { indmax, indmin } = findExtremaSimple(imf);
+        extNo = indmax.length + indmin.length;
+        if (extNo > 2) {
+          const { upper, lower } = envelopes(imf, indmax, indmin, 2);
+          for (let i = 0; i < N; i++) imf[i] -= 0.5 * (upper[i] + lower[i]);
+          if (n >= sifts) break;
+        } else { finished = true; break; }
+      }
+      IMF.push(Float64Array.from(imf));
+      const rest = restOf();
+      let mx = -Infinity, mn = Infinity, tot = 0; for (const v of rest) { if (v > mx) mx = v; if (v < mn) mn = v; tot += Math.abs(v); }
+      if (mx - mn < 0.001 || tot < 0.005 || IMF.length === maxImf) finished = true;
+    }
+    if (extNo <= 2) IMF.pop();
+    const rest = restOf();
+    if (rest.some(v => Math.abs(v) > 1e-8)) IMF.push(rest);
+    return IMF;
+  }
+  /* The Hilbert spectrum (#101), the second half of the Hilbert-Huang transform, as a picture
+     grid (see stftGrid): EMD of the walking band (the rest left out), then each mode's analytic
+     signal (hilbert) gives its amplitude and its frequency at every sample (the phase's rate of
+     turning, as numpy.gradient of the unwrapped phase); in each 0.5 s column a mode's power
+     (amplitude^2) goes into the row of its power-weighted mean frequency there. line: each column's strongest walking frequency, when it
+     stands out. modes: how many modes the EMD found. */
+  function hhtGrid(A, t, p) {
+    const w = walkingGrid(A, t), { x, fs } = w, n = x.length, df = 0.05, rows = 100;
+    if (n < 2 * fs) return null;
+    let modes;
+    try { modes = emd(x, { sifts: p.hhtSifts || 10 }); } catch (e) { return null; }
+    const imfs = modes.length > 1 ? modes.slice(0, -1) : modes; // the last is the rest (trend)
+    const hop = Math.max(1, Math.round(SPEC_HOP * fs), Math.ceil(n / 1200)), cols = Math.floor(n / hop);
+    const P = Array.from({ length: cols }, () => new Float64Array(rows));
+    for (const m of imfs) {
+      const z = hilbert(m), ph = new Float64Array(n);
+      for (let i = 0; i < n; i++) { ph[i] = Math.atan2(z.im[i], z.re[i]); if (i) { let d = ph[i] - ph[i - 1]; while (d > Math.PI) { ph[i] -= 2 * Math.PI; d -= 2 * Math.PI; } while (d < -Math.PI) { ph[i] += 2 * Math.PI; d += 2 * Math.PI; } } }
+      // per column, the mode's power at its power-weighted mean frequency there: a mode's
+      // frequency swings within each cycle of a walk (which isn't a pure sine), and binning it
+      // sample by sample smeared the synthetic walk's 0.92 Hz rhythm up to about 1.1 Hz
+      for (let c = 0; c < cols; c++) {
+        let e = 0, ef = 0;
+        for (let i = c * hop; i < (c + 1) * hop; i++) {
+          const g = i === 0 ? ph[1] - ph[0] : i === n - 1 ? ph[n - 1] - ph[n - 2] : (ph[i + 1] - ph[i - 1]) / 2, a2 = z.re[i] * z.re[i] + z.im[i] * z.im[i];
+          e += a2; ef += a2 * g * fs / (2 * Math.PI);
+        }
+        const row = e > 0 ? Math.floor(ef / e / df) : -1;
+        if (row >= 0 && row < rows) P[c][row] += e / hop;
+      }
+    }
+    const tc = Float64Array.from({ length: cols }, (_, c) => w.t0 + (c + 0.5) * hop / fs);
+    // the line: the strongest mode's frequency in the walking band, column by column, then a
+    // running median over 5 columns (2.5 s), since the strongest mode can switch from one
+    // column to the next
+    const raw = Float64Array.from(P, col => {
+      let best = -1; for (let i = 0; i < rows; i++) { const f = (i + 0.5) * df; if (f >= GAIT_BAND[0] && f <= GAIT_BAND[1] && col[i] > 0 && (best < 0 || col[i] > col[best])) best = i; }
+      return best < 0 ? NaN : (best + 0.5) * df;
+    });
+    const ridge = Float64Array.from(raw, (_, c) => { const v = Array.from(raw.subarray(Math.max(0, c - 2), c + 3)).filter(Number.isFinite); return v.length ? median(v) : NaN; });
+    // the picture: each mode's point spread over 5 rows (about +-0.1 Hz) so its track shows
+    const kern = [0.06, 0.24, 0.4, 0.24, 0.06];
+    const Ps = P.map(col => { const o = new Float64Array(rows); for (let i = 0; i < rows; i++) if (col[i]) for (let k = -2; k <= 2; k++) if (i + k >= 0 && i + k < rows) o[i + k] += col[i] * kern[k + 2]; return o; });
+    // a Hilbert spectrum is sparse (a track per mode), so its colour scale is gentler: 30 dB, straight
+    return { grid: { t: tc, hop: hop / fs, df, rows, P: Ps }, line: { t: tc, f: ridge }, modes: imfs.length, image: { range: 30, gamma: 1 } };
+  }
+
   /* Frequency-domain methods (#101), shown in the Frequency domain section's two slots: kind
      'whole' (power by frequency over the whole recording) or 'time' (a time x frequency
      picture). They are views only: steps, metrics, the rhythm count and the checks always come
@@ -2360,6 +2544,13 @@
         { text: 'Lee et al., 2019', doi: '10.21105/joss.01237', note: 'PyWavelets, which this matches' }],
       tagline: 'The signal split into octave bands (each half the frequency of the one above) with the same db4 wavelet as the wavelet filter; brightness is each band\u2019s power over time. Coarse: one band can hold both the step and the stride.',
       compute: (A, t) => dwtGrid(A, t),
+    },
+    {
+      id: 'hht', kind: 'time', name: 'Hilbert\u2013Huang (HHT)',
+      params: [{ key: 'hhtSifts', label: 'Sifting rounds per mode', min: 1, max: 30, step: 1, default: 10, unit: '', dec: 0, hint: 'Each mode is refined this many times. More rounds make the modes more regular; the result depends on this choice, which is why it is a setting.' }],
+      credit: [{ text: 'PyEMD (Laszuk)', url: 'https://github.com/laszukdawid/PyEMD', note: 'empirical mode decomposition, which this follows' }],
+      tagline: 'Splits the walk into modes that each carry one rhythm, found from the signal itself rather than set in advance (EMD), then reads each mode\u2019s frequency moment by moment from its analytic signal. Suits walks that speed up or turn; less settled than the others, since the modes depend on how they are found.',
+      compute: (A, t, p) => hhtGrid(A, t, p),
     },
   ];
 
@@ -2931,7 +3122,7 @@
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, walkingGrid, cwtMorlet, cwtGrid, mra, dwtGrid, lombScargle, lombScargleSpectrum, acf, autocorrelation, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, walkingGrid, cwtMorlet, cwtGrid, mra, dwtGrid, lombScargle, lombScargleSpectrum, acf, autocorrelation, emd, cubicNotAKnot, hhtGrid, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

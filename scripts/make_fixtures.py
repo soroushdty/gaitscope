@@ -239,6 +239,25 @@ def lombscargle_fixtures():
     return out, acf
 
 
+def emd_fixtures():
+    """PyEMD's EMD (FIXE sifts, extrema_detection='simple', spline_kind='cubic', nbsym=2) of
+    walk-like signals whose rhythm changes, and scipy's not-a-knot CubicSpline (#101)."""
+    from PyEMD import EMD
+    out = []
+    for n, fixe, seed in ((300, 10, 1), (517, 4, 2), (200, 1, 3)):
+        rng = np.random.default_rng(seed)
+        t = np.arange(n) / 20
+        x = (1 + 0.3 * np.sin(2 * np.pi * (1.5 * t + 0.03 * t ** 2)) + 0.12 * np.sin(2 * np.pi * 0.7 * t + 0.4)
+             + 0.05 * np.sin(2 * np.pi * 4.3 * t) + 0.02 * rng.standard_normal(n) + 0.01 * t)
+        imfs = EMD(FIXE=fixe, extrema_detection="simple", spline_kind="cubic", nbsym=2).emd(x)
+        out.append({"n": n, "fixe": fixe, "x": x.tolist(), "imfs": imfs.tolist()})
+    X = [0.0, 1.0, 2.5, 3.0, 4.75, 6.0, 7.0]
+    Y = [1.0, -0.5, 2.0, 0.3, 1.1, -1.4, 0.2]
+    xs = np.linspace(0, 7, 29)
+    spline = {"X": X, "Y": Y, "xs": xs.tolist(), "ys": interpolate.CubicSpline(X, Y)(xs).tolist()}
+    return out, spline
+
+
 def resample_input(fs, dur=3.0, seed=11):
     """t, a: uneven timing (±30%) starting at 0.0123 s, three repeated timestamps, a walk-like
     1.8 Hz swing plus a 70 Hz tone (above 50 Hz, the Nyquist frequency of 100 Hz)."""
@@ -535,6 +554,10 @@ def main():
     with open(p("wavelets.json"), "w") as f:
         json.dump({"source": "PyWavelets pywt.cwt (cmorB-1.0, method='fft') and wavedec/waverec (db4, symmetric)",
                    "cwt": cwt_fixtures(), "mra": mra_fixtures()}, f)
+    imfs, spline = emd_fixtures()
+    with open(p("emd.json"), "w") as f:
+        json.dump({"source": "PyEMD EMD(FIXE, extrema_detection='simple', spline_kind='cubic', nbsym=2).emd(x); scipy.interpolate.CubicSpline (not-a-knot)",
+                   "emd": imfs, "spline": spline}, f)
     ls, acf = lombscargle_fixtures()
     with open(p("periodicity.json"), "w") as f:
         json.dump({"source": "scipy.signal.lombscargle (normalize=True, floating_mean=True) on resample_input(fs); numpy.correlate / numpy.dot on fft_input(n) + 0.3",

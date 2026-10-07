@@ -77,9 +77,10 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
     to cross-check the detectors. With a filter on, Welch also shows what the filter
     removes.
   - *Over time:* the short-time Fourier spectrogram, a Morlet wavelet scalogram (CWT, with
-    its cone of influence) or octave wavelet bands (DWT), with the main rhythm drawn on top.
+    its cone of influence), octave wavelet bands (DWT) or the Hilbert–Huang spectrum (EMD
+    modes read moment by moment), with the main rhythm drawn on top.
     A steady walk is one bright band; swinging the phone brings out a second band at half
-    the height (the stride). The wavelets match PyWavelets.
+    the height (the stride). The wavelets match PyWavelets and the EMD matches PyEMD.
   The views never change the steps or metrics.
 - **Step intervals** under the plot: the time between steps for each detector, next to the
   spectrum's main rhythm over time.

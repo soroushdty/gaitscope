@@ -748,7 +748,7 @@ test('Frequency domain: closed by default with a summary, its own settings, a me
   assert.match(text(pg, 'freqSum'), /^Main rhythm 0\.9\d Hz \(5\d\/min\) · about 15 steps from the rhythm$/);
   assert.ok(metric(pg, 'Steps').at(-1).startsWith('≈ 15'), 'the numbers stay in the time view');
   assert.deepEqual([...$('wholeSel').options].map(o => o.value), ['welch', 'lombscargle', 'autocorr']);
-  assert.deepEqual([...$('timeSel').options].map(o => o.value), ['stft', 'cwt', 'dwt']);
+  assert.deepEqual([...$('timeSel').options].map(o => o.value), ['stft', 'cwt', 'dwt', 'hht']);
   assert.match(text(pg, 'wholeTag'), /average power at each frequency.*Credit: Welch, 1967; Cooley & Tukey, 1965 \(FFT\); Bluestein, 1970/);
   assert.equal($('wholeTag').querySelector('a').href, 'https://doi.org/10.1109/TAU.1967.1161901');
   assert.match(text(pg, 'timeTag'), /window that slides along the recording/);
@@ -822,6 +822,17 @@ test('Over time: the CWT with its cone of influence and width, the DWT bands, ke
   $('m_cwtB').value = '6'; $('m_cwtB').dispatchEvent(new pg.w.Event('input', { bubbles: true })); await sleep(80);
   assert.equal(pg.d.querySelector('output[for="m_cwtB"]').textContent, '6.0');
   assert.notEqual(pg.spectros.at(-1).layout.images[0].source, before, 'a wider wavelet, a new picture');
+  await choose('hht'); // Hilbert-Huang: EMD modes, each read moment by moment
+  sg = pg.spectros.at(-1);
+  assert.equal($('m_hhtSifts').closest('.method-params').hidden, false); assert.equal($('m_cwtB').closest('.method-params').hidden, true);
+  assert.match(sg.layout.images[0].source, /^data:image\/png;base64,/);
+  const hr = [...sg.traces].find(tr => tr.meta && tr.meta.role === 'rhythmLine').y.filter(v => v !== null);
+  assert.ok(hr.length > 10 && Core.median(hr) > 0.8 && Core.median(hr) < 1.05, 'about 0.9 Hz: ' + Core.median(hr));
+  assert.match(text(pg, 'spectroNote'), /The EMD found \d+ modes in the walking band/);
+  assert.match(text(pg, 'timeTag'), /Credit: PyEMD \(Laszuk\)/);
+  const hBefore = sg.layout.images[0].source;
+  $('m_hhtSifts').value = '3'; $('m_hhtSifts').dispatchEvent(new pg.w.Event('input', { bubbles: true })); await sleep(80);
+  assert.notEqual(pg.spectros.at(-1).layout.images[0].source, hBefore, 'fewer sifting rounds, other modes');
   await choose('dwt');
   sg = pg.spectros.at(-1);
   assert.equal($('m_cwtB').closest('.method-params').hidden, true);
