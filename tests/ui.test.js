@@ -1059,3 +1059,82 @@ test('Home asks about a phone recording until it is downloaded (#79)', async () 
   $('homeBtn').click();
   assert.equal($('homeDialog').hidden, true, 'downloaded: nothing to lose'); assert.equal($('empty').hidden, false);
 });
+
+// #80: notes at a time, a level or a point, on the signal and on the spectrum
+const submitNote = async (pg, form, input, words) => { pg.d.getElementById(input).value = words; pg.d.getElementById(form).dispatchEvent(new pg.w.Event('submit', { cancelable: true })); await sleep(20); };
+const setVal = (pg, id, v) => { const el = pg.d.getElementById(id); if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new pg.w.Event('change', { bubbles: true })); };
+test('signal notes at a level or a point, snapped to the curve or exactly where clicked; steps never change (#80)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  $('demoBtn').click(); await sleep(40);
+  const steps = samples(pg, 'Coza (modified)');
+  setVal(pg, 'noteMode', true);
+  assert.equal($('noteOpts').hidden, false, 'the kind and Snap show in note mode');
+  // a level, snapped: the value of the clicked point of the curve
+  setVal(pg, 'noteKind', 'level');
+  assert.match(text(pg, 'noteHint'), /height/);
+  $('plot')._click({ points: [{ x: 5, y: 3.3, curveNumber: 0 }] });
+  assert.equal(text(pg, 'noteAt'), 'Note at level 3.30');
+  await submitNote(pg, 'noteForm', 'noteText', 'resting');
+  let L = pg.plots.at(-1).layout;
+  assert.ok(L.shapes.some(s => s.xref === 'paper' && s.y0 === 3.3 && s.y1 === 3.3 && s.line.dash === 'dot'), 'a dotted horizontal line');
+  assert.ok(L.annotations.some(a => a.text === 'resting' && a.xref === 'paper' && a.y === 3.3));
+  // a click on a detector's marker: Snap takes the curve's value at that time
+  setVal(pg, 'noteKind', 'point');
+  const mk = markers(pg, 'Coza'), i = 3, want = pg.w.StepCore.demoWalk().cols[1][mk.customdata[i][0] - 1];
+  $('plot')._click({ points: [{ x: mk.x[i], y: 99, curveNumber: 5, data: { meta: { role: 'markers' } } }] });
+  assert.equal(text(pg, 'noteAt'), 'Note at ' + mk.x[i].toFixed(2) + ' s, ' + want.toFixed(2));
+  $('noteCancel').click();
+  // Snap off: exactly where the pointer was, from the plot's axes
+  setVal(pg, 'noteSnap', false);
+  const gd = $('plot'), drag = pg.d.createElement('div');
+  gd._fullLayout = { xaxis: { type: 'linear', p2l: px => px / 100 }, yaxis: { type: 'linear', p2l: px => 10 - px / 10 } };
+  drag.className = 'nsewdrag'; drag.setAttribute('data-subplot', 'xy'); gd.appendChild(drag);
+  $('plot')._click({ points: [{ x: 6.3, y: 9.8, curveNumber: 0 }], event: { clientX: 640, clientY: 20 } });
+  assert.equal(text(pg, 'noteAt'), 'Note at 6.40 s, 8.00');
+  await submitNote(pg, 'noteForm', 'noteText', 'here');
+  L = pg.plots.at(-1).layout;
+  assert.ok(L.annotations.some(a => a.text === 'here' && a.x === 6.4 && a.y === 8 && a.showarrow), 'a dot with its label');
+  // a time note lands at the clicked time (not the nearest point's), rounded to a sample with Snap on
+  setVal(pg, 'noteKind', 'time'); setVal(pg, 'noteSnap', true);
+  $('plot')._click({ points: [{ x: 9.9, y: 0, curveNumber: 0 }], event: { clientX: 1234, clientY: 300 } });
+  const t = Array.from(pg.w.StepCore.demoWalk().cols[0]), near = t.reduce((b, v) => (Math.abs(v - 12.34) < Math.abs(b - 12.34) ? v : b));
+  assert.equal(text(pg, 'noteAt'), 'Note at ' + near.toFixed(2) + ' s');
+  $('noteCancel').click();
+  // and without the pointer's position, the clicked point's time, as before
+  delete gd._fullLayout;
+  $('plot')._click({ points: [{ x: 12.5, y: 0, curveNumber: 0 }] });
+  await submitNote(pg, 'noteForm', 'noteText', 'turned');
+  assert.match(text(pg, 'noteList'), /level 3\.30 ?resting.*6\.40 s, 8\.00 ?here.*12\.50 s ?turned/);
+  assert.equal(samples(pg, 'Coza (modified)'), steps, 'notes never change the steps');
+  // the export has each kind
+  const csv = await exportCsv(pg);
+  assert.match(csv, /note_plot,note_kind,note_x,note_y,note\nsignal,level,,3\.3,resting\nsignal,point,6\.400,8,here\nsignal,time,12\.500,,turned\n/);
+});
+test('spectrum notes: their own tools, a log axis, and a reopened export (#80)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('demoBtn').click(); await sleep(40);
+  assert.equal($('specNoteOpts').hidden, true);
+  setVal(pg, 'specNoteMode', true);
+  assert.equal($('specNoteOpts').hidden, false); assert.equal($('noteOpts').hidden, true, 'each plot has its own');
+  $('specPlot')._click({ points: [{ x: 0.91, y: 150, curveNumber: 1 }] });
+  assert.equal(text(pg, 'specNoteAt'), 'Note at 0.91 Hz');
+  await submitNote(pg, 'specNoteForm', 'specNoteText', 'walking rhythm');
+  assert.match(text(pg, 'specNoteList'), /^0\.91 Hz ?walking rhythm/);
+  assert.ok(pg.spectra.at(-1).layout.shapes.some(s => s.x0 === 0.91 && s.yref === 'paper' && s.line.dash === 'dot'), 'drawn on the spectrum');
+  assert.ok(!pg.plots.at(-1).layout.annotations.some(a => a.text === 'walking rhythm'), 'and not on the signal (no mirroring)');
+  assert.equal($('noteList').hidden, true);
+  setVal(pg, 'specNoteKind', 'point');
+  $('specPlot')._click({ points: [{ x: 5, y: 0.4, curveNumber: 1, data: { meta: { role: 'spectrum' } } }] });
+  await submitNote(pg, 'specNoteForm', 'specNoteText', 'noise');
+  assert.match(text(pg, 'specNoteList'), /5\.00 Hz, power 0\.4 ?noise/);
+  // on a log axis, a point's height is in log10 units, as Plotly needs
+  setVal(pg, 'specLog', true); await sleep(20);
+  assert.ok(pg.spectra.at(-1).layout.annotations.some(a => a.text === 'noise' && Math.abs(a.y - Math.log10(0.4)) < 1e-12));
+  // a JSON export reopens both
+  $('expFmt').value = 'json'; $('expFmt').dispatchEvent(new pg.w.Event('change')); $('expGo').click(); await sleep(20);
+  const json = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  const pg2 = makePage();
+  await uploadText(pg2, 'demo_gaitscope.json', json);
+  assert.match(text(pg2, 'specNoteList'), /0\.91 Hz.*walking rhythm.*5\.00 Hz, power 0\.4 ?noise/);
+});
