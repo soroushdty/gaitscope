@@ -85,19 +85,19 @@
       </div>
       <div class="filter-opts" id="filterOpts" hidden>
       <h3>Filter</h3>
-      <div class="ctl">
+      <div class="ctl" data-only="butter cheby1 cheby2">
         <div class="ctl-head"><label for="fOrderIn">Order</label><output id="fOrderOut" for="fOrderIn" data-unit="order">4th order</output></div>
         <input type="range" id="fOrderIn" data-param="fOrder" min="2" max="6" value="4" step="1">
       </div>
-      <div class="ctl">
+      <div class="ctl" data-only="butter cheby1 cheby2">
         <div class="ctl-head"><label for="fLowIn">Low-pass cut-off</label><output id="fLowOut" for="fLowIn" data-unit="Hz" data-dec="1">3.0 Hz</output></div>
         <input type="range" id="fLowIn" data-param="fLow" min="0.5" max="20" value="3" step="0.5">
       </div>
-      <div class="ctl">
+      <div class="ctl" data-only="butter cheby1 cheby2">
         <div class="ctl-head"><label for="fHighIn">High-pass cut-off</label><output id="fHighOut" for="fHighIn" data-unit="Hz" data-dec="2" data-zero="off">off</output></div>
         <input type="range" id="fHighIn" data-param="fHigh" min="0" max="1" value="0" step="0.05">
       </div>
-      <p class="hint">A high-pass removes gravity and slow drift, making a band-pass. The signal is then centred on zero, so h needs to change for Coza.</p>
+      <p class="hint" data-only="butter cheby1 cheby2">A high-pass removes gravity and slow drift, making a band-pass. The signal is then centred on zero, so h needs to change for Coza.</p>
       <div class="ctl" data-only="cheby1">
         <div class="ctl-head"><label for="fRippleIn">Passband ripple</label><output id="fRippleOut" for="fRippleIn" data-unit="dB" data-dec="1">0.5 dB</output></div>
         <input type="range" id="fRippleIn" data-param="fRipple" min="0.1" max="3" value="0.5" step="0.1">
