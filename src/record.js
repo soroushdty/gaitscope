@@ -141,7 +141,8 @@
     st.gotData = true;
     if (st.phase !== 'recording') return;
     const a = e.acceleration, r = e.rotationRate;
-    const s = st.flip ? v => (v === 0 ? 0 : -v) : v => v; // rotation is kept as given
+    // rotation is kept as given: the iPad's left turns, lying flat, gave a positive rate about z, as on Android
+    const s = st.flip ? v => (v === 0 ? 0 : -v) : v => v;
     st.samples.push({ ts: e.timeStamp, g: [s(g.x), s(g.y), s(g.z)],
       a: a && a.x !== null && a.x !== undefined ? [s(a.x), s(a.y), s(a.z)] : null,
       r: r && r.alpha !== null && r.alpha !== undefined ? [r.alpha, r.beta, r.gamma] : null });
