@@ -192,8 +192,9 @@ data/                 local course files (git-ignored)
 ## Credits and license
 
 - **Coza** and the sample walk (`Walking.mat`) come from BME 598/494 *Wearable Devices
-  for Sport, Health, and Wellness* (ASU, Dr. Aurel Coza). The page's sample is a synthetic
-  walk of our own; the course files stay out of this repository.
+  for Sport, Health, and Wellness* (ASU, Dr. Aurel Coza). The page's demos are our own:
+  two phone recordings with counted steps (`demo/`) and a synthetic walk. The course files
+  stay out of this repository.
 - **Coza (modified):** Dr. Soroush Dianaty.
 - **Everything else:** each detector, filter and envelope credits its authors on the page,
   with a DOI link, and in exports. The full list, including the spectrum and features, is

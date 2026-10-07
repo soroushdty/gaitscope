@@ -96,6 +96,11 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .empty h2 { font-size: 20px; margin-bottom: 8px; }
 .empty p { color: var(--muted); margin: 0 0 18px; }
 .empty .stack { justify-content: center; }
+.demo-menu .exp-panel { left: 50%; right: auto; transform: translateX(-50%); display: grid; gap: 6px; text-align: left; }
+.demo-pick { display: block; width: 100%; padding: 8px 10px; background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.demo-pick:hover, .demo-pick:focus-visible { border-color: var(--signal); }
+.demo-pick b { display: block; font-size: 14px; }
+.demo-pick span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
 .formats { margin-top: 28px; text-align: left; font-size: 13.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
 .formats b { color: var(--ink); font-weight: 600; }
 .formats p { margin: 0 0 8px; }

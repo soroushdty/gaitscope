@@ -39,6 +39,8 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`, `read
 | File named `.zip` that isn't a zip | error | Fix: export again, or upload the CSV or MAT file itself. |
 | GaitScope JSON export (#53) | info, reopened | Its signal loads at its own times with Resample off (it is already the analysed signal), and every control and note is restored, so the same steps and metrics come out. See `docs/export.md`. |
 | JSON that isn't a GaitScope export, can't be parsed, has no signals, or has a newer `format_version` | error | Fix: export again from the dashboard (with Signals ticked), or reload the page for a newer version. |
+| A demo walk (Hand or Pocket, from `demo/`) | info, then read as a CSV | Says who recorded it, how, and what else is in it, and opens on the total (TgF). Every other check runs as for an upload. |
+| A demo walk didn't download | error | Offline, or the page was opened as a file on disk, where browsers block fetching other files. Fix: check the connection and pick it again, or serve the folder (`python3 -m http.server`). |
 
 ### Recording in the browser (#51)
 
