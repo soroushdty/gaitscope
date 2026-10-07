@@ -1460,33 +1460,40 @@
   /* Theme (#79): System, Light or Dark, remembered for this viewer only. System leaves
      data-theme off, so the CSS follows the system setting; the plots redraw on any change
      (the observer below). Storage can be blocked (private windows), so every use is guarded. */
-  const THEMES = ['system', 'light', 'dark'], THEME_KEY = 'gaitscope-theme';
-  const THEME_NAME = { system: 'System', light: 'Light', dark: 'Dark' };
+  /* Theme (#79, #106): the page follows the system's light or dark setting; the button
+     switches between the two. A switch away from the system's setting is remembered in this
+     browser; switching back to match it forgets it, so the page follows the system again. */
+  const THEMES = ['light', 'dark'], THEME_KEY = 'gaitscope-theme';
+  const THEME_NAME = { light: 'Light', dark: 'Dark' };
   // drawn, not font glyphs: the page font has no half circle, sun or moon
   const svgIcon = body => '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
   const THEME_ICON = {
-    system: svgIcon('<circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/>'),
     light: svgIcon('<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"/>'),
     dark: svgIcon('<path d="M13.5 9.6A5.8 5.8 0 1 1 6.4 2.5a4.6 4.6 0 0 0 7.1 7.1z"/>'),
   };
-  function storedTheme() { try { const v = window.localStorage.getItem(THEME_KEY); return THEMES.includes(v) ? v : 'system'; } catch (e) { return 'system'; } }
-  function applyTheme(v) {
-    if (v === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', v);
-    const b = $('themeBtn'), next = THEMES[(THEMES.indexOf(v) + 1) % THEMES.length];
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const systemTheme = () => (mq.matches ? 'dark' : 'light');
+  // a stored 'light' or 'dark' is a switch away from the system; anything else (the old 'system') is none
+  function storedTheme() { try { const v = window.localStorage.getItem(THEME_KEY); return THEMES.includes(v) ? v : null; } catch (e) { return null; } }
+  let themeChoice = storedTheme();
+  function applyTheme() {
+    const v = themeChoice || systemTheme(), next = v === 'dark' ? 'light' : 'dark';
+    if (themeChoice) document.documentElement.setAttribute('data-theme', themeChoice); else document.documentElement.removeAttribute('data-theme');
+    const b = $('themeBtn');
     b.dataset.theme = v;
-    b.innerHTML = THEME_ICON[v] + THEME_NAME[v];
-    b.title = 'Theme: ' + THEME_NAME[v] + '. Click for ' + THEME_NAME[next] + '.';
+    b.innerHTML = THEME_ICON[next] + THEME_NAME[next]; // names the theme it switches to
+    b.title = 'Switch to the ' + next + ' theme. ' + (themeChoice ? 'Switching back follows your system\u2019s setting again.' : 'Now following your system\u2019s setting.');
     b.setAttribute('aria-label', b.title);
   }
   $('themeBtn').addEventListener('click', () => {
-    const v = THEMES[(THEMES.indexOf($('themeBtn').dataset.theme) + 1) % THEMES.length];
-    applyTheme(v);
-    try { window.localStorage.setItem(THEME_KEY, v); } catch (e) { /* not remembered, still applied */ }
+    const next = (themeChoice || systemTheme()) === 'dark' ? 'light' : 'dark';
+    themeChoice = next === systemTheme() ? null : next; // back to the system's setting: follow it again
+    applyTheme();
+    try { if (themeChoice) window.localStorage.setItem(THEME_KEY, themeChoice); else window.localStorage.removeItem(THEME_KEY); } catch (e) { /* not remembered, still applied */ }
   });
-  applyTheme(storedTheme());
-  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  applyTheme();
   const rerenderTheme = () => { if (S.ch && S.res) { renderPlot(); renderFreq(); } };
-  if (mq.addEventListener) mq.addEventListener('change', rerenderTheme);
+  if (mq.addEventListener) mq.addEventListener('change', () => { applyTheme(); rerenderTheme(); });
   new MutationObserver(rerenderTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   setControlsEnabled(false);
 })();

@@ -31,7 +31,12 @@ function makePage(opts = {}) {
     if (opts.storage) Object.defineProperty(w, 'localStorage', { value: opts.storage, configurable: true }); // a stand-in, or one that throws
     w.pako = pako; w.TextDecoder = TextDecoder; w.TextEncoder = TextEncoder; // browsers have both; jsdom neither
     if (opts.hdf5 !== false) w.hdf5 = require('jsfive'); // the page loads it from jsDelivr when a v7.3 file arrives
-    w.matchMedia = q => ({ matches: !!(opts.coarse && /pointer: coarse/.test(q)), addEventListener() {} }); // coarse: a phone
+    // coarse: a phone; dark: the system set to dark. w.mq[query] keeps the change listeners, so a test can switch the system
+    w.mq = {};
+    w.matchMedia = q => {
+      const m = w.mq[q] || (w.mq[q] = { matches: !!((opts.coarse && /pointer: coarse/.test(q)) || (opts.dark && /prefers-color-scheme: dark/.test(q))), fns: [] });
+      return { get matches() { return m.matches; }, addEventListener: (type, fn) => m.fns.push(fn) };
+    };
     if (opts.wakeLock) { // the Screen Wake Lock; opts.wakeLock.grant = false refuses it
       const wl = opts.wakeLock; wl.requests = 0;
       Object.defineProperty(w.navigator, 'wakeLock', { configurable: true, value: { request: async () => {
@@ -1237,27 +1242,48 @@ test('credits show under each indicator\'s settings and under the filter, with n
   }
 });
 
-// #79: the theme button cycles System, Light, Dark and remembers the choice for this viewer
+// #79, #106: the page follows the system's light or dark setting; the button switches between them
 const memoryStorage = (init = {}) => { const m = Object.assign({}, init); return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; }, m }; };
-test('the theme button cycles System, Light and Dark, redraws the plots and remembers the choice (#79)', async () => {
+test('the theme follows the system; the button switches light and dark and remembers only a change (#106)', async () => {
   const storage = memoryStorage(), pg = makePage({ storage }), $ = id => pg.d.getElementById(id), root = pg.d.documentElement;
-  assert.equal($('themeBtn').textContent, 'System'); assert.ok($('themeBtn').querySelector('svg'), 'a drawn icon'); assert.equal(root.getAttribute('data-theme'), null, 'follows the system at first');
+  // a light system: no override, the button offers Dark
+  assert.equal(root.getAttribute('data-theme'), null);
+  assert.equal($('themeBtn').textContent, 'Dark'); assert.ok($('themeBtn').querySelector('svg'), 'a drawn icon');
+  assert.equal($('themeBtn').title, 'Switch to the dark theme. Now following your system’s setting.');
   $('demoBtn').click(); await sleep(40);
   const drawn = pg.plots.length;
   $('themeBtn').click(); await sleep(20);
-  assert.equal(root.getAttribute('data-theme'), 'light'); assert.equal(storage.m['gaitscope-theme'], 'light');
+  assert.equal(root.getAttribute('data-theme'), 'dark'); assert.equal(storage.m['gaitscope-theme'], 'dark');
   assert.ok(pg.plots.length > drawn, 'the plots redraw in the new colours');
-  assert.match($('themeBtn').title, /Theme: Light\. Click for Dark\./);
-  $('themeBtn').click(); assert.equal(root.getAttribute('data-theme'), 'dark'); assert.equal($('themeBtn').textContent, 'Dark');
-  $('themeBtn').click(); assert.equal(root.getAttribute('data-theme'), null); assert.equal(storage.m['gaitscope-theme'], 'system');
-  // a later visit starts with the remembered choice
-  const pg2 = makePage({ storage: memoryStorage({ 'gaitscope-theme': 'dark' }) });
-  assert.equal(pg2.d.documentElement.getAttribute('data-theme'), 'dark'); assert.equal(pg2.d.getElementById('themeBtn').dataset.theme, 'dark');
+  assert.equal($('themeBtn').textContent, 'Light'); assert.match($('themeBtn').title, /Switching back follows your system’s setting again/);
+  // back to the system's own setting: forgotten, and following the system again
+  $('themeBtn').click(); await sleep(20);
+  assert.equal(root.getAttribute('data-theme'), null); assert.equal('gaitscope-theme' in storage.m, false);
+  assert.equal($('themeBtn').textContent, 'Dark');
+  // a dark system: dark by itself; a switch to light is remembered
+  const st2 = memoryStorage(), pg2 = makePage({ storage: st2, dark: true }), $2 = id => pg2.d.getElementById(id);
+  assert.equal(pg2.d.documentElement.getAttribute('data-theme'), null); assert.equal($2('themeBtn').textContent, 'Light'); assert.equal($2('themeBtn').dataset.theme, 'dark');
+  $2('themeBtn').click();
+  assert.equal(pg2.d.documentElement.getAttribute('data-theme'), 'light'); assert.equal(st2.m['gaitscope-theme'], 'light');
+  // the system switching while the page is open: followed when there is no override
+  const st3 = memoryStorage(), pg3 = makePage({ storage: st3 }), m3 = pg3.w.mq['(prefers-color-scheme: dark)'];
+  m3.matches = true; m3.fns.forEach(fn => fn());
+  assert.equal(pg3.d.getElementById('themeBtn').textContent, 'Light', 'now dark, so it offers Light');
+  // a later visit: a remembered switch applies; the old three-way button's 'system' means none
+  assert.equal(makePage({ storage: memoryStorage({ 'gaitscope-theme': 'dark' }) }).d.documentElement.getAttribute('data-theme'), 'dark');
+  assert.equal(makePage({ storage: memoryStorage({ 'gaitscope-theme': 'system' }) }).d.documentElement.getAttribute('data-theme'), null);
   // blocked storage (a private window): it still switches, it just isn't remembered
-  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
-  const pg3 = makePage({ storage: blocked });
-  pg3.d.getElementById('themeBtn').click();
-  assert.equal(pg3.d.documentElement.getAttribute('data-theme'), 'light');
+  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } };
+  const pg4 = makePage({ storage: blocked });
+  pg4.d.getElementById('themeBtn').click();
+  assert.equal(pg4.d.documentElement.getAttribute('data-theme'), 'dark');
+  pg4.d.getElementById('themeBtn').click();
+  assert.equal(pg4.d.documentElement.getAttribute('data-theme'), null);
+});
+test('the header links to the repository (#106)', () => {
+  const a = makePage().d.getElementById('repoLink');
+  assert.equal(a.getAttribute('href'), 'https://github.com/soroushdty/gaitscope');
+  assert.equal(a.target, '_blank'); assert.match(a.rel, /noopener/); assert.equal(a.textContent, 'GitHub');
 });
 
 test('recorder: the countdown is a setting, remembered in the browser', async () => {

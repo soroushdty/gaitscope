@@ -106,8 +106,10 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
 - **Signal only:** one button above the plot takes away every detector and envelope, the
   filter, resampling and the step intervals, to look at just the signal. Notes stay, and
   Undo puts everything back.
-- **Theme:** follows the system, or pick Light or Dark with the button in the header. The
-  choice is remembered in this browser only.
+- **Theme:** follows the system's light or dark setting; the button in the header switches
+  between the two. A switch away from the system's setting is remembered in this browser
+  only; switching back follows the system again.
+- **GitHub** in the header links to this repository.
 
 ## Run it locally
 

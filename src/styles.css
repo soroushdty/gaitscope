@@ -41,6 +41,7 @@ button, input, select { font: inherit; color: inherit; }
 .filechip { font-size: 13px; color: var(--muted); text-align: right; max-width: 40ch; min-width: 0; }
 .top-tools { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .top-tools .btn { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
+a.btn { color: inherit; text-decoration: none; } /* the repository link, dressed as the buttons beside it */
 .filechip strong { display: block; color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: calc(100% - 90px); }
