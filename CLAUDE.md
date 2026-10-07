@@ -5,15 +5,23 @@ Context for Claude Code sessions on this repository.
 ## What this is
 
 A class project for *Wearable Devices for Sport, Health, and Wellness* (ASU, Fall 2026,
-instructor Aurel). Lab 1 provides a MATLAB step-detection script
+instructor Dr. Aurel Coza). Lab 1 provides a MATLAB step-detection script
 (`LabStepDet_2025.m`) and a sample recording (`Walking.mat`). The instructor allows
 students to skip MATLAB and use an AI tool to run the code instead. This repo holds:
 
 1. `python/lab_step_det.py`: a faithful Python port of the MATLAB script.
 2. A static browser dashboard (`index.html` + `src/`) that validates an uploaded
-   `.mat`, Physics Toolbox `.csv` or phyphox `.zip` file (or records a walk on a phone), runs the lab algorithm, and compares it with
-   a corrected version. Features: interactive sliders, filter and algorithm dropdowns, envelopes, notes pinned to the plot,
-   export as CSV, zipped CSV, MATLAB .mat, NumPy .npz or JSON (which reopens an analysis).
+   `.mat`, Physics Toolbox `.csv` or phyphox `.zip` file (or records a walk on a phone) and
+   runs step detectors on it. Detectors and envelopes are chart indicators: any number on
+   the plot at once, each with its own settings, colour and source signal. The page opens
+   with **Coza** (Dr. Coza's Lab 1 detector, as written) and **Coza (modified)** (fixed by
+   the owner, Dr. Soroush Dianaty). Also: filters, resampling, notes pinned to the plot,
+   and export as CSV, zipped CSV, MATLAB .mat, NumPy .npz or JSON (which reopens an
+   analysis).
+
+No "lab code" wording anywhere: Coza is a step detector like any other, credited to
+Dr. Coza (names only on the page, no emails). `Walking.mat` is his sample signal; it
+stays out of the repo, and the page's sample is our own synthetic walk.
 
 The owner does not know MATLAB and works in Python. Explain MATLAB-specific
 behaviour when it matters.
@@ -23,16 +31,16 @@ behaviour when it matters.
 - **Never commit or push to `main`.** Every change goes new branch → atomic commits →
   PR → Rebase and merge, as described in `CONTRIBUTING.md`. Each commit must pass both
   test suites on its own.
-- **The "original" algorithm must stay bit-exact with MATLAB.** This covers
+- **Coza (the original algorithm) must stay bit-exact with MATLAB.** This covers
   `detect_steps`/`gait_metrics` in Python and `detectOriginal`/`originalMetrics` in
   JS. That includes its quirks: 1-based indices in the output, loop bounds
   `w+1 … length-w`, `/100` for seconds, the `Pace = duration*60` formula, and
-  N−1 `std`. Improvements go into our own algorithms, never into the original. Each
-  one is an entry in `ALGORITHMS` in `src/core.js`. The first is **Coza**
-  (`coza_original`): the lab rule itself (`detectOriginal` with the lab code's `w` and
-  `h`, nothing fixed), so the original can be picked like an algorithm. Next is
-  **Coza (modified)** (id `coza`, `detectCoza`), the lab detector with its bugs fixed;
-  the page opens on it. All of them share `timingMetrics`.
+  N−1 `std`. Improvements go into our own detectors, never into Coza. Each detector is
+  an entry in `ALGORITHMS` in `src/core.js` with a `params` schema the page builds its
+  controls from. The first is **Coza** (`coza_original`: `detectOriginal` with its own
+  `w` and `h`, nothing fixed; its `.m` outputs appear as the "Coza's formula" metric rows).
+  Next is **Coza (modified)** (id `coza`, `detectCoza`), Coza's detector with its bugs
+  fixed. All of them share `timingMetrics` for their metrics column.
 - **`src/core.js` has no DOM access.** It is shared by the browser and by the
   Node tests (UMD-style export at the bottom).
 - **Never commit course files.** `data/` is git-ignored except its README. Test
@@ -88,15 +96,15 @@ unless the course file is present in `data/`.
 - Real Physics Toolbox exports from the owner's phone (2026-09-23, G-Force Meter at
   ~460 Hz and Linear Accelerometer at ~57 Hz) load correctly. Newer exports start with
   `# key: value` metadata lines and put units in headers (`ax (m/s^2)`); both are handled.
-  At 460 Hz the lab code (`w = 30` samples = ±65 ms, TgF rounded to 0.01) finds 193
+  At 460 Hz Coza (`w = 30` samples = ±65 ms, TgF rounded to 0.01) finds 193
   "steps" in 6.6 s, so it only makes sense near 100 Hz.
 - Free Physics Toolbox can't set the sample rate (a Pro feature), so phone recordings
   come in at ~460 Hz. `lab_step_det.py --resample 100` interpolates to 100 Hz before
-  the lab code (MATLAB `interp1`); Coza (modified)'s window is in seconds, so it needs no resampling.
+  Coza (MATLAB `interp1`); Coza (modified)'s window is in seconds, so it needs no resampling.
 - Resampling (#52), in the dashboard (Detection → Resample) and in Python
   (`--resample-method linear|pchip`, `--antialias`), gives the same samples in both ports
   (`tests/fixtures/resample.json`): linear is bit-exact, pchip within 4e-16, anti-aliased
-  within 2e-13. A CSV resampled to 100 or 50 Hz gives the lab code the same steps in both.
+  within 2e-13. A CSV resampled to 100 or 50 Hz gives Coza the same steps in both.
   Anti-aliasing is off by default. Measured on the owner's 460 Hz recordings, under 0.05%
   of the power is above 50 Hz and no lab-code step count changed; the filter only moved
   one peak (table in `docs/algorithm.md`). Rendered in headless Chromium without errors.
@@ -119,7 +127,7 @@ unless the course file is present in `data/`.
   `mode='nearest'`), Savitzky–Golay (`savgol_filter`, `mode='interp'`) and notch
   (`iirnotch`). scipy's own Savitzky–Golay weights lose precision on long, high-order
   windows (1.5e-10 at 231 samples, order 5), so that case is checked against exact rational
-  weights instead. The lab code never sees the filtered signal.
+  weights instead. A detector or envelope set to Unfiltered never sees the filtered signal.
 - Envelopes (#13, #38) are views only; a UI test checks steps, metrics and exports stay
   identical for each. The smooth peak-trough joins match scipy's `PchipInterpolator`
   (`tests/fixtures/envelopes.json`). RMS, moving SD and mean ± k·SD from #38 are one
@@ -148,7 +156,7 @@ unless the course file is present in `data/`.
   steady); `Walking.mat` and Linear Accelerometer files have gravity removed, so the
   options are disabled there. Vertical rests at 0, so `h` needs to be about 0.1 g.
 
-## Findings about the lab code (see docs/algorithm.md)
+## Findings about Coza's code (see docs/algorithm.md)
 
 - Tied peaks (values rounded to 0.01) are counted twice. `Walking.mat` column 2 has
   this at samples 471/472 and 1036/1037.
@@ -182,8 +190,8 @@ unless the course file is present in `data/`.
 
 | File | Key parts |
 |---|---|
-| `src/core.js` | `parseMat` (MAT v5 reader), `isMat73` + `parseMat73` (v7.3 through jsfive, passed in) + `patchCompactStorage`, `matCandidates`, `matToColumns`, `parseCsv` (+ `phyphoxMetaFile`: rejects a lone phyphox meta file), `isZip` + `parseZip` + `readPhyphoxZip` (phyphox zip → data CSV text + metadata checks), `recordingCsv` + `recordingChecks` (#51: devicemotion samples → CSV in g / m/s² / rad/s with `# key: value` metadata; `parseCsv` returns those as `meta`), `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks; also takes 'computed', 'vertical', 'horizontal'), `gravitySplit` (vertical/horizontal from x, y, z by gravity's direction, #35), `datasetRate`, `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `designFilter` (Butterworth / Bessel / Chebyshev I / II / elliptic as second-order sections, like scipy `iirfilter`; prototypes `besselPoles` (Aberth `polyRoots`), `ellipPrototype` (cephes-style `ellipj`, AGM `ellipK`, Carlson `carlsonRF`)), `sosfiltfilt` (zero-phase, like scipy), `lowpass` (algorithms' internal 2nd-order Butterworth), `labRateCheck` (the 100 Hz check, `id: 'labRate'`), `resampleChannel` (#52: even grid at a chosen or the median rate, `mergeRepeats`, optional Chebyshev I anti-aliasing `ANTIALIAS`) + `interpLinear` (numpy.interp operation for operation), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: `coza_original` (Coza), `coza` (Coza (modified)), then the textbook three; tagline, summary, usesH, usesW (keeps the lab `w` slider shown), detect → idx/markY/guides, settings for the export), `FILTERS` (each entry: apply on even samples, label; settings rows under Advanced list it in `data-only`) + `applyFilter` (filter for the algorithm only) / `filterEvenly` / `evenGrid` (uneven timing onto an even grid, shared with the FFT features), `oddWindow` (seconds → odd samples), `movingAverage`, `movingMedian`, `savgol`, `notchSos`, `dwt` / `idwt` / `waveletDenoise` (db4, like PyWavelets), `filterLabel`, `interpAt`, frequency domain (#36): `fft` / `ifft` (radix-2 or Bluestein, like numpy), `spectrogram` / `welch` (like scipy), `spectrum` + `dominantFrequency` (`GAIT_BAND` 0.5–3.5 Hz, clear at 5× the median), `rhythmOverTime`, `filterGain` (|H|² of the selected filter), `hilbert`, `harmonicRatio`, `ENVELOPES` (sliding, peak-trough with optional smooth joins, dynamic threshold, mean ± k·SD, percentile band; view only; `midName` labels a midline), `localExtrema`, `halfWindow`, `movingMeanSd`, `movingPercentiles`, `pchip` (monotone cubic, like scipy `PchipInterpolator`), `demoWalk` |
-| export (#53) | `core.js`: `VERSION` (= package.json, pyproject.toml, the port; tested), `stepStatus` (also the app's step table), `metricRows`, `buildExport` (the model), `exportJson` / `parseExportJson`, `exportMat`, `exportNpz` (+ `npyBytes`), `exportCsvZip`, `zipStore` + `crc32`; column types by name (`TEXT_COLUMNS`, `BOOL_COLUMNS`). `app.js`: `#expMenu` (`expFmt`, `showExport`, `exportSettings`, `exportModel`, `exportAs`; CSV separate files = the old `exportMetrics` / `exportSteps`, unchanged), `loadExportJson` + `restoreParams`. Python: `export_model`, `write_export`, `--export` |
+| `src/core.js` | `parseMat` (MAT v5 reader), `isMat73` + `parseMat73` (v7.3 through jsfive, passed in) + `patchCompactStorage`, `matCandidates`, `matToColumns`, `parseCsv` (+ `phyphoxMetaFile`: rejects a lone phyphox meta file), `isZip` + `parseZip` + `readPhyphoxZip` (phyphox zip → data CSV text + metadata checks), `recordingCsv` + `recordingChecks` (#51: devicemotion samples → CSV in g / m/s² / rad/s with `# key: value` metadata; `parseCsv` returns those as `meta`), `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks; also takes 'computed', 'vertical', 'horizontal'), `gravitySplit` (vertical/horizontal from x, y, z by gravity's direction, #35), `datasetRate`, `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `designFilter` (Butterworth / Bessel / Chebyshev I / II / elliptic as second-order sections, like scipy `iirfilter`; prototypes `besselPoles` (Aberth `polyRoots`), `ellipPrototype` (cephes-style `ellipj`, AGM `ellipK`, Carlson `carlsonRF`)), `sosfiltfilt` (zero-phase, like scipy), `lowpass` (algorithms' internal 2nd-order Butterworth), `cozaRateCheck` (the 100 Hz check, `id: 'cozaRate'`, `needs: 'coza_original'`), `resampleChannel` (#52: even grid at a chosen or the median rate, `mergeRepeats`, optional Chebyshev I anti-aliasing `ANTIALIAS`) + `interpLinear` (numpy.interp operation for operation), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (detector registry: `coza_original` (Coza), `coza` (Coza (modified)), then the textbook three; tagline, summary, `params` schema (`P_H`, `P_W`; `defaultParams`, `paramSummary`), detect → idx/markY/guides, settings for the export), `FILTERS` (each entry: apply on even samples, label; settings rows under Advanced list it in `data-only`) + `applyFilter` (filter for the algorithm only) / `filterEvenly` / `evenGrid` (uneven timing onto an even grid, shared with the FFT features), `oddWindow` (seconds → odd samples), `movingAverage`, `movingMedian`, `savgol`, `notchSos`, `dwt` / `idwt` / `waveletDenoise` (db4, like PyWavelets), `filterLabel`, `interpAt`, frequency domain (#36): `fft` / `ifft` (radix-2 or Bluestein, like numpy), `spectrogram` / `welch` (like scipy), `spectrum` + `dominantFrequency` (`GAIT_BAND` 0.5–3.5 Hz, clear at 5× the median), `rhythmOverTime`, `filterGain` (|H|² of the selected filter), `hilbert`, `harmonicRatio`, `ENVELOPES` (sliding, peak-trough with optional smooth joins, dynamic threshold, mean ± k·SD, Hilbert, percentile band; each with a `params` schema; view only; `midName` labels a midline), `localExtrema`, `halfWindow`, `movingMeanSd`, `movingPercentiles`, `pchip` (monotone cubic, like scipy `PchipInterpolator`), `demoWalk` |
+| export (#53) | `core.js`: `VERSION` (= package.json, pyproject.toml, the port; tested), `EXPORT_FORMAT_VERSION` 2, `stepTable` (rows any detector marked or dropped; also the app's step table), `metricRows` (a column per detector; `coza_` rows for Coza), `indicatorIds` (`coza`, `coza_modified`, `threshold_2`, …), `buildExport` (the model: indicators table, step/metric columns per detector), `exportJson` / `parseExportJson`, `exportMat`, `exportNpz` (+ `npyBytes`), `exportCsvZip`, `zipStore` + `crc32`; column types by name or by values (`columnKind`). `app.js`: `#expMenu` (`expFmt`, `showExport`, `exportSettings`, `exportModel`, `exportAs`), `loadExportJson` + `restoreExport`. Python: `export_model` (Coza only; `_timing` mirrors `timingMetrics`), `write_export`, `--export` |
 | `src/record.js` | `StepRecorder.init(onDone)`, `available()` (motion API + coarse pointer); phases countdown → recording → done/error on `#recOverlay` (`data-phase`); `onMotion` (samples `{ts, g, a, r}`), `onVisibility` (hidden → stop, keep data), hold-to-stop (`HOLD_MS`; Enter stops at once), `NO_SENSOR_MS`, wake lock; `finish` → `recordingCsv` → `onDone({csv, name, checks, position})` |
-| `src/app.js` | state `S`, `loadRecording` (a recording → `loadCsv`; `S.recording` for Download), `S.counted` (from `# steps_counted:`; compared in `derivedChecks`), loading (`handleFile`, `loadHdf5` (jsfive on demand), `loadMat`, `loadZip`, `loadCsv`, `setDataset`, `selectChannel`), resampling (`rsOptions`, `applyResample`: `S.chRaw` is the prepared channel, `S.ch` what everything downstream uses, `S.rs` the `resampleChannel` result; its checks replace the `labRate` one), `COMPUTED` + `chanInfo()` (labels and units of computed signals), `recompute` (also the spectrum, rhythm over time and harmonic ratio), `renderSpectrum` (Spectrum panel; the UI tests' Plotly stub keeps it apart from the main plot), `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0–1 envelope band, 2 the signal the lab code gets (resampled when Resample is on; faded when filtered), 3 filtered signal, 4 envelope midline, 5–6 algorithm guide lines, 7 lab markers, 8 algorithm markers, 9–10 interval strip, 11 spectrum rhythm period in the strip, 12 the recording before resampling (`zorder: -1`); hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), `hUsed()` (h control and line only for the lab code or algorithms with `usesH`), options under Advanced (`#advSec input[data-param]` → `params()`: numbers, or true/false for checkboxes; reset to their HTML default), `showFilter()`, `showEnv()` (envelopes are a view: they redraw the plot, never recompute steps), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
+| `src/app.js` | state `S` (`S.ind`: the indicators), `loadRecording` (a recording → `loadCsv`; `S.recording` for Download), `S.counted` (from `# steps_counted:`; compared in `derivedChecks`), loading (`handleFile`, `loadHdf5` (jsfive on demand), `loadMat`, `loadZip`, `loadCsv`, `loadExportJson` + `restoreExport` (format 2 indicators; format 1 → Coza + its algorithm), `setDataset`, `selectChannel`), resampling (`rsOptions`, `applyResample`: `S.chRaw` is the prepared channel, `S.ch` what everything downstream uses, `S.rs` the `resampleChannel` result; its checks replace the `cozaRate` one), `COMPUTED` + `chanInfo()`, indicators (`addIndicator`, `defaultIndicators` (Coza + Coza (modified)), `labelOf` ("Coza 2" for repeats), `renderIndicators` (rows built from each `params` schema by `paramControl`; delegated `onIndicatorInput`/`onIndicatorClick`/`onIndicatorSource`), `PALETTE` (`--c1`…`--c6`) + `SYMBOLS`, `source` filtered/recorded; envelopes only redraw (`computeEnvelopes`), detectors `schedule()` a recompute), `params()` (page-wide: filter, spectrum, phone position; `indParams` adds an indicator's own), `recompute` (filter and spectra cached; per-detector results cached in `S.cache.det` by uid: `fx`, `idx`, `metrics`, `hr`, `script` = `originalMetrics` for Coza), `derivedChecks` (per detector; `needs: 'coza_original'` checks only while a Coza is shown), `renderValidation`, `renderLegend`, `renderPlot` (traces carry `meta: {role, uid}`: envLower/envUpper/envMid per envelope, recorded (zorder -1), signal, filtered, guide, markers (stacked, a symbol each), intervals, rhythm; one dashed `h` line per detector with `h`; notes are shapes + annotations), `renderSpectrum`, `renderMetrics` (a column per shown detector; "Coza's formula" rows when a Coza is shown; `specCadNote`), `renderSteps` (`C.stepTable`), notes (`onPlotClick`, `addNote`, `renderNotes`), export (`exportSteps`/`exportMetrics` = CSV separate files from the model, `exportModel` → `C.buildExport` with shown indicators only, `exportAs`) |
 | `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, `load_csv` (Physics Toolbox / phyphox CSV → Walking.mat layout), `load_phyphox` (zip → `load_csv` + metadata), `load_mat`, `sampling_rate`, `rate_warning`, `resample` (linear / pchip, `antialias`; repeats averaged), `gaps`, `to_g` (`--to-g`), CLI |
