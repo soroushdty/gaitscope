@@ -52,7 +52,7 @@ device, rate, how it stopped, and the two optional answers (`steps_counted`,
 
 | Check | Level | Why / fix |
 |---|---|---|
-| Page not on https | error | Browsers only give motion data to secure pages. Fix: open the GitHub Pages address. |
+| Page not on https | error + link | Browsers only give motion data to secure pages. GitHub Pages serves the dashboard over http as well unless "Enforce HTTPS" is on, so the message links to the same page over https. |
 | No motion API | error | Fix: Chrome on Android or Safari on iPhone. On computers (no touch screen) the button is hidden and a hint says to use a phone. |
 | iPhone: motion access refused | error | Safari asks once per visit. Fix: close the tab, reopen and tap Allow; or clear Safari's website data. On Android: Chrome's Site settings → Motion sensors. |
 | No data within 2.5 s | error | No sensor (a computer). Fix: open the page on a phone. |

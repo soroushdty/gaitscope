@@ -43,17 +43,24 @@
     st.timers = [];
     if (st.lock) { st.lock.release().catch(() => {}); st.lock = null; }
   }
-  function fail(title, fix) {
+  function fail(title, fix, link) {
     cleanup();
     show('error', 'Can’t record', '', '');
     $('recErrText').textContent = title;
     $('recErrFix').textContent = fix || '';
+    $('recErrLink').hidden = !link;
+    if (link) $('recErrLink').href = link;
     st = null;
   }
 
   async function start(onDone) {
     if (st) return;
-    if (window.isSecureContext === false) return fail('Motion sensors need a secure (https://) page.', 'Open the dashboard from its GitHub Pages address, which uses https.');
+    if (window.isSecureContext === false) {
+      // the same page over https, when it was opened over http (GitHub Pages serves both)
+      const https = location.protocol === 'http:' ? location.href.replace(/^http:/, 'https:') : '';
+      return fail('Motion sensors need a secure (https://) page, and this one was opened over http.',
+        https ? 'Open the same page over https: ' + https : 'Open the dashboard from an https:// address.', https);
+    }
     if (typeof window.DeviceMotionEvent === 'undefined') return fail('This browser has no access to motion sensors.', 'Open the page in Chrome on Android or Safari on iPhone.');
     // iPhone (Safari 13+): permission must be asked from the tap itself
     if (typeof DeviceMotionEvent.requestPermission === 'function') {
