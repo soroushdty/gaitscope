@@ -38,10 +38,18 @@
   function decimalsFor(step) { return Math.max(0, Math.min(4, -Math.floor(Math.log10(step)))); }
 
   /* ------------------------------------------------------------ loading */
+  function showRs() {
+    const m = $('rsSel').value;
+    $('rsRateRow').hidden = m !== 'rate';
+    $('rsOpts').hidden = m === 'off';
+    $('rsDesc').textContent = { off: 'Samples are used as recorded.', even: 'An even grid at the recording\u2019s own rate: steadies phone timing without changing the rate.',
+      rate: 'Everything after this step, the lab code included, gets samples at this rate.' }[m];
+  }
+
   function resetAll() {
     $('posSel').value = 'hand'; updatePosHint();
     showPass = false;
-    S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.res = null;
+    S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.chRaw = null; S.rs = null; S.res = null;
     S.notes = []; closeNoteForm();
   }
 
@@ -195,14 +203,33 @@
     S.chanKey = key;
     const fsManual = Number($('fsIn').value) || 100;
     const ch = C.prepareChannel(S.ds, COMPUTED[key] ? key : Number(key), fsManual);
-    S.ch = ch.fatal ? null : ch;
-    S.chChecks = ch.checks;
+    S.chRaw = ch.fatal ? null : ch;
+    S.chRawChecks = ch.checks;
     if (ch.fatal) {
+      S.ch = null; S.rs = null; S.chChecks = ch.checks;
       $('analysis').hidden = true;
       setControlsEnabled(false);
       renderValidation([]);
       return;
     }
+    applyResample();
+  }
+
+  /* Resample (#52): the recorded channel S.chRaw, put on an even grid when the user asks.
+     S.ch is what everything downstream uses: the filter, the lab code, the algorithms,
+     the spectrum and the exports. Settings that can't be used leave S.ch = S.chRaw. */
+  function rsOptions() {
+    const rate = $('rsRate').value.trim();
+    return { mode: $('rsSel').value, rate: rate === '' ? NaN : Number(rate), method: $('rsMethod').value, antialias: $('rsAA').checked };
+  }
+  function applyResample() {
+    if (!S.chRaw) return;
+    const o = rsOptions();
+    S.rs = o.mode === 'off' ? null : C.resampleChannel(S.chRaw, o);
+    const on = !!(S.rs && S.rs.applied);
+    S.ch = on ? S.rs : S.chRaw;
+    // the 100 Hz check is about what the lab code receives, so the resampled one replaces it
+    S.chChecks = (on ? S.chRawChecks.filter(c => c.id !== 'labRate') : S.chRawChecks).concat(S.rs ? S.rs.checks : []);
     configureSliders();
     $('analysis').hidden = false;
     setControlsEnabled(true);
@@ -221,7 +248,7 @@
   function fatal(msg, fix, keepFileChecks) {
     if (!keepFileChecks) S.fileChecks = [];
     S.fileChecks.push({ level: 'error', title: msg, detail: '', fix });
-    S.ds = null; S.ch = null; S.dsChecks = []; S.chChecks = [];
+    S.ds = null; S.ch = null; S.chRaw = null; S.rs = null; S.dsChecks = []; S.chChecks = [];
     $('dataControls').hidden = true;
     $('analysis').hidden = true;
     setControlsEnabled(false);
@@ -243,7 +270,8 @@
 
   function setControlsEnabled(on) {
     for (const b of document.querySelectorAll('[data-preset]')) b.disabled = !on;
-    for (const id of ['filterSel', 'envSel', 'algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const b of document.querySelectorAll('[data-rs-rate]')) b.disabled = !on;
+    for (const id of ['rsSel', 'rsRate', 'rsMethod', 'rsAA', 'filterSel', 'envSel', 'algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
     for (const el of optionInputs()) el.disabled = !on;
     updateExportButtons();
   }
@@ -430,7 +458,7 @@
     dot.style.background = color;
     $('valTitle').textContent = title;
     const parts = [];
-    if (S.ds) parts.push(S.ch ? S.ch.A.length + ' samples, ' + fmt(S.ch.t[S.ch.t.length - 1] - S.ch.t[0], 1) + ' s at ' + fmt(S.ch.fs, S.ch.fs >= 100 ? 0 : 1) + ' Hz' : S.ds.n + ' rows');
+    if (S.ds) parts.push(S.ch ? S.ch.A.length + ' samples, ' + fmt(S.ch.t[S.ch.t.length - 1] - S.ch.t[0], 1) + ' s at ' + fmt(S.ch.fs, S.ch.fs >= 100 ? 0 : 1) + ' Hz' + (S.rs && S.rs.applied ? ' (resampled)' : '') : S.ds.n + ' rows');
     parts.push(all.length + ' check' + (all.length === 1 ? '' : 's'));
     $('valSub').textContent = parts.join(', ');
     const order = { error: 0, warn: 1, info: 2, pass: 3 };
@@ -459,7 +487,10 @@
   function renderPlot() {
     $('legH').textContent = 'Threshold h = ' + +S.res.p.h.toFixed(4);
     renderGuideLegend();
+    const resampled = !!(S.rs && S.rs.applied);
     $('legFilter').hidden = !S.res.filt.applied;
+    $('legFilterBase').textContent = resampled ? 'Resampled' : 'Recorded';
+    $('legResample').hidden = !resampled;
     if (typeof Plotly === 'undefined') {
       $('plot').innerHTML = '<p class="note" style="padding:20px">The plotting library did not load. Check your internet connection and reload the page.</p>';
       return;
@@ -500,8 +531,8 @@
       { x: band ? t : [], y: band ? env.upper : [], type: 'scatter', mode: 'lines', name: 'Envelope upper', visible: band, line: { color: cssVar('--env'), width: 0.8 },
         fill: 'tonexty', fillcolor: envFill, hovertemplate: 'Envelope upper<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       // 2: the recorded signal, faded when 3, the filtered signal the algorithm sees, is drawn on it
-      { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, opacity: filt.applied ? 0.35 : 1, name: 'Signal',
-        hovertemplate: (filt.applied ? 'Recorded<br>' : '') + '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, opacity: filt.applied ? 0.35 : 1, name: resampled ? 'Resampled' : 'Signal',
+        hovertemplate: (resampled ? 'Resampled<br>' : filt.applied ? 'Recorded<br>' : '') + '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       { x: filt.applied ? t : [], y: filt.applied ? filt.A : [], type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.6 }, name: 'Filtered', visible: filt.applied,
         hovertemplate: 'Filtered<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       // 4: envelope midline (dynamic threshold)
@@ -520,6 +551,9 @@
       { x: Array.from(S.res.rhythm.t), y: Array.from(S.res.rhythm.freq, f => Number.isFinite(f) ? 1 / f : null), type: 'scatter', mode: 'lines', name: 'Spectrum rhythm',
         xaxis: 'x', yaxis: 'y2', visible: iv, connectgaps: false, line: { color: colors.signal, width: 1.6 },
         hovertemplate: 'Spectrum: main rhythm every %{y:.3f} s (%{customdata:.0f}/min)<extra></extra>', customdata: Array.from(S.res.rhythm.freq, f => f * 60) },
+      // 12: the recording before resampling, drawn under everything (zorder)
+      { x: resampled ? S.chRaw.t : [], y: resampled ? S.chRaw.A : [], type: 'scatter', mode: 'lines', name: 'Recorded', visible: resampled, zorder: -1,
+        line: { color: colors.muted, width: 1 }, opacity: 0.6, hovertemplate: 'Recorded, before resampling<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
     ];
     const tMax = t[t.length - 1];
     const layout = {
@@ -737,6 +771,8 @@
       csvRow(['window_w_samples', p.w]),
       csvRow(['threshold_h', p.h]),
       csvRow(['sampling_rate_hz', n(S.ch.fs)]),
+      csvRow(['recorded_rate_hz', n(S.chRaw.fs)]),
+      csvRow(['resample', !S.rs ? 'off' : !S.rs.applied ? 'off (not applied)' : fmt(S.rs.fs, 2) + ' Hz, ' + (S.rs.method === 'pchip' ? 'pchip' : 'linear') + (S.rs.antialias ? ', anti-aliased' : '')]),
       csvRow(['filter', C.filterLabel(p) + (S.res.filt.applied ? '' : p.filter !== 'none' ? ' (not applied)' : '')]),
       csvRow(['filter_resampled', S.res.filt.resampled ? 'yes' : 'no']),
       csvRow(['spectrum_segment_s', n(S.res.spec.segment)]),
@@ -769,6 +805,11 @@
   $('varSel').addEventListener('change', e => selectMatVar(Number(e.target.value)));
   $('chanSel').addEventListener('change', e => selectChannel(e.target.value));
   $('fsIn').addEventListener('change', () => { if (S.ds && !S.ds.t) selectChannel(S.chanKey); });
+  // resampling redoes everything downstream, so it runs on change (not on every keystroke)
+  for (const id of ['rsSel', 'rsRate', 'rsMethod', 'rsAA']) $(id).addEventListener('change', () => { showRs(); applyResample(); });
+  $('rsRate').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyResample(); } });
+  for (const b of document.querySelectorAll('[data-rs-rate]')) b.addEventListener('click', () => { $('rsRate').value = b.dataset.rsRate; applyResample(); });
+  showRs();
   $('wIn').addEventListener('input', () => { updateWOut(); schedule(); });
   for (const el of optionInputs()) el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => { updateOptionOut(el); if (el.id === 'cwIn') updateCwOut(); schedule(); });
   $('hIn').addEventListener('input', e => { $('hNum').value = e.target.value; schedule(); });

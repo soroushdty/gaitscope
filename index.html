@@ -44,6 +44,16 @@
 
     <section id="detSec">
       <h2>Detection</h2>
+      <label class="field">Resample<select id="rsSel">
+        <option value="off">Off</option>
+        <option value="even">Even out timing (same rate)</option>
+        <option value="rate">To a rate</option>
+      </select></label>
+      <div id="rsRateRow" hidden>
+        <label class="field">Rate (Hz)<input type="number" id="rsRate" min="1" max="10000" step="any" placeholder="Type a rate"></label>
+        <p class="hint">Preset: <button class="link" type="button" data-rs-rate="100">100 Hz, what the Lab 1 code assumes</button></p>
+      </div>
+      <p class="hint" id="rsDesc"></p>
       <label class="field">Filter<select id="filterSel"></select></label>
       <p class="hint" id="filterDesc"></p>
       <label class="field">Algorithm<select id="algoSel"></select></label>
@@ -68,6 +78,15 @@
     <section id="advSec">
       <details class="adv" id="advDetails">
         <summary><h2>Advanced</h2></summary>
+      <div id="rsOpts" hidden>
+      <h3>Resampling</h3>
+      <label class="field">Method<select id="rsMethod">
+        <option value="linear">Linear (like MATLAB interp1)</option>
+        <option value="pchip">Monotone cubic (pchip)</option>
+      </select></label>
+      <label class="check"><input type="checkbox" id="rsAA"><span>Anti-aliasing</span>
+        <small>When going down in rate, low-pass below half the new rate first, so faster motion can’t fold back in as slower motion. Off by default: walking has almost nothing that fast, and the filter rounds off sharp peaks.</small></label>
+      </div>
       <div class="env-opts" data-env="sliding dynamic meansd percentile" hidden>
       <h3>Envelope</h3>
       <div class="ctl">
@@ -257,7 +276,8 @@
             <h2 id="plotTitle">Signal</h2>
             <div class="legend" aria-label="Legend">
               <span id="legLab"><svg width="12" height="10"><path d="M1 1 H11 L6 9 Z" fill="var(--orig)"/></svg>Lab code (original)</span>
-              <span id="legFilter" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="2"/></svg>Filtered<svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="1.3" opacity=".35"/></svg>Recorded</span>
+              <span id="legFilter" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="2"/></svg>Filtered<svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="1.3" opacity=".35"/></svg><span id="legFilterBase">Recorded</span></span>
+              <span id="legResample" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--muted)" stroke-width="1" opacity=".6"/></svg>Recorded, before resampling</span>
               <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--algo)"/></svg><span id="legAlgo">Coza</span></span>
               <span id="legNotes" hidden><svg width="10" height="12"><path d="M5 1 V11" stroke="var(--note)" stroke-width="1.5" stroke-dasharray="2 2"/></svg>Your notes</span>
               <span id="legGuides"></span>

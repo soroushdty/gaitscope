@@ -884,7 +884,8 @@
   // The lab code divides by 100 to get seconds; warn when what it receives is over 5% away.
   function labRateCheck(fs, resampled) {
     if (!(Math.abs(fs - 100) / 100 > 0.05)) return null;
-    return { level: 'warn', lab: true, id: 'labRate', title: 'Lab code assumes 100 Hz', detail: 'The original code divides by 100 to get seconds, so its durations are off by ' + Math.round(Math.abs(100 / fs - 1) * 100) + '% for ' + (resampled ? 'the ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz it receives after resampling' : 'this file') + '. Coza uses the real timestamps.' };
+    return { level: 'warn', lab: true, id: 'labRate', title: 'Lab code assumes 100 Hz', detail: 'The original code divides by 100 to get seconds, so its durations are off by ' + Math.round(Math.abs(100 / fs - 1) * 100) + '% for ' + (resampled ? 'the ' + fmt(fs, fs >= 100 ? 0 : 1) + ' Hz it receives after resampling' : 'this file') + '. Coza uses the real timestamps.' +
+      (resampled ? '' : ' Resample (under Detection) can set a rate for everything, the lab code included.') };
   }
 
   function interpolateNaN(A) {

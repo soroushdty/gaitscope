@@ -20,6 +20,10 @@ fix individual steps by hand, and export the results.
 - **Validation.** Every file is checked against an [input schema](docs/schema.md)
   before analysis. Problems come with a concrete fix, such as the exact MATLAB line
   to re-save a file in a format the page can't read.
+- **Resample** to a rate you choose, or just even out a phone's uneven timing, before
+  anything else runs. This is linear (like MATLAB `interp1`) or monotone cubic, with an
+  optional anti-aliasing low-pass. It matches the Python port's `--resample` bit for bit,
+  so the lab code finds the same steps in both.
 - **Live sliders** for the window `w` and threshold `h`.
 - **Lab code vs Coza**, compared on the same plot and metrics table. Coza, picked from
   the Algorithm dropdown, is the lab detector with its bugs fixed: it counts tied peaks

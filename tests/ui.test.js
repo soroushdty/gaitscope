@@ -43,7 +43,7 @@ async function upload(pg, file) {
   await sleep(60);
 }
 // Plot trace order (src/app.js renderPlot): hidden traces stay in place so these never move.
-const TR = { envLower: 0, envUpper: 1, signal: 2, filtered: 3, envMid: 4, guide: 5, guide2: 6, lab: 7, algo: 8, algoIv: 9, labIv: 10, rhythm: 11 };
+const TR = { envLower: 0, envUpper: 1, signal: 2, filtered: 3, envMid: 4, guide: 5, guide2: 6, lab: 7, algo: 8, algoIv: 9, labIv: 10, rhythm: 11, recorded: 12 };
 const C_mean = a => Array.from(a).reduce((x, y) => x + y, 0) / a.length;
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
@@ -375,6 +375,68 @@ test('impossible filter settings are reported, not applied', async () => {
   assert.match(text(pg, 'valList'), /Filter not applied.*high-pass cut-off must be below the low-pass.*To fix: Change the filter settings under Advanced/);
   assert.equal(pg.plots.at(-1).traces[TR.filtered].visible, false);
   assert.equal($('legFilter').hidden, true);
+});
+
+test('resampling feeds everything downstream, shows the recording behind it, and off changes nothing', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'ptb_gforce.csv'));
+  const $ = id => pg.d.getElementById(id);
+  const change = async (id, v) => { if (v !== undefined) { if ($(id).type === 'checkbox') $(id).checked = v; else $(id).value = v; } $(id).dispatchEvent(new pg.w.Event('change')); await sleep(40); };
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  const exportText = async () => { $('expMetrics').click(); return new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); }); };
+  const snapshot = async () => ({ steps: pg.plots.at(-1).traces[TR.algo].x.join(), lab: pg.plots.at(-1).traces[TR.lab].x.join(),
+    metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await exportText() });
+  await change('chanSel', '2'); // gFy: carries gravity, so the lab code finds steps at h = 1
+  assert.equal($('rsSel').value, 'off', 'no rate is built in');
+  assert.equal($('rsRateRow').hidden, true); assert.equal($('rsOpts').hidden, true);
+  const off = await snapshot();
+  assert.ok(off.steps.split(',').length > 5 && off.lab.split(',').length > 5);
+  assert.match(off.csv, /\nresample,off\n/);
+  assert.equal(pg.plots.at(-1).traces[TR.recorded].visible, false);
+
+  await change('rsSel', 'rate');
+  assert.equal($('rsRateRow').hidden, false); assert.equal($('rsRate').value, '', 'the rate starts empty');
+  assert.match(text(pg, 'valList'), /Resampling not applied.*No rate is set.*Type a rate/);
+  assert.equal((await snapshot()).steps, off.steps, 'no rate: nothing changes');
+
+  await change('rsRate', '50');
+  let last = pg.plots.at(-1);
+  assert.equal(last.traces[TR.recorded].visible, true); assert.equal(last.traces[TR.recorded].zorder, -1);
+  assert.equal(last.traces[TR.recorded].y.length, 1800, 'every recorded row, behind the resampled signal');
+  const sig = last.traces[TR.signal];
+  assert.ok(Math.abs(sig.x[1] - sig.x[0] - 0.02) < 1e-12, 'the signal is on a 50 Hz grid');
+  assert.ok(sig.y.length < last.traces[TR.recorded].y.length * 0.55);
+  assert.equal($('legResample').hidden, false);
+  assert.match(text(pg, 'valList'), /Resampled to 50\.0 Hz.*straight lines between samples \(like MATLAB interp1\)/);
+  assert.match(text(pg, 'valList'), /Lab code assumes 100 Hz.*the 50\.0 Hz it receives after resampling/);
+  assert.match(text(pg, 'valList'), /No anti-aliasing.*folds back/);
+  assert.equal(text(pg, 'wOut'), '30 samples (0.60 s)', 'the lab window is counted on the new grid');
+  let csv = await exportText();
+  assert.match(csv, /\nsampling_rate_hz,50\nrecorded_rate_hz,[\d.]+\nresample,"50\.00 Hz, linear"\n/);
+  assert.match(csv, /\ncoza_window_samples,15\n/, 'Coza counts its 0.3 s window on the new grid');
+
+  await change('rsMethod', 'pchip'); await change('rsAA', true);
+  assert.match(text(pg, 'valList'), /Resampled to 50\.0 Hz.*monotone cubic.*Low-passed at 20\.0 Hz first/);
+  assert.doesNotMatch(text(pg, 'valList'), /No anti-aliasing/);
+  assert.match(await exportText(), /\nresample,"50\.00 Hz, pchip, anti-aliased"\n/);
+
+  // the preset, then a filter on top: the filter's base line is the resampled signal
+  $('rsAA').checked = false; $('rsMethod').value = 'linear';
+  pg.d.querySelector('[data-rs-rate="100"]').click(); await sleep(40);
+  assert.equal($('rsRate').value, '100');
+  assert.doesNotMatch(text(pg, 'valList'), /Lab code assumes 100 Hz/);
+  await change('filterSel', 'butter');
+  assert.equal(text(pg, 'legFilterBase'), 'Resampled');
+  assert.doesNotMatch(text(pg, 'valList'), /Resampled for filtering/, 'the grid is already even');
+  await change('filterSel', 'none');
+
+  await change('rsSel', 'even');
+  assert.equal($('rsRateRow').hidden, true);
+  assert.match(text(pg, 'valList'), /Resampled to 1\d\d Hz/);
+
+  await change('rsSel', 'off');
+  assert.deepEqual(await snapshot(), off, 'off again: steps, metrics and exports as before');
+  assert.equal(pg.plots.at(-1).traces[TR.recorded].visible, false); assert.equal($('legResample').hidden, true);
 });
 
 test('envelopes are drawn around the signal and never change steps, metrics or exports', async () => {
