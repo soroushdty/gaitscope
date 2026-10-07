@@ -1557,6 +1557,33 @@
     return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / g.fs };
   }
 
+  /* Harmonic ratio, a gait-symmetry measure (e.g. Menz et al. 2003): each stride (two steps,
+     or one peak-to-peak when each peak is a stride) is one period; its Fourier amplitudes at
+     harmonics 1–20 of the stride frequency are summed, even over odd. Identical left and right
+     steps repeat twice per stride, so they make only even harmonics: the higher the ratio, the
+     more alike the steps (for the vertical or forward direction; side to side, the ratio
+     inverts). Harmonics at or above half the sampling rate are left out. Uses the given
+     signal on an even grid and the step times idx. Returns {ratio (mean over strides), strides}. */
+  const HR_HARMONICS = 20;
+  function harmonicRatio(A, t, idx, perStride) {
+    const g = evenGrid(A, t), dt = 1 / g.fs, ratios = [], stepBy = perStride ? 1 : 2;
+    for (let k = 0; k + stepBy < idx.length; k += stepBy) {
+      const ta = t[idx[k]], T = t[idx[k + stepBy]] - ta;
+      if (!(T > 0)) continue;
+      const first = Math.ceil((ta - g.t[0]) / dt - 1e-9), last = Math.ceil((ta + T - g.t[0]) / dt - 1e-9); // [ta, ta + T)
+      if (first < 0 || last > g.A.length || last - first < 8) continue;
+      let even = 0, odd = 0;
+      for (let h = 1; h <= HR_HARMONICS && h / T < g.fs / 2; h++) {
+        let re = 0, im = 0;
+        for (let j = first; j < last; j++) { const ph = 2 * Math.PI * h * (g.t[j] - ta) / T; re += g.A[j] * Math.cos(ph); im -= g.A[j] * Math.sin(ph); }
+        const amp = Math.hypot(re, im);
+        if (h % 2) odd += amp; else even += amp;
+      }
+      if (odd > 0) ratios.push(even / odd);
+    }
+    return { ratio: ratios.length ? mean(ratios) : NaN, strides: ratios.length };
+  }
+
   /* Analytic signal, as scipy.signal.hilbert: the FFT with negative frequencies removed and
      positive ones doubled, transformed back. Its size (|re + i·im|) is the amplitude of the
      swing at each moment, and its angle advances one turn per cycle. Returns {re, im}. */
@@ -1784,7 +1811,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

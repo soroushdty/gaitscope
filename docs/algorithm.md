@@ -270,6 +270,20 @@ values over time. Walking repeats, so its rhythm shows as a tall peak.
   steps, so speeding up, slowing down or a mismatch shows along the walk. On a walk speeding
   up from 90 to 130 steps/min the rhythm follows within 0.06 Hz.
 
+* **Harmonic ratio** (`harmonicRatio`, a Metrics row): a gait-symmetry measure from the
+  literature (e.g. Menz et al. 2003).
+  - Each stride is one period: two detected steps, or one peak-to-peak with Phone position
+    on One leg.
+  - Its Fourier amplitudes at harmonics 1–20 of the stride frequency (below half the
+    sampling rate) are summed, even over odd, and averaged over strides.
+  - Identical left and right steps repeat twice per stride and make only even harmonics, so
+    higher means more alike. That holds for the vertical or forward direction; side to side
+    the ratio inverts.
+  - It uses the recorded signal, since a low-pass filter would remove the harmonics it
+    compares.
+  - Checked on a signal built with a known answer (1/c within 1e-3), and falling as the two
+    steps of a stride differ more.
+
 On `Walking.mat` this speaks to the open steps-vs-strides question:
 - The x axis (column 2) has its strongest rhythm at 0.88 Hz, 52.7/min, matching the 12
   clean peaks Coza counts (52.2/min).
