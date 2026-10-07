@@ -96,13 +96,30 @@ without any error.
 | Check | Level | Why |
 |---|---|---|
 | Rate measured as 1 / median interval | pass | Phone apps do not sample evenly. |
-| Rate more than 5% away from 100 Hz | warn | The lab code divides by 100, so its durations are off by that much. |
+| Rate more than 5% away from 100 Hz | warn | The lab code divides by 100, so its durations are off by that much. With Resample on, the rate checked is the one the lab code receives after resampling. |
 | Rate below 10 Hz | warn | Too slow to resolve steps. |
 | Repeated timestamps | warn | Common when sensors are interleaved. |
 | Gaps longer than 5× the median interval | warn | Steps inside a gap cannot be detected. |
 | Small backwards jumps | warn, rows sorted | Interleaved multi-sensor rows. |
 | Backwards jump over max(1 s, 20× median interval) | error | Usually two recordings joined in one file. |
 | No time column | info | Time comes from a sampling rate the user sets (default 100 Hz). |
+
+### Resample (#52)
+
+Off by default; no rate is built in. When on, the channel is put on an even grid before
+anything else (filter, lab code, algorithms, spectrum, exports), and the plot shows the
+recording faded behind it. All checks come from `resampleChannel` in `src/core.js`.
+
+| Check | Level | Why |
+|---|---|---|
+| Resampled to *N* Hz | info | Says from which rate, how many samples, the method (linear or pchip) and the anti-aliasing low-pass if it ran. |
+| "To a rate" with no rate typed | warn + fix, not applied | Fix: type a rate. |
+| Grid over 2,000,000 samples, or under 20 | warn + fix, not applied | Fix: a lower or a higher rate. |
+| Going up in rate | info | Upsampling only draws lines or curves between samples; it adds no information. |
+| Going down without anti-aliasing | info + fix | Anything above half the new rate folds back in as aliasing. Fix: turn on Anti-aliasing under Advanced. |
+| Anti-aliasing on a recording with long gaps | warn + fix | The filter runs as if evenly sampled, which blurs its cut-off (as for the other filters). |
+| Repeated timestamps | info | Averaged into one sample first, since interpolation needs one value per time. |
+| Gaps over 5× the median interval | warn + fix | They are bridged with made-up values, so steps found there are not real. Fix: trim or split the recording. |
 
 ## 7. Channel values
 

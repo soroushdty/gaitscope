@@ -101,6 +101,46 @@ On a synthetic walk seen by a phone that tilts by 0.4–1.0 rad and turns about 
 vertical, the vertical signal is within 0.14 of the true bounce (amplitude 2), and every
 algorithm finds the same steps as on the bounce itself (`tests/core.test.js`).
 
+## Resampling (`resampleChannel`, `resample()`, #52)
+
+The lab code counts in samples: its window `w = 30` and its `/100` for seconds only mean
+±0.3 s and seconds at 100 Hz. Phones record at other rates (free Physics Toolbox and
+phyphox at about 460 Hz, Physics Toolbox's Linear Accelerometer at about 57 Hz), with
+uneven timing. Resampling puts the signal on an even grid `t0, t0 + 1/fs, …` at a rate
+the user picks. No rate is built in. In the dashboard everything after it uses that
+grid: the filter, the lab code, the algorithms and the spectrum. The lab code itself is
+unchanged and gets the resampled samples, exactly as with the Python port's `--resample`.
+
+* **Linear** (the default) draws straight lines between samples, like MATLAB `interp1`.
+  The dashboard's version repeats `numpy.interp` operation for operation, so it matches the
+  Python port bit for bit, and the lab code finds the same steps in both
+  (`tests/fixtures/resample.json`).
+* **pchip** is a monotone cubic (MATLAB `interp1(…, 'pchip')`, scipy
+  `PchipInterpolator`). It is smoother but never overshoots between samples.
+* **Anti-aliasing** (off by default) matters only when going down in rate. Anything faster
+  than half the new rate (the new Nyquist frequency) can't be represented. Interpolating
+  without removing it first folds it back in as slower motion: at 100 Hz, a 70 Hz
+  vibration shows up at 30 Hz. With anti-aliasing on, a zero-phase low-pass runs first.
+  It is scipy `decimate`'s filter: a Chebyshev I of order 8, 0.05 dB ripple, at 0.8 × the
+  new Nyquist frequency. It runs on an even grid at the recording's median rate.
+* Samples that share a timestamp are averaged first, since interpolation needs one value
+  per time (MATLAB `interp1` refuses repeated points). Gaps over 5× the median interval are
+  bridged with made-up values, and a check says so.
+
+**Why anti-aliasing is off by default.** Measured on the owner's recordings, resampled to
+100 Hz, with the lab code (`w = 30`, `h = 1`, in g):
+
+| Recording | Power above 50 Hz | Steps: linear / pchip / anti-aliased | Other differences |
+|---|---|---|---|
+| G-Force Meter, 460 Hz, 6.6 s (z) | 0.01% | 6 / 6 / 6 | metrics identical |
+| Linear Accelerometer, 57 Hz (going up, so no filter) | n/a | 7, 6, 7 on x, y, z for all three | identical |
+| phyphox, 460 Hz, 17.3 s (z, `--to-g`) | 0.01% | 25 / 25 / 25 | anti-aliasing moved one peak 0.23 s, so variability went from 10.3 to 6.8 samples |
+
+Walking puts almost nothing above 50 Hz, so there is little to alias. The low-pass mostly
+rounds off sharp peaks, which can move a peak within the lab code's window. Linear without
+the filter is what a student would do in MATLAB, and it keeps the Python port's earlier
+`--resample` output unchanged.
+
 ## Signal filters (`FILTERS`, `applyFilter`)
 
 A **Filter** dropdown, above Algorithm, picks a filter for the signal the selected
