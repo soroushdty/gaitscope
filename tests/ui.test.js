@@ -829,7 +829,7 @@ test('Over time: the CWT with its cone of influence and width, the DWT bands, ke
   const hr = [...sg.traces].find(tr => tr.meta && tr.meta.role === 'rhythmLine').y.filter(v => v !== null);
   assert.ok(hr.length > 10 && Core.median(hr) > 0.8 && Core.median(hr) < 1.05, 'about 0.9 Hz: ' + Core.median(hr));
   assert.match(text(pg, 'spectroNote'), /The EMD found \d+ modes in the walking band/);
-  assert.match(text(pg, 'timeTag'), /Credit: PyEMD \(Laszuk\)/);
+  assert.match(text(pg, 'timeTag'), /Credit: Huang et al\., 1998 \(empirical mode decomposition and the Hilbert spectrum\); PyEMD \(Laszuk\)/);
   const hBefore = sg.layout.images[0].source;
   $('m_hhtSifts').value = '3'; $('m_hhtSifts').dispatchEvent(new pg.w.Event('input', { bubbles: true })); await sleep(80);
   assert.notEqual(pg.spectros.at(-1).layout.images[0].source, hBefore, 'fewer sifting rounds, other modes');

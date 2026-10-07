@@ -2548,7 +2548,8 @@
     {
       id: 'hht', kind: 'time', name: 'Hilbert\u2013Huang (HHT)',
       params: [{ key: 'hhtSifts', label: 'Sifting rounds per mode', min: 1, max: 30, step: 1, default: 10, unit: '', dec: 0, hint: 'Each mode is refined this many times. More rounds make the modes more regular; the result depends on this choice, which is why it is a setting.' }],
-      credit: [{ text: 'PyEMD (Laszuk)', url: 'https://github.com/laszukdawid/PyEMD', note: 'empirical mode decomposition, which this follows' }],
+      credit: [{ text: 'Huang et al., 1998', doi: '10.1098/rspa.1998.0193', note: 'empirical mode decomposition and the Hilbert spectrum' },
+        { text: 'PyEMD (Laszuk)', url: 'https://github.com/laszukdawid/PyEMD', note: 'the EMD code this follows' }],
       tagline: 'Splits the walk into modes that each carry one rhythm, found from the signal itself rather than set in advance (EMD), then reads each mode\u2019s frequency moment by moment from its analytic signal. Suits walks that speed up or turn; less settled than the others, since the modes depend on how they are found.',
       compute: (A, t, p) => hhtGrid(A, t, p),
     },
