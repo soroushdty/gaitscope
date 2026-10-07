@@ -102,6 +102,8 @@ without any error.
 | Runs at the extreme value lasting ≥ 3 samples and ≥ 20 ms | warn | Possible sensor clipping. The 20 ms floor stops values rounded to 0.01 from triggering it at high sampling rates. |
 | Recording shorter than 3 s | warn | Too few steps for meaningful metrics. |
 | Non-acceleration sensor | warn | Peaks may exist, but `h = 1` has no physical meaning. |
+| Vertical or horizontal signal selected | info | Says how it was computed (x, y, z low-passed at 0.3 Hz give gravity's direction; vertical has gravity subtracted) and, for vertical, that `h` belongs near 0.1 g or 1 m/s² rather than 1. |
+| Vertical or horizontal without gravity in the recording | error + fix (the options are disabled with the reason, so only reachable directly) | Linear Accelerometer exports and other gravity-removed files have no "down" to project onto. Fix: pick another signal, or record with the G-Force Meter. |
 
 ## 8. Filter
 

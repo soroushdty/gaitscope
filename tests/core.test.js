@@ -335,6 +335,65 @@ test('peak-trough envelope joins peaks and troughs by straight lines', () => {
   assert.equal(flat.upper, null, 'no peaks, no line');
 });
 
+/* ------------------------------------------- gravity direction (#35) */
+// A known walk's vertical bounce plus forward sway, seen by a phone that tilts and turns
+// slowly (as in a pocket): x, y, z = R(t)ᵀ · (forward, 0, g + bounce).
+function tiltedWalk({ fs = 100, g = 9.81, noise = 0.05 } = {}) {
+  const w = knownWalk({ fs, noise: 0, rest: 3 });
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+  const n = w.A.length, x = new Float64Array(n), y = new Float64Array(n), z = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = w.t[i], walking = w.A[i] !== 0;
+    const f = walking ? 0.8 * Math.sin(2 * Math.PI * t / 0.5 + 0.7) : 0, up = g + w.A[i];
+    const tilt = 0.7 + 0.3 * Math.sin(2 * Math.PI * 0.05 * t), yaw = 0.3 * t; // radians
+    // world (f, 0, up) -> phone: undo yaw about vertical, then tilt about the phone's x axis
+    const fx = Math.cos(yaw) * f, fy = -Math.sin(yaw) * f;
+    x[i] = fx + noise * rnd();
+    y[i] = Math.cos(tilt) * fy + Math.sin(tilt) * up + noise * rnd();
+    z[i] = -Math.sin(tilt) * fy + Math.cos(tilt) * up + noise * rnd();
+  }
+  const ds = C.buildDataset(['time', 'x', 'y', 'z'], [w.t, x, y, z], 'csv');
+  return { ds, bounce: w.A, w };
+}
+
+test('vertical acceleration recovers the bounce whatever the tilt, and finds the same steps', () => {
+  const { ds, bounce, w } = tiltedWalk();
+  const v = C.prepareChannel(ds, 'vertical');
+  assert.equal(v.fatal, false);
+  assert.match(v.checks[0].title, /Vertical acceleration from the direction of gravity/);
+  assert.match(v.checks[0].detail, /\(9\.8\d on average\)/);
+  let err = 0;
+  for (let i = 200; i < v.A.length - 200; i++) err = Math.max(err, Math.abs(v.A[i] - bounce[i]));
+  assert.ok(err < 0.25, 'vertical within 0.25 of the true bounce (amplitude 2): ' + err);
+  const p = Object.assign({ fs: 100 }, ALGO_P);
+  for (const a of C.ALGORITHMS) {
+    const want = a.detect(bounce, w.t, p).idx.map(i => w.t[i]), got = a.detect(v.A, v.t, p).idx.map(i => v.t[i]);
+    assert.equal(got.length, want.length, a.id);
+    got.forEach((tt, k) => assert.ok(Math.abs(tt - want[k]) < 0.03, a.id + ' step ' + k));
+  }
+  // the tilt mixes the bounce into y and z, so a single axis is not the bounce
+  const yIdx = ds.columns.findIndex(c => c.role === 'y');
+  const yA = C.prepareChannel(ds, yIdx).A;
+  assert.ok(Math.max(...Array.from(yA, (val, i) => Math.abs(val - C.mean(yA) - bounce[i]))) > 1, 'one axis alone is off');
+  const h = C.prepareChannel(ds, 'horizontal');
+  assert.ok(C.mean(Array.from(h.A.slice(500, 1500))) > 0.3 && C.mean(Array.from(h.A.slice(0, 200))) < 0.2, 'horizontal carries the forward sway');
+});
+
+test('vertical acceleration needs gravity, and says why when it is missing', () => {
+  const linacc = C.gravitySplit(loadCsvDataset(path.join(FIX, 'ptb_linacc_semicolon.csv')).ds);
+  assert.equal(linacc.ok, false); assert.match(linacc.reason, /gravity was removed in this recording \(Linear accelerometer\)/);
+  assert.equal(C.gravitySplit(loadCsvDataset(path.join(FIX, 'ptb_gforce.csv')).ds).ok, true, 'G-Force keeps gravity');
+  const walk = C.gravitySplit(loadMatDataset(path.join(FIX, 'walk.mat')).ds);
+  assert.equal(walk.ok, false, 'no sensor name: measured'); assert.match(walk.reason, /no steady gravity/);
+  assert.equal(C.gravitySplit(tiltedWalk().ds).ok, true, 'measured: steady 9.81 vector');
+  assert.equal(C.gravitySplit(tiltedWalk({ g: 0 }).ds).ok, false, 'measured: nothing steady');
+  const gyro = C.gravitySplit(C.buildDataset(['time', 'wx', 'wy', 'wz'], [Float64Array.from({ length: 50 }, (_, i) => i / 50), ...[1, 2, 3].map(k => Float64Array.from({ length: 50 }, (_, i) => Math.sin(i / k)))], 'csv'));
+  assert.match(gyro.reason, /not acceleration/);
+  const r = C.prepareChannel(loadMatDataset(path.join(FIX, 'walk.mat')).ds, 'vertical');
+  assert.equal(r.fatal, true); assert.match(r.checks[0].fix, /G-Force Meter/);
+});
+
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
