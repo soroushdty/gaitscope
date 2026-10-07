@@ -59,7 +59,8 @@ gh pr create --base main --fill
 ```
 
 - Fill in the template: what changed, why, and how it was checked.
-- CI (`.github/workflows/ci.yml`) must be green: both the Node and the Python jobs.
+- CI (`.github/workflows/ci.yml`) runs when the pull request is opened and on every push to
+  it after that. It must be green: the Node job and both Python jobs (3.12 and 3.14).
 - If `main` moves on, rebase onto it (`git fetch && git rebase origin/main`) instead of
   merging `main` into the branch.
 
@@ -69,6 +70,32 @@ gh pr create --base main --fill
   history. Don't squash; squashing throws away the commit structure built in step 2.
 - Delete the branch after merging.
 - `main` is deployed to GitHub Pages, so a merge changes the live dashboard.
+
+## Contributing from a fork
+
+Without write access to this repository, work in a fork. The rest of this guide applies
+unchanged.
+
+1. **Open an issue first** for anything beyond a small fix, so the approach is agreed
+   before you spend time on it.
+2. Fork the repository, then create a branch in your fork, named as in step 1 above.
+3. Make atomic commits that pass both test suites, as in step 2 above.
+4. Open a pull request against `main` here and tick **Allow edits by maintainers**, so the
+   owner can rebase it if `main` moves.
+5. CI runs on your pull request. The first time you contribute, the owner approves the run
+   before it starts.
+6. When `main` moves, rebase onto it (`git fetch upstream && git rebase upstream/main`,
+   then `git push --force-with-lease`); the branch must be up to date to merge.
+7. The owner reviews and merges with Rebase and merge.
+
+**Licence of contributions.** Contributions are made under the repository's licence
+(`LICENSE`), the same terms the code is used under ("inbound = outbound"). No separate
+agreement or sign-off is needed.
+
+**Students taking the course.** This repository started from a lab of *Wearable Devices for
+Sport, Health, and Wellness* (ASU). If you are taking that course, check its rules on
+collaboration and outside code before contributing; a contribution may count as shared
+work on an assignment.
 
 ## Rules that apply to every change
 
