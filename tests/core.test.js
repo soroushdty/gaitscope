@@ -985,6 +985,115 @@ test('CSV metadata lines are kept: Physics Toolbox and the recorder', () => {
   assert.equal(ds.x.name, 'gFx (g)');
 });
 
+/* ---------------------------------------------------------------- export (#53) */
+// walk.mat column 2 through the lab code and Coza, as the dashboard would export it
+function walkExport(extra = {}) {
+  const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
+  const ch = C.prepareChannel(ds, 1), coza = C.ALGORITHMS.find(a => a.id === 'coza');
+  const fx = coza.detect(ch.A, ch.t, { h: 1, weak: true, cozaWindow: 0.3, fs: ch.fs }), origIdx = C.detectOriginal(ch.A, 30, 1);
+  return { ch, model: C.buildExport(Object.assign({
+    about: { file: 'walk.mat', variable: 'Walking', signal: 'x (column 2)', signal_name: 'Column 2', unit: '' },
+    settings: { algorithm: 'Coza', threshold_h: 1, note: 'naïve "quote", ✓ 😀' }, params: { w: 30, h: 1, algorithm: 'coza', weak: true },
+    t: ch.t, A: ch.A, filtered: Float64Array.from(ch.A, v => v / 2), envelope: { lower: Float64Array.from(ch.A, v => v - 1), upper: Float64Array.from(ch.A, v => v + 1) },
+    origIdx, orig: C.originalMetrics(origIdx, 30), w: 30, parts: { signals: true, envelope: true },
+    algo: { name: 'Coza', idx: fx.idx, weak: fx.weakDropped, metrics: C.timingMetrics(fx.idx, ch.t, {}), specCadence: 54.5, hr: { ratio: 2.5, strides: 6 } },
+    notes: [{ t: 3.25, text: 'turned "around", ✓' }],
+  }, extra)) };
+}
+// equal numbers (0 and -0 alike: JSON and CSV write -0 as 0), NaN matching NaN
+const sameNum = (a, b) => a.length === b.length && Array.from(a).every((v, i) => v === b[i] || (Number.isNaN(v) && Number.isNaN(b[i])));
+// a minimal .npy reader for the tests: {descr, shape, values}
+function readNpy(u8) {
+  const hlen = u8[8] | (u8[9] << 8), header = String.fromCharCode(...u8.subarray(10, 10 + hlen));
+  assert.equal((10 + hlen) % 64, 0, 'data starts on a 64-byte boundary'); assert.ok(header.endsWith('\n'));
+  const descr = /'descr': '([^']+)'/.exec(header)[1], shape = /'shape': \(([^)]*)\)/.exec(header)[1].split(',').filter(Boolean).map(Number);
+  const n = shape.length ? shape[0] : 1, buf = u8.slice(10 + hlen).buffer;
+  let values;
+  if (descr === '<f8') values = Array.from(new Float64Array(buf));
+  else if (descr === '|b1') values = Array.from(new Uint8Array(buf), v => v === 1);
+  else { const w = Number(descr.slice(2)), u = new Uint32Array(buf); values = Array.from({ length: n }, (_, i) => String.fromCodePoint(...Array.from(u.subarray(i * w, i * w + w)).filter(c => c))); }
+  return { descr, shape, values };
+}
+test('export model: the parts, 1-based samples, and steps from both versions with the reason', () => {
+  const { ch, model } = walkExport();
+  assert.deepEqual(Object.keys(model), ['about', 'settings', 'params', 'signals', 'steps', 'metrics', 'notes']);
+  assert.equal(model.about.format, 'gaitscope-export'); assert.equal(model.about.format_version, 1); assert.equal(model.about.version, C.VERSION);
+  assert.deepEqual(Object.keys(model.signals), ['time_s', 'signal', 'filtered', 'envelope_lower', 'envelope_upper']);
+  const s = model.steps;
+  assert.deepEqual(Object.keys(s), ['time_s', 'sample_matlab', 'value', 'in_lab_code', 'in_algorithm', 'algorithm_status']);
+  s.sample_matlab.forEach((k, j) => { assert.equal(s.time_s[j], ch.t[k - 1]); assert.equal(s.value[j], ch.A[k - 1]); });
+  assert.deepEqual(s.sample_matlab.filter((_, j) => s.in_lab_code[j]), C.detectOriginal(ch.A, 30, 1).map(i => i + 1));
+  assert.ok(s.algorithm_status.includes('kept') && s.algorithm_status.some(v => v === 'tied peak' || v === 'weak peak'));
+  assert.deepEqual(model.metrics.metric.slice(0, 4), ['steps', 'average_step_duration', 'cadence', 'pace_lab_formula']);
+  assert.equal(model.metrics.algorithm[7], 54.5); assert.equal(model.metrics.unit_algorithm[8], 'even/odd harmonics per stride (6 strides)');
+  assert.equal(walkExport({ parts: { signals: true, envelope: false } }).model.signals.envelope_lower, undefined, 'envelope only when asked');
+  assert.equal(walkExport({ parts: { signals: false } }).model.signals, undefined, 'signals can be left out');
+});
+test('JSON export reads back exactly, NaN included', () => {
+  const { model } = walkExport();
+  const back = C.parseExportJson(C.exportJson(model));
+  for (const k of ['signals', 'steps', 'metrics', 'notes']) for (const c of Object.keys(model[k])) {
+    const a = model[k][c], b = back[k][c];
+    assert.ok(typeof a[0] === 'number' ? sameNum(a, b) : JSON.stringify(Array.from(a)) === JSON.stringify(Array.from(b)), k + '.' + c);
+  }
+  assert.ok(Number.isNaN(back.metrics.lab_code[2]), 'cadence: no lab-code value, null in JSON, NaN again');
+  assert.deepEqual(back.settings, model.settings); assert.deepEqual(back.params, model.params);
+  assert.throws(() => C.parseExportJson('{"a": 1}'), e => /not a gaitscope export/.test(e.message) && !!e.fix);
+  assert.throws(() => C.parseExportJson('{"about": {"format": "gaitscope-export", "format_version": 99}}'), /format version 99, newer/);
+  assert.throws(() => C.parseExportJson('{oops'), /could not be read/);
+  assert.throws(() => C.parseExportJson(C.exportJson(walkExport({ parts: { signals: false } }).model)), e => /no signals/.test(e.message) && /Signals ticked/.test(e.fix));
+});
+test('MAT export reads back in the page\'s own MAT reader with the same numbers', () => {
+  const { model } = walkExport();
+  const parsed = C.parseMat(C.exportMat(model));
+  assert.deepEqual(parsed.variables.map(v => v.name), ['gaitscope']);
+  const g = parsed.variables[0].fields;
+  assert.deepEqual(Object.keys(g), Object.keys(model));
+  for (const [k, c] of [['signals', 'signal'], ['signals', 'envelope_upper'], ['steps', 'sample_matlab'], ['metrics', 'lab_code'], ['notes', 'time_s']]) {
+    assert.deepEqual(g[k].fields[c].dims, [model[k][c].length, 1], k + '.' + c + ' is a column');
+    assert.ok(sameNum(g[k].fields[c].data, model[k][c]), k + '.' + c);
+  }
+  assert.equal(g.steps.fields.in_lab_code.logical, true);
+  assert.deepEqual(Array.from(g.steps.fields.in_lab_code.data, Boolean), model.steps.in_lab_code);
+  assert.equal(g.steps.fields.algorithm_status.cls, 'cell');
+  assert.equal(g.about.fields.format_version.data[0], 1);
+});
+test('NPZ export: a zip of .npy arrays, numbers, true/false and text', () => {
+  const { model } = walkExport();
+  const entries = C.parseZip(C.exportNpz(model));
+  const names = entries.map(e => e.name);
+  assert.deepEqual(names.slice(0, 4), ['about.npy', 'settings.npy', 'params.npy', 'signals/time_s.npy']);
+  const get = n => readNpy(entries.find(e => e.name === n + '.npy').read());
+  assert.ok(sameNum(get('signals/signal').values, model.signals.signal));
+  const st = get('steps/algorithm_status'); assert.match(st.descr, /^<U\d+$/); assert.deepEqual(st.values, model.steps.algorithm_status);
+  assert.deepEqual(get('steps/in_lab_code').values, model.steps.in_lab_code);
+  const settings = get('settings'); assert.deepEqual(settings.shape, []);
+  assert.deepEqual(JSON.parse(settings.values[0]), model.settings, 'text beyond U+FFFF too');
+  assert.deepEqual(get('notes/text').values, ['turned "around", ✓']);
+});
+test('CSV zip: one file per part, and the CSV reader reads it back', () => {
+  const { model } = walkExport();
+  const entries = C.parseZip(C.exportCsvZip(model));
+  assert.deepEqual(entries.map(e => e.name), ['about.csv', 'settings.csv', 'params.csv', 'signals.csv', 'steps.csv', 'metrics.csv', 'notes.csv']);
+  const text = n => new TextDecoder().decode(entries.find(e => e.name === n).read());
+  const sig = C.parseCsv(text('signals.csv'));
+  assert.deepEqual(sig.names, Object.keys(model.signals));
+  assert.ok(sameNum(sig.cols[1], model.signals.signal), 'full precision');
+  assert.match(text('steps.csv'), /^time_s,sample_matlab,value,in_lab_code,in_algorithm,algorithm_status\n[\d.]+,\d+,[-\d.]+,true,(true|false),/);
+  assert.match(text('notes.csv'), /^time_s,text\n3\.25,"turned ""around"", ✓"\n$/);
+  assert.match(text('settings.csv'), /^key,value\nalgorithm,Coza\n/);
+});
+test('zip writer: CRC-32 and a central directory other tools accept', () => {
+  assert.equal(C.crc32(new TextEncoder().encode('123456789')), 0xcbf43926, 'the standard check value');
+  const z = C.zipStore([{ name: 'a.txt', data: new TextEncoder().encode('hello') }, { name: 'dir/ü.txt', data: new Uint8Array(0) }]);
+  const e = C.parseZip(z);
+  assert.deepEqual(e.map(x => [x.name, x.size]), [['a.txt', 5], ['dir/ü.txt', 0]]);
+  assert.equal(new TextDecoder().decode(e[0].read()), 'hello');
+});
+test('VERSION matches package.json', () => {
+  assert.equal(C.VERSION, require('../package.json').version);
+});
+
 test('unit inference from a quiet stretch', () => {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
   assert.ok(ds.checks.some(c => c.title === 'Units: gravity removed'));
