@@ -142,7 +142,13 @@
     const opts = [];
     S.ds.columns.forEach((c, k) => { if (c.role !== 'time') opts.push({ key: String(k), label: c.label }); });
     if (S.ds.x && S.ds.y && S.ds.z && !S.ds.mag) opts.push({ key: 'computed', label: 'magnitude (computed from x, y, z)' });
-    $('chanSel').innerHTML = opts.map(o => '<option value="' + o.key + '">' + esc(o.label) + '</option>').join('');
+    if (S.ds.x && S.ds.y && S.ds.z) {
+      // vertical and horizontal need gravity in the recording; without it they stay listed, disabled, with the reason
+      const gs = C.gravitySplit(S.ds, Number($('fsIn').value) || 100);
+      opts.push(gs.ok ? { key: 'vertical', label: 'vertical (along gravity, computed)' } : { key: 'vertical', label: 'vertical: not available, ' + gs.reason, disabled: true });
+      if (gs.ok) opts.push({ key: 'horizontal', label: 'horizontal (across gravity, computed)' });
+    }
+    $('chanSel').innerHTML = opts.map(o => '<option value="' + o.key + '"' + (o.disabled ? ' disabled' : '') + '>' + esc(o.label) + '</option>').join('');
     let def = opts[0].key;
     if (source === 'mat') { const c2 = S.ds.columns.find(c => c.matCol === 2 && c.role !== 'time'); if (c2) def = String(c2.index); }
     $('chanSel').value = def;
@@ -155,7 +161,7 @@
   function selectChannel(key) {
     S.chanKey = key;
     const fsManual = Number($('fsIn').value) || 100;
-    const ch = C.prepareChannel(S.ds, key === 'computed' ? 'computed' : Number(key), fsManual);
+    const ch = C.prepareChannel(S.ds, COMPUTED[key] ? key : Number(key), fsManual);
     S.ch = ch.fatal ? null : ch;
     S.chChecks = ch.checks;
     if (ch.fatal) {
@@ -169,6 +175,14 @@
     setControlsEnabled(true);
     S.plotReady = false;
     recompute();
+  }
+
+  // Signals computed from x, y, z rather than read from a column (keys in the Signal select).
+  const COMPUTED = { computed: 'magnitude (computed)', vertical: 'vertical (computed)', horizontal: 'horizontal (computed)' };
+  function chanInfo() {
+    if (COMPUTED[S.chanKey]) return { label: COMPUTED[S.chanKey], unit: S.ds.x.sensor ? S.ds.x.sensor.unit : '' };
+    const col = S.ds.columns[Number(S.chanKey)];
+    return { label: col.label, unit: col.sensor ? col.sensor.unit : '' };
   }
 
   function fatal(msg, fix, keepFileChecks) {
@@ -399,8 +413,7 @@
       ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line'), surface: cssVar('--surface') };
     let mn = Infinity, mx = -Infinity; for (const v of A) { if (v < mn) mn = v; if (v > mx) mx = v; }
     const lift = (mx - mn) * 0.06;
-    const col = S.chanKey === 'computed' ? null : S.ds.columns[Number(S.chanKey)];
-    const unit = col && col.sensor ? col.sensor.unit : '';
+    const { label: chLabel, unit } = chanInfo();
     const hov = (name) => '<b>' + name + '</b><br>%{x:.3f} s<br>value %{customdata[1]:.3f}<br>sample %{customdata[0]} (MATLAB)<extra></extra>';
     const cd = idx => idx.map(i => [i + 1, A[i]]);
     const mid = idx => { const x = [], y = [], wd = []; for (let k = 1; k < idx.length; k++) { const a = t[idx[k - 1]], b = t[idx[k]]; x.push((a + b) / 2); y.push(b - a); wd.push((b - a) * 0.86); } return { x, y, wd }; };
@@ -454,7 +467,7 @@
       showlegend: false, hovermode: 'closest', dragmode: 'zoom', bargap: 0,
       hoverlabel: { font: { family: cssVar('--font') || 'sans-serif' } },
       xaxis: { title: { text: 'Time (s)' }, range: [t[0], tMax], gridcolor: colors.line, zeroline: false, linecolor: colors.line, anchor: iv ? 'y2' : 'y' },
-      yaxis: { domain: iv ? [0.3, 1] : [0, 1], title: { text: (col ? col.label : 'magnitude (computed)') + (unit ? ' (' + unit + ')' : '') }, gridcolor: colors.line, zerolinecolor: colors.line, automargin: true },
+      yaxis: { domain: iv ? [0.3, 1] : [0, 1], title: { text: chLabel + (unit ? ' (' + unit + ')' : '') }, gridcolor: colors.line, zerolinecolor: colors.line, automargin: true },
       yaxis2: { visible: iv, domain: [0, 0.22], title: { text: 'Interval (s)' }, gridcolor: colors.line, zeroline: false, rangemode: 'tozero', automargin: true },
       shapes: (hUsed() ? [{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: p.h, y1: p.h, line: { color: colors.muted, width: 1.2, dash: 'dash' } }] : [])
         .concat(S.notes.map(n => ({ type: 'line', xref: 'x', x0: n.t, x1: n.t, yref: 'paper', y0: 0, y1: 1, line: { color: colors.note, width: 1.3, dash: 'dot' } }))),
@@ -473,7 +486,7 @@
     Plotly.react(el, traces, layout, config);
     if (!el.__bound) { el.on('plotly_click', onPlotClick); el.__bound = true; }
     const name = S.file.demo ? 'Synthetic walk' : (S.varName ? S.varName : S.file.name);
-    $('plotTitle').textContent = name + ', ' + (col ? col.label : 'computed magnitude');
+    $('plotTitle').textContent = name + ', ' + chLabel;
   }
 
   /* ------------------------------------------------------------- notes */
@@ -598,7 +611,7 @@
   function exportMetrics() {
     const { orig, algM, p } = S.res;
     const n = v => Number.isFinite(v) ? +v.toFixed(6) : '';
-    const col = S.chanKey === 'computed' ? 'magnitude (computed)' : S.ds.columns[Number(S.chanKey)].label;
+    const col = chanInfo().label;
     const id = S.res.algo.id;
     const L = [csvRow(['metric', 'lab_code', id, 'unit_lab_code', 'unit_' + id]),
       csvRow(['steps', orig.steps, algM.steps, 'count', 'count']),

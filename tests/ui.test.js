@@ -42,6 +42,7 @@ async function upload(pg, file) {
 }
 // Plot trace order (src/app.js renderPlot): hidden traces stay in place so these never move.
 const TR = { envLower: 0, envUpper: 1, signal: 2, filtered: 3, envMid: 4, guide: 5, guide2: 6, lab: 7, algo: 8, algoIv: 9, labIv: 10 };
+const C_mean = a => Array.from(a).reduce((x, y) => x + y, 0) / a.length;
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
 test('loads a MAT file, compares versions and exports', async () => {
@@ -406,6 +407,31 @@ test('the demo walk drops its start and stop bumps as weak peaks', async () => {
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
   assert.equal(pos.value, 'hand', 'a new recording starts as hand or waist');
+});
+
+test('vertical and horizontal signals appear for recordings with gravity, disabled with the reason otherwise', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'ptb_gforce.csv'));
+  const $ = id => pg.d.getElementById(id);
+  const opt = key => [...$('chanSel').options].find(o => o.value === key);
+  assert.equal(opt('vertical').textContent, 'vertical (along gravity, computed)'); assert.equal(opt('vertical').disabled, false);
+  assert.equal(opt('horizontal').disabled, false);
+  $('chanSel').value = 'vertical'; $('chanSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  assert.match(text(pg, 'plotTitle'), /, vertical \(computed\)$/);
+  assert.equal(pg.plots.at(-1).layout.yaxis.title.text, 'vertical (computed) (g)');
+  assert.ok(Math.abs(C_mean(pg.plots.at(-1).traces[TR.signal].y)) < 0.05, 'gravity subtracted: centred near 0 g');
+  $('valToggle').click();
+  assert.match(text(pg, 'valList'), /Vertical acceleration from the direction of gravity/);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('expMetrics').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /\nsignal,vertical \(computed\)\n/);
+
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  assert.equal(opt('vertical').disabled, true);
+  assert.equal(opt('vertical').textContent, 'vertical: not available, no steady gravity in x, y, z (it looks removed)');
+  assert.equal(opt('horizontal'), undefined);
 });
 
 test('shows a fix for an unreadable file', async () => {
