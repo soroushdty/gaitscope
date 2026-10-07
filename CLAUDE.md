@@ -4,8 +4,9 @@ Context for Claude Code sessions on this repository.
 
 ## What this is
 
-A class project for *Wearable Devices for Sport, Health, and Wellness* (ASU, Fall 2026,
-instructor Dr. Aurel Coza). Lab 1 provides a MATLAB step-detection script
+**GaitScope**, live at https://soroushdianaty.com/gaitscope/ (GitHub Pages from `main`, so
+a merge deploys it). It began as a class project for *Wearable Devices for Sport, Health,
+and Wellness* (ASU, Fall 2026, instructor Dr. Aurel Coza). Lab 1 provides a MATLAB step-detection script
 (`LabStepDet_2025.m`) and a sample recording (`Walking.mat`). The instructor allows
 students to skip MATLAB and use an AI tool to run the code instead. This repo holds:
 
@@ -18,6 +19,10 @@ students to skip MATLAB and use an AI tool to run the code instead. This repo ho
    the owner, Dr. Soroush Dianaty). Also: filters, resampling, notes pinned to the plot,
    and export as CSV, zipped CSV, MATLAB .mat, NumPy .npz or JSON (which reopens an
    analysis).
+
+The project's name is GaitScope (page title, heading, README, packages); "step detector"
+names a feature, not the project. Export files keep the lowercase ids `gaitscope-export`
+and `gaitscope dashboard` so older exports reopen.
 
 No "lab code" wording anywhere: Coza is a step detector like any other, credited to
 Dr. Coza (names only on the page, no emails). `Walking.mat` is his sample signal; it
