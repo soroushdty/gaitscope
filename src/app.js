@@ -207,7 +207,7 @@
     }
     if (Number.isFinite(pr.w)) $('wIn').value = String(pr.w);
     if (Number.isFinite(pr.h)) syncH(pr.h);
-    $('legLab').hidden = $('wCtl').hidden = !showLab();
+    $('legLab').hidden = !showLab();
     showAlgo(); showFilter(); showEnv(); updatePosHint();
     configureSliders();
     recompute();
@@ -422,7 +422,8 @@
   }
   // h only matters to the lab code and to algorithms that use it
   const hUsed = () => showLab() || selectedAlgo().usesH;
-  function showH() { $('hCtl').hidden = $('legHItem').hidden = !hUsed(); }
+  // likewise w, which only the lab code and the original Coza use
+  function showH() { $('hCtl').hidden = $('legHItem').hidden = !hUsed(); $('wCtl').hidden = !(showLab() || selectedAlgo().usesW); }
   function params() {
     const p = {
       w: Number($('wIn').value), h: Number($('hNum').value), fs: S.ch ? S.ch.fs : 100,
@@ -481,7 +482,7 @@
       out.push({ level: 'warn', title: S.res.algo.name + ' finds no steps', detail: 'Check its settings under Advanced, and that the signal shows walking.' });
     }
     if (orig.tiedPairs) {
-      out.push({ level: 'warn', lab: true, title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (S.res.algo.id === 'coza' ? ' Coza counts each once.' : '') });
+      out.push({ level: 'warn', lab: true, title: 'Lab code counts ' + orig.tiedPairs + ' peak' + (orig.tiedPairs > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so the original rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry.' + (S.res.algo.id === 'coza' ? ' Coza (modified) counts each once.' : '') });
     }
     if (p.weak && fx.weakDropped && fx.weakDropped.length) {
       out.push({ level: 'info', title: fx.weakDropped.length + ' weak peak' + (fx.weakDropped.length > 1 ? 's' : '') + ' dropped', detail: 'At ' + fx.weakDropped.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(C.WEAK_RATIO * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
@@ -951,8 +952,9 @@
   });
   showFilter();
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
+  $('algoSel').value = 'coza'; // Coza (modified): the original's steps are on the plot already, as the lab code
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
-  $('showLab').addEventListener('change', () => { $('legLab').hidden = $('wCtl').hidden = !showLab(); showH(); if (S.ch && S.res) render(); });
+  $('showLab').addEventListener('change', () => { $('legLab').hidden = !showLab(); showH(); if (S.ch && S.res) render(); });
   showAlgo();
   $('showIntervals').addEventListener('change', () => { if (S.ch && S.res) renderPlot(); });
   $('specLog').addEventListener('change', () => { if (S.ch && S.res) renderSpectrum(); });

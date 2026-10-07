@@ -333,6 +333,9 @@ test('Zero-crossing ignores noise near zero and crossings inside the minimum int
 });
 
 const FP = { filter: 'butter', fOrder: 4, fLow: 3, fHigh: 0, fRipple: 0.5, fAtten: 40 };
+// Robustness checks skip the original Coza: it is the lab rule as written (window in samples,
+// tied peaks twice, stop bump kept), and those bugs are what it is there to show.
+const FIXED_ALGOS = C.ALGORITHMS.filter(a => a.id !== 'coza_original');
 const ALGO_P = { h: 1, w: 30, weak: true, cozaWindow: 0.3, tpCutoff: 3, tpK: 0.5, tpMinInterval: 0.25, pvWindow: 1, pvSwing: 40, pvMinInterval: 0.25, zcCutoff: 3, zcMinInterval: 0.25 };
 
 test('a filtered noisy walk gives the same steps as the clean walk, for every algorithm and filter', () => {
@@ -344,7 +347,7 @@ test('a filtered noisy walk gives the same steps as the clean walk, for every al
     // gentle roll-offs (Bessel) and stopband-edge cut-offs (Chebyshev II) need a higher cut-off to leave the walk alone
     const f = C.applyFilter(noisy, clean.t, 460, Object.assign({}, FP, { filter, fLow: filter === 'cheby2' || filter === 'bessel' ? 8 : 4 }));
     assert.equal(f.applied, true); assert.equal(f.resampled, false, 'evenly sampled: no resampling');
-    for (const a of C.ALGORITHMS) {
+    for (const a of FIXED_ALGOS) {
       const want = a.detect(clean.A, clean.t, p).idx.map(i => clean.t[i]);
       const got = a.detect(f.A, clean.t, p).idx.map(i => clean.t[i]);
       assert.equal(got.length, want.length, filter + ', ' + a.id);
@@ -605,7 +608,7 @@ test('vertical acceleration recovers the bounce whatever the tilt, and finds the
   for (let i = 200; i < v.A.length - 200; i++) err = Math.max(err, Math.abs(v.A[i] - bounce[i]));
   assert.ok(err < 0.25, 'vertical within 0.25 of the true bounce (amplitude 2): ' + err);
   const p = Object.assign({ fs: 100 }, ALGO_P);
-  for (const a of C.ALGORITHMS) {
+  for (const a of FIXED_ALGOS) {
     const want = a.detect(bounce, w.t, p).idx.map(i => w.t[i]), got = a.detect(v.A, v.t, p).idx.map(i => v.t[i]);
     assert.equal(got.length, want.length, a.id);
     got.forEach((tt, k) => assert.ok(Math.abs(tt - want[k]) < 0.03, a.id + ' step ' + k));
@@ -632,6 +635,22 @@ test('vertical acceleration needs gravity, and says why when it is missing', () 
   assert.equal(r.fatal, true); assert.match(r.checks[0].fix, /G-Force Meter/);
 });
 
+test('Coza is the lab code\'s rule exactly: same steps for any w and h, tied peaks kept', () => {
+  const coza = C.ALGORITHMS.find(a => a.id === 'coza_original');
+  assert.equal(C.ALGORITHMS[0], coza, 'listed first'); assert.equal(coza.name, 'Coza');
+  assert.equal(C.ALGORITHMS.find(a => a.id === 'coza').name, 'Coza (modified)');
+  const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
+  for (const col of [1, 2, 3]) {
+    const ch = C.prepareChannel(ds, col);
+    for (const [w, h] of [[30, 1], [10, 0.5], [80, 2], [1, -1]]) {
+      const fx = coza.detect(ch.A, ch.t, { w, h, fs: ch.fs });
+      assert.deepEqual(fx.idx, C.detectOriginal(ch.A, w, h), 'column ' + (col + 1) + ', w ' + w + ', h ' + h);
+      assert.deepEqual(fx.weakDropped, []);
+    }
+  }
+  const ch = C.prepareChannel(ds, 1), idx = coza.detect(ch.A, ch.t, { w: 30, h: 1 }).idx;
+  assert.ok(C.originalMetrics(idx, 30).tiedPairs > 0, 'the tied duplicate is still there');
+});
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
