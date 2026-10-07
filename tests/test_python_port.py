@@ -227,3 +227,46 @@ def test_cli_reads_v73_and_reports_input_errors(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         run_cli(monkeypatch, capsys, "--file", os.path.join(FIX, "walk_v73_mixed.mat"))
     assert "has no variable 'Walking'" in capsys.readouterr().err
+
+
+# --- phyphox export zips (Raw Data.csv + meta/), and --to-g
+
+def test_phyphox_zip_reads_raw_data_and_metadata():
+    W, names, info = lab_step_det.load_phyphox(os.path.join(FIX, "phyphox.zip"))
+    D, csv_names = load_csv(os.path.join(FIX, "phyphox_accel.csv"))
+    assert np.array_equal(W, D) and names == csv_names
+    assert info == {"data_file": "Raw Data.csv", "unused": [], "model": "Google Pixel 9a", "version": "1.2.1",
+                    "sensor": "Test Accelerometer (Test Vendor)", "start": "2026-09-21 07:13:20.000 UTC-07:00",
+                    "length": 18.0, "joins": [9.0]}
+
+
+def test_phyphox_zip_errors_say_what_and_how_to_fix(tmp_path):
+    good = open(os.path.join(FIX, "phyphox.zip"), "rb").read()
+    (tmp_path / "cut.zip").write_bytes(good[:-30])
+    (tmp_path / "text.zip").write_text("time,ax\n0,1\n")
+    for name, what in [(os.path.join(FIX, "bad_phyphox_excel.zip"), "holds an Excel export"),
+                       (str(tmp_path / "cut.zip"), "incomplete or damaged"),
+                       (str(tmp_path / "text.zip"), "not a zip file")]:
+        with pytest.raises(ValueError, match=what) as e:
+            lab_step_det.load_phyphox(name)
+        assert "CSV" in str(e.value)
+
+
+def test_to_g_leaves_time_alone():
+    W = _walk()
+    G = lab_step_det.to_g(W)
+    assert np.array_equal(G[:, 0], W[:, 0])
+    assert np.allclose(G[:, 1:] * 9.80665, W[:, 1:])
+    assert np.allclose(lab_step_det.to_g(W[:, 1]) * 9.80665, W[:, 1])  # a single vector: all of it
+
+
+def test_cli_reads_phyphox_zip(monkeypatch, capsys):
+    out = run_cli(monkeypatch, capsys, "--file", os.path.join(FIX, "phyphox.zip"), "--col", "3", "--to-g")
+    assert "phyphox export:      'Raw Data.csv' from the zip, Google Pixel 9a, phyphox 1.2.1" in out
+    assert "Sensor:              Test Accelerometer (Test Vendor)" in out
+    assert "paused 1 time" in out and "joined with no gap at 9.0 s" in out
+    assert "Converted:           m/s^2 -> g" in out
+    # y carries gravity (9.81 m/s^2 = 1.0003 g): the lab code now sees g, like a G-Force Meter export
+    W, _, _ = lab_step_det.load_phyphox(os.path.join(FIX, "phyphox.zip"))
+    _, idx = detect_steps(lab_step_det.to_g(W)[:, 2])
+    assert f"Step indices:        {idx.tolist()}" in out

@@ -14,12 +14,16 @@ Usage (from the repo root):
                                           # Physics Toolbox or phyphox CSV: --col 2/3/4 = x/y/z
     uv run python python/lab_step_det.py --file data/g_force_....csv --resample 100
                                           # phone recorded at ~460 Hz -> 100 Hz first
+    uv run python python/lab_step_det.py --file "data/Data from phyphox.zip" --col 4 --resample 100 --to-g
+                                          # phyphox export zip; m/s^2 -> g for h = 1
 
 Requirements: numpy, scipy, matplotlib (pinned in uv.lock; install with `uv sync`)
 """
 import argparse
+import csv
 import re
 import warnings
+import zipfile
 
 import numpy as np
 from scipy.io import loadmat
@@ -105,22 +109,25 @@ def _phyphox_meta_file(header_line):
     return None
 
 
-def load_csv(path):
+def load_csv(path, text=None):
     """Read a Physics Toolbox or phyphox CSV into the Walking.mat layout.
 
     Returns (W, names): W has columns [time, x, y, z] (time starts at 0 s), so
     MATLAB column 2/3/4 means x/y/z exactly as in Walking.mat. Rows where any
     of the four is blank are dropped. names are the CSV headers used.
+    text: the file's contents, when they come from somewhere else (a zip); path then
+    only names it in messages.
     """
-    with open(path, encoding="utf-8-sig") as f:
-        lines = [ln.rstrip("\r\n") for ln in f]
-    lines = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+    if text is None:
+        with open(path, encoding="utf-8-sig") as f:
+            text = f.read()
+    lines = [ln for ln in text.lstrip("\ufeff").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if len(lines) < 2:
         raise ValueError(f"{path} has fewer than 2 lines of data. "
                          "Record for longer, or check that the export completed.")
     if meta := _phyphox_meta_file(lines[0]):
         raise ValueError(f"{path} is phyphox's {meta}, not the sensor data. "
-                         "Use 'Raw Data.csv' from the zip that phyphox exported.")
+                         "Use the whole zip that phyphox exported, or the 'Raw Data.csv' inside it.")
 
     # Delimiter: the one that splits the first lines into the same, largest number of fields.
     sample = lines[:12]
@@ -176,6 +183,85 @@ def load_csv(path):
     return W, [headers[k] for k in order]
 
 
+def _meta_rows(text):
+    """Rows of a phyphox meta file (quoted CSV in whichever delimiter the export used)."""
+    lines = [ln for ln in text.lstrip("\ufeff").splitlines() if ln.strip()]
+    if not lines:
+        return []
+    m = re.match(r'^"[^"]*"([,;\t])', lines[0])
+    return [[v.strip() for v in row] for row in csv.reader(lines, delimiter=m[1] if m else ",")]
+
+
+def _meta_number(s):
+    try:
+        return float(s.replace(",", "."))
+    except (AttributeError, ValueError):
+        return float("nan")
+
+
+def load_phyphox(path):
+    """Read a phyphox export zip ("Export data -> CSV") into the Walking.mat layout.
+
+    Returns (W, names, info) like load_csv, from the zip's "Raw Data.csv" (else its
+    largest CSV outside meta/), plus info: what meta/device.csv and meta/time.csv say
+    (phone, phyphox version, sensor chip, start time, length) and "joins", the experiment
+    times at which the recording was resumed after a pause. phyphox's experiment time
+    leaves out pauses, so the stretches follow each other with no gap in the data.
+    """
+    try:
+        z = zipfile.ZipFile(path)
+    except zipfile.BadZipFile:
+        raise ValueError(f"{path} is not a zip file, or it is incomplete or damaged. "
+                         "Export it from phyphox again, or unzip it and pass the CSV inside.") from None
+    with z:
+        files = [i for i in z.infolist() if not i.is_dir()]
+        base = lambda i: i.filename.rsplit("/", 1)[-1]
+        is_meta = lambda i: re.search(r"(^|/)meta/", i.filename) is not None
+        csvs = [i for i in files if re.search(r"\.(csv|txt|tsv)$", i.filename, re.I) and not is_meta(i)
+                and not i.filename.startswith("__MACOSX/")]
+        if not csvs:
+            what = ("holds an Excel export, not a CSV" if any(re.search(r"\.xlsx?$", i.filename, re.I) for i in files)
+                    else f"holds no CSV file (it has: {', '.join(base(i) for i in files) or 'nothing'})")
+            raise ValueError(f"{path} {what}. In phyphox, choose Export data -> CSV (comma, "
+                             "decimal point), or pass the CSV itself.")
+        data = next((i for i in csvs if base(i) == "Raw Data.csv"), max(csvs, key=lambda i: i.file_size))
+        read = lambda i: z.read(i).decode("utf-8-sig")
+        try:
+            text = read(data)
+        except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as e:  # bad CRC, encrypted, unknown method
+            raise ValueError(f"{data.filename} in {path} could not be read ({e}). "
+                             "Unzip it yourself and pass the CSV inside.") from None
+        meta = {base(i): _meta_rows(read(i)) for i in files if is_meta(i) and base(i) in ("device.csv", "time.csv")}
+    W, names = load_csv(f"{path}:{data.filename}", text)
+
+    props = {r[0]: r[1] for r in meta.get("device.csv", [])[1:] if len(r) > 1 and r[1] != "null"}
+    header = text.splitlines()[0].lower() if text else ""
+    sensor = ("linear_acceleration" if "linear acceleration" in header else
+              "accelerometer" if re.search(r"acceleration [xyz]", header) else
+              "gyroscope" if "gyroscope" in header else "magnetic_field" if "magnetic" in header else None)
+    events = [(r[0].upper(), _meta_number(r[1]), r[3] if len(r) > 3 else "")
+              for r in meta.get("time.csv", [])[1:] if len(r) > 1]
+    events = [e for e in events if not np.isnan(e[1])]
+    starts = [e for e in events if e[0] == "START"]
+    brand, model = props.get("deviceManufacturer") or props.get("deviceBrand"), props.get("deviceModel")
+    if brand and model and not model.lower().startswith(brand.lower()):
+        model = f"{brand} {model}"
+    chip = props.get(f"{sensor} Name") if sensor else None
+    if chip and props.get(f"{sensor} Vendor"):
+        chip += f" ({props[f'{sensor} Vendor']})"
+    info = {
+        "data_file": data.filename,
+        "unused": [base(i) for i in csvs if i is not data],
+        "model": model,
+        "version": props.get("version"),
+        "sensor": chip,
+        "start": starts[0][2] if starts and starts[0][2] else None,
+        "length": events[-1][1] if events and events[-1][0] == "PAUSE" else None,  # pauses left out
+        "joins": [e[1] for e in starts[1:]],
+    }
+    return W, names, info
+
+
 MAT_NUMERIC = {"double", "single", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64"}
 
 
@@ -221,6 +307,28 @@ def sampling_rate(t):
     return 1 / np.median(dt[dt > 0])
 
 
+def _time_in_column_1(data):
+    """True when column 1 is a strictly increasing time column (Walking.mat layout)."""
+    return data.ndim == 2 and data.shape[1] >= 2 and len(data) >= 3 and bool(np.all(np.diff(data[:, 0]) > 0))
+
+
+STANDARD_GRAVITY = 9.80665  # m/s^2 in 1 g
+
+
+def to_g(data):
+    """m/s^2 -> g: divide by 9.80665, leaving a time column 1 alone.
+
+    The lab threshold h = 1 assumes g; phyphox and Physics Toolbox's Linear Accelerometer
+    record m/s^2. MATLAB equivalent: W(:,2:end) = W(:,2:end) / 9.80665;
+    """
+    out = np.array(data, dtype=float)
+    if _time_in_column_1(out):
+        out[:, 1:] /= STANDARD_GRAVITY
+    else:
+        out /= STANDARD_GRAVITY
+    return out
+
+
 def rate_warning(data, w=30):
     """Warning text when the data reaching the lab code is not at about 100 Hz, else None.
 
@@ -230,7 +338,7 @@ def rate_warning(data, w=30):
     a single vector with no time column (e.g. Lab1Data) gives no warning, since its rate
     is unknown.
     """
-    if data.ndim != 2 or data.shape[1] < 2 or len(data) < 3 or not np.all(np.diff(data[:, 0]) > 0):
+    if not _time_in_column_1(data):
         return None
     fs = sampling_rate(data[:, 0])
     if abs(fs - 100) <= 0.05 * 100:
@@ -259,7 +367,7 @@ def resample(W, fs):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--file", default="data/Walking.mat",
-                   help=".mat file, or a Physics Toolbox or phyphox .csv export")
+                   help=".mat file, a Physics Toolbox or phyphox .csv export, or a phyphox .zip export")
     p.add_argument("--var", default="Walking", help="variable name inside the .mat")
     p.add_argument("--col", type=int, default=2,
                    help="MATLAB-style column number: 2, 3 or 4 (1 = time)")
@@ -268,11 +376,40 @@ def main():
     p.add_argument("--resample", type=float, metavar="HZ",
                    help="resample to HZ (e.g. 100) by linear interpolation first; "
                         "needs time in column 1")
+    p.add_argument("--to-g", action="store_true",
+                   help="divide by 9.80665 (m/s^2 -> g) first, since h = 1 assumes g; "
+                        "for phyphox or Linear Accelerometer data")
     p.add_argument("--no-plot", action="store_true", help="skip the plot window")
     args = p.parse_args()
 
-    if args.file.lower().endswith((".csv", ".txt")):
-        data, names = load_csv(args.file)
+    names = info = None
+    try:
+        if args.file.lower().endswith(".zip"):
+            data, names, info = load_phyphox(args.file)
+        elif args.file.lower().endswith((".csv", ".txt", ".tsv")):
+            data, names = load_csv(args.file)
+        else:
+            data = load_mat(args.file, args.var)
+    except ValueError as e:
+        p.error(str(e))
+    if info:
+        print(f"phyphox export:      {info['data_file']!r} from the zip"
+              + "".join(f", {v}" for v in (info["model"], info["version"] and f"phyphox {info['version']}") if v))
+        if info["unused"]:
+            print(f"  Also in the zip, not used: {', '.join(info['unused'])}")
+        if info["sensor"]:
+            print(f"Sensor:              {info['sensor']}")
+        if info["start"] or info["length"] is not None:
+            print("Recording:           " + ", ".join(v for v in (
+                info["start"] and f"started {info['start']}",
+                info["length"] is not None and f"{info['length']:.1f} s long") if v))
+        if info["joins"]:
+            n = len(info["joins"])
+            print(f"  Warning: the recording was paused {n} time{'s' * (n > 1)}. phyphox's time leaves out "
+                  f"pauses, so the stretches are joined with no gap at "
+                  f"{', '.join(f'{t:.1f} s' for t in info['joins'])}. A step across a join can be "
+                  f"missed or counted twice, and the interval across it is wrong.")
+    if names:
         fs = sampling_rate(data[:, 0])
         print(f"CSV columns:         time = {names[0]!r}, x = {names[1]!r}, "
               f"y = {names[2]!r}, z = {names[3]!r} (--col 2/3/4)")
@@ -283,12 +420,7 @@ def main():
                   "h = 1 was chosen for G-Force Meter data (g, gravity included).")
         elif x_name.startswith("acceleration"):
             print("  Note: phyphox acceleration is in m/s^2 with gravity (a still phone reads "
-                  "about 9.8); h = 1 was chosen for data in g.")
-    else:
-        try:
-            data = load_mat(args.file, args.var)
-        except ValueError as e:
-            p.error(str(e))
+                  "about 9.8); h = 1 was chosen for data in g." + ("" if args.to_g else " Add --to-g to convert."))
     if args.resample:
         if data.ndim != 2 or data.shape[1] < 2:
             p.error("--resample needs a time column in column 1 and data after it.")
@@ -296,6 +428,9 @@ def main():
         data = resample(data, args.resample)
         print(f"Resampled:           about {before:.0f} Hz -> {args.resample:g} Hz "
               f"(linear interpolation, like MATLAB interp1), {len(data)} samples")
+    if args.to_g:
+        data = to_g(data)
+        print(f"Converted:           m/s^2 -> g (divided by {STANDARD_GRAVITY})")
     # checked on what the lab code actually gets: after resampling, and for .mat files too
     warning = rate_warning(data, args.w)
     if warning:
