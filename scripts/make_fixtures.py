@@ -137,6 +137,14 @@ def spectral_fixtures():
     for n in (1, 2, 8, 100, 114, 920, 1000, 1024):
         X = np.fft.fft(fft_input(n))
         out["fft"].append({"n": n, "re": X.real.tolist(), "im": X.imag.tolist()})
+    out["welch"] = []
+    for fs in (57, 100, 460):
+        x = filter_input(fs, dur=10.0)
+        for seg, pad in ((4.0, 1), (2.0, 4)):
+            nperseg = round(seg * fs)
+            nfft = pad * 2 ** math.ceil(math.log2(nperseg))
+            f, psd = signal.welch(x, fs, window="hann", nperseg=nperseg, noverlap=nperseg // 2, nfft=nfft, detrend="constant", scaling="density")
+            out["welch"].append({"fs": fs, "nperseg": nperseg, "nfft": nfft, "f": f.tolist(), "psd": psd.tolist()})
     return out
 
 
