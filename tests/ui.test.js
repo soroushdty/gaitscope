@@ -25,7 +25,7 @@ function makePage(opts = {}) {
   vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
   const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, url: opts.url, beforeParse(w) {
     if (opts.insecure) Object.defineProperty(w, 'isSecureContext', { value: false });
-    w.pako = pako; w.TextDecoder = TextDecoder;
+    w.pako = pako; w.TextDecoder = TextDecoder; w.TextEncoder = TextEncoder; // browsers have both; jsdom neither
     if (opts.hdf5 !== false) w.hdf5 = require('jsfive'); // the page loads it from jsDelivr when a v7.3 file arrives
     w.matchMedia = q => ({ matches: !!(opts.coarse && /pointer: coarse/.test(q)), addEventListener() {} }); // coarse: a phone
     if (opts.motion) { // the devicemotion API; permission: iPhone's prompt answer
@@ -804,4 +804,68 @@ test('recorder on an http page: says why and links to the same page over https',
   assert.match(text(pg, 'recErrText'), /need a secure \(https:\/\/\) page, and this one was opened over http/);
   const a = pg.d.getElementById('recErrLink');
   assert.equal(a.hidden, false); assert.equal(a.href, 'https://example.org/gaitscope/?x=1');
+});
+
+/* ---------------------------------------------------------------- export (#53) */
+const blobBytes = (pg, b) => new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(new Uint8Array(r.result)); r.readAsArrayBuffer(b); });
+async function uploadText(pg, name, text) {
+  const f = new pg.w.File([text], name), buf = Buffer.from(text);
+  if (!f.arrayBuffer) f.arrayBuffer = async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const input = pg.d.getElementById('fileIn');
+  Object.defineProperty(input, 'files', { value: [f], configurable: true });
+  input.dispatchEvent(new pg.w.Event('change'));
+  await sleep(80);
+}
+
+test('Export… writes zip, MATLAB, NumPy and JSON; a JSON export reopens to the same steps and metrics', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  const change = async (id, v) => { if ($(id).type === 'checkbox') $(id).checked = v; else $(id).value = v; $(id).dispatchEvent(new pg.w.Event('change')); await sleep(40); };
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  // a non-default analysis: filter, Coza window, phone on one leg, an envelope, a note
+  await change('filterSel', 'butter'); await change('cwIn', '0.4'); $('cwIn').dispatchEvent(new pg.w.Event('input')); await sleep(40);
+  await change('posSel', 'leg'); await change('envSel', 'sliding');
+  $('noteMode').checked = true; $('noteMode').dispatchEvent(new pg.w.Event('change'));
+  pg.d.getElementById('plot')._click({ points: [{ x: 4.5 }] }); await sleep(20);
+  $('noteText').value = 'turned ✓'; $('noteForm').dispatchEvent(new pg.w.Event('submit', { cancelable: true })); await sleep(60);
+  const snap = () => ({ steps: pg.plots.at(-1).traces[TR.algo].x.join(), lab: pg.plots.at(-1).traces[TR.lab].x.join(), metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, notes: $('noteList').textContent });
+  const before = snap();
+  assert.match(before.notes, /turned ✓/);
+
+  assert.equal($('expFmt').value, 'csv'); assert.equal($('expCsv').hidden, false); assert.equal($('expParts').hidden, true);
+  const files = {};
+  for (const fmt of ['zip', 'mat', 'npz', 'json']) {
+    await change('expFmt', fmt);
+    assert.equal($('expParts').hidden, false); assert.equal($('expCsv').hidden, true);
+    if (fmt === 'mat') { $('expEnvelope').checked = true; }
+    $('expGo').click(); await sleep(20);
+    const b = pg.blobs.at(-1);
+    files[fmt] = await blobBytes(pg, b);
+    assert.ok(files[fmt].length > 1000, fmt);
+  }
+  assert.match($('expSignalsInfo').textContent, /^\d[\d,]* rows: time, the signal, the filtered signal\. Always in JSON/);
+  assert.equal($('expSignals').disabled, true, 'JSON always has the signal');
+  const g = Core.parseMat(files.mat).variables[0].fields;
+  assert.deepEqual(Object.keys(g.signals.fields), ['time_s', 'signal', 'filtered', 'envelope_lower', 'envelope_upper']);
+  assert.equal(Core.parseZip(files.npz).some(e => e.name === 'steps/algorithm_status.npy'), true);
+  assert.deepEqual(Core.parseZip(files.zip).map(e => e.name), ['about.csv', 'settings.csv', 'params.csv', 'signals.csv', 'steps.csv', 'metrics.csv', 'notes.csv']);
+  const json = new TextDecoder().decode(files.json), model = Core.parseExportJson(json);
+  assert.equal(model.about.file, 'walk.mat'); assert.equal(model.about.variable, 'Walking'); assert.equal(model.about.signal_name, 'Column 2');
+  assert.equal(model.settings.filter.startsWith('Butterworth'), true); assert.equal(model.settings.coza_window_s, 0.4);
+  assert.equal(model.params.cozaWindow, 0.4); assert.equal(model.params.phone_position, 'leg'); assert.equal(model.params.filter, 'butter');
+  assert.deepEqual(Array.from(model.notes.text), ['turned ✓']);
+  assert.equal(model.metrics.metric[4], 'stride_time_variability');
+
+  // reopen in a fresh page
+  const pg2 = makePage();
+  await uploadText(pg2, 'walk_gaitscope.json', json);
+  const $2 = id => pg2.d.getElementById(id);
+  assert.match(text(pg2, 'valList'), /gaitscope export reopened.*by the dashboard \(version 0\.1\.0\) from "walk\.mat", variable Walking, signal x \(column 2\)/);
+  assert.equal($2('filterSel').value, 'butter'); assert.equal($2('cwIn').value, '0.4'); assert.equal($2('posSel').value, 'leg'); assert.equal($2('envSel').value, 'sliding');
+  const after = { steps: pg2.plots.at(-1).traces[TR.algo].x.join(), lab: pg2.plots.at(-1).traces[TR.lab].x.join(), metrics: $2('metricsTable').innerHTML, stepsTable: $2('stepsTable').innerHTML, notes: $2('noteList').textContent };
+  assert.deepEqual(after, before, 'same steps, metrics, step table and notes');
+
+  await uploadText(pg2, 'other.json', '{"name": "not ours"}');
+  assert.match(text(pg2, 'valList'), /not a gaitscope export.*Export… → JSON/);
 });

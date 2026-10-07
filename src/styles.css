@@ -178,6 +178,14 @@ tr.only-orig td { color: var(--muted); }
   .top { padding: 18px 16px 14px; flex-direction: column; align-items: flex-start; }
   .filechip { text-align: left; max-width: 100%; }
 }
+/* Export… menu (#53) */
+.exp { position: relative; }
+.exp > summary { list-style: none; }
+.exp > summary::-webkit-details-marker { display: none; }
+.exp-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(320px, calc(100vw - 32px)); padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.exp-panel .field { margin-top: 0; }
+.exp-panel .stack { margin-top: 10px; }
+.exp-panel .btn { padding: 6px 11px; font-size: 13px; }
 /* recorder overlay (#51): covers the page so touches in a pocket change nothing */
 .rec-btn { margin-top: 10px; width: 100%; justify-content: center; }
 #saveRec { margin-top: 12px; }

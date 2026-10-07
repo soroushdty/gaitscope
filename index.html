@@ -25,7 +25,7 @@
     <section>
       <h2>Recording</h2>
       <label class="drop" id="drop">
-        <input type="file" id="fileIn" accept=".mat,.csv,.txt,.tsv,.zip">
+        <input type="file" id="fileIn" accept=".mat,.csv,.txt,.tsv,.zip,.json">
         <strong>Choose a file</strong>
         <span>or drop it here. MATLAB .mat, CSV or phyphox .zip, up to 50 MB.</span>
       </label>
@@ -263,6 +263,7 @@
         <p><b>Physics Toolbox .csv</b> exports from the G-Force Meter, Linear Accelerometer, Gyroscope or Multi Record, with elapsed or clock time, comma or semicolon separated.</p>
         <p><b>phyphox .zip</b> exports (Export data → CSV) of Acceleration with g or without g, as phyphox saves them, or the <i>Raw Data.csv</i> inside. The phone, sensor and start time from its <i>meta</i> folder are listed with the checks.</p>
         <p><b>Other CSV files</b> with numbers in columns, with or without a header row.</p>
+        <p><b>gaitscope JSON exports</b> reopen an analysis: the signal, every setting and the notes.</p>
         <p><b>Record a walk</b> on a phone: the page reads the motion sensors itself (about 60 Hz), with no app to install. The recording loads like a file and can be downloaded as CSV, with the steps you counted and where the phone was.</p>
       </div>
     </div>
@@ -320,10 +321,29 @@
           <section class="card">
             <div class="card-head">
               <h2>Metrics</h2>
-              <div class="stack">
-                <button class="btn" id="expMetrics" type="button" disabled title="Metrics from both versions, plus the settings used">Export metrics (CSV)</button>
-                <button class="btn" id="expSteps" type="button" disabled title="Every step from both versions, and why each was kept or dropped">Export steps (CSV)</button>
-              </div>
+              <details class="exp" id="expMenu">
+                <summary class="btn" id="expOpen">Export…</summary>
+                <div class="exp-panel">
+                  <label class="field">Format<select id="expFmt">
+                    <option value="csv">CSV, separate files</option>
+                    <option value="zip">CSV, one zip with every table</option>
+                    <option value="mat">MATLAB (.mat)</option>
+                    <option value="npz">NumPy (.npz)</option>
+                    <option value="json">JSON (reopens in the dashboard)</option>
+                  </select></label>
+                  <p class="hint" id="expDesc"></p>
+                  <div class="stack" id="expCsv">
+                    <button class="btn" id="expMetrics" type="button" disabled title="Metrics from both versions, plus the settings used">Metrics (CSV)</button>
+                    <button class="btn" id="expSteps" type="button" disabled title="Every step from both versions, and why each was kept or dropped">Steps (CSV)</button>
+                  </div>
+                  <div id="expParts" hidden>
+                    <label class="check"><input type="checkbox" id="expSignals" checked><span>Signals</span><small id="expSignalsInfo"></small></label>
+                    <label class="check"><input type="checkbox" id="expEnvelope"><span>Envelope</span><small>The band shown on the plot (choose one under Envelope).</small></label>
+                    <div class="stack"><button class="btn primary" id="expGo" type="button" disabled>Export</button></div>
+                  </div>
+                  <p class="hint"><a href="https://github.com/soroushdty/gaitscope/blob/main/docs/export.md" target="_blank" rel="noopener">What each file holds</a></p>
+                </div>
+              </details>
             </div>
             <table class="metrics" id="metricsTable"></table>
             <p class="note" id="labNote">The lab code column reproduces LabStepDet_2025.m exactly, including its 100 Hz assumption and its Pace formula. It was checked against MATLAB's output (via Octave) on Walking.mat.<span id="labFilterNote" hidden> It runs on the recorded signal; the filter only feeds the algorithm.</span></p>
