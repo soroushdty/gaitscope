@@ -391,7 +391,10 @@
   }
   function showFilter() {
     const f = $('filterSel').value;
-    $('filterDesc').textContent = C.FILTERS.find(x => x.id === f).tagline;
+    const def = C.FILTERS.find(x => x.id === f);
+    $('filterDesc').textContent = def.tagline;
+    $('filterCredit').innerHTML = def.credit.length ? creditHtml(def.credit) : '';
+    $('filterCredit').hidden = !def.credit.length;
     $('filterOpts').hidden = f === 'none';
     for (const el of $('filterOpts').querySelectorAll('[data-only]')) el.hidden = !el.dataset.only.split(' ').includes(f);
   }
@@ -468,7 +471,15 @@
       '<label class="field">Signal<select data-act="source"><option value="filtered"' + (ind.source === 'filtered' ? ' selected' : '') + '>Filtered</option><option value="recorded"' + (ind.source === 'recorded' ? ' selected' : '') + '>Unfiltered</option></select></label>' +
       (def.params || []).map(q => paramControl(ind, q)).join('') +
       (def.summary ? '<details class="howto"><summary>How it works</summary><p>' + esc(def.summary) + '</p></details>' : '') +
+      (def.credit && def.credit.length ? '<p class="hint credit">' + creditHtml(def.credit) + '</p>' : '') +
       '<p class="hint"><button class="link" type="button" data-act="reset">Default settings</button></p></div></li>';
+  }
+  // "Credit: Savitzky & Golay, 1964", linked to the DOI (#63). Names only, no emails.
+  function creditHtml(list) {
+    return 'Credit: ' + list.map(c => {
+      const href = c.doi ? 'https://doi.org/' + c.doi : c.url;
+      return (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(c.text) + '</a>' : esc(c.text)) + (c.note ? ' (' + esc(c.note) + ')' : '');
+    }).join('; ');
   }
   function renderIndicators() {
     for (const [kind, list] of [['detector', 'detList'], ['envelope', 'envList']]) {

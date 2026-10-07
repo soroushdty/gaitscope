@@ -1431,6 +1431,21 @@
     }).filter(Boolean).join(' \u00b7 ');
   }
 
+  /* Credits (#63): who made each method, shown with its settings, in docs/algorithm.md and
+     in the export's indicators table. A credit is a list of {text: 'Surname et al., Year' or
+     a name, doi? or url?, note? (what it is credited for)}; an empty list means none is
+     needed. Every DOI was checked against Crossref (title, first author, year) on
+     2026-10-07, and Zhao 2010 and Brajdic & Harle 2013 were read for what they are credited
+     for: don't add one that hasn't been. Names only, never email addresses. */
+  const CREDIT = {
+    brajdic: { text: 'Brajdic & Harle, 2013', doi: '10.1145/2493432.2493449' },
+    zhao: { text: 'Zhao, 2010', url: 'https://www.analog.com/en/resources/analog-dialogue/articles/pedometer-design-3-axis-digital-acceler.html', note: 'Analog Dialogue 44-06' },
+    zeroPhase: { text: 'Likhterov & Kopeika, 2003', doi: '10.1080/00207210310001612482', note: 'start-up of the forward-backward filter' },
+  };
+  // "Savitzky & Golay, 1964 (https://doi.org/…)": a credit as one line of text, for exports
+  const creditText = list => (list || []).map(c => c.text + (c.note ? ' (' + c.note + ')' : '') +
+    (c.doi ? ' https://doi.org/' + c.doi : c.url ? ' ' + c.url : '')).join('; ');
+
   /* Step detectors offered in the dashboard, to put on the plot like a chart's indicators
      (any number, in any mix). The first, Coza, is LabStepDet_2025.m's rule as written
      (detectOriginal; with originalMetrics for its own outputs), bit-exact with MATLAB. The
@@ -1455,6 +1470,7 @@
       id: 'coza_original',
       name: 'Coza',
       tagline: 'The Lab 1 peak detector exactly as written, bugs included.',
+      credit: [{ text: 'Dr. Aurel Coza', note: 'Lab 1 of Wearable Devices for Sport, Health, and Wellness, ASU; LabStepDet_2025.m' }],
       summary: 'Coza is LabStepDet_2025.m\u2019s rule unchanged: a sample is a step when it is the highest within w samples on each side and above h. The window counts samples, so it means \u00b10.3 s only at 100 Hz; tied peaks count twice and the stop bump counts as a step. Its metrics come from the timestamps, like every detector\u2019s; the rows marked \u201cCoza\u2019s formula\u201d reproduce the .m file\u2019s own outputs.',
       params: [P_W, P_H],
       detect: (A, t, p) => ({ idx: detectOriginal(A, p.w, p.h), weakDropped: [] }),
@@ -1464,6 +1480,7 @@
       id: 'coza',
       name: 'Coza (modified)',
       tagline: 'Coza\u2019s detector with its bugs fixed.',
+      credit: [{ text: 'Coza\u2019s detector, modified by Dr. Soroush Dianaty', note: 'tied peaks counted once, weak start/stop peaks dropped, window in seconds, real timestamps, cadence in steps/min, strides with Phone position One leg' }],
       summary: 'Coza (modified) fixes Coza\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
       params: [P_H, { key: 'cozaWindow', label: 'Window', abbr: 'window', min: 0.05, max: 1.5, step: 0.01, default: 0.3, unit: 's', dec: 2, samples: true },
         { key: 'weak', label: 'Drop weak peaks', abbr: 'weak peaks dropped', type: 'bool', default: true, hint: 'Ignore peaks that rise less than 40% as far above h as a typical peak, such as the bump when you stop walking.' }],
@@ -1479,6 +1496,7 @@
     {
       id: 'threshold',
       name: 'Threshold peaks',
+      credit: [Object.assign({ note: 'windowed peak detection' }, CREDIT.brajdic)],
       tagline: 'Peaks of the smoothed signal above mean + k\u00b7SD.',
       summary: 'Threshold peaks is the textbook peak detector, with what Coza lacks: the signal is low-pass filtered first, the threshold is set from the signal itself (mean + k \u00d7 SD of the smoothed signal) instead of h, and of two peaks closer than the minimum interval only the taller one counts. Markers sit on the smoothed signal.',
       params: [{ key: 'tpCutoff', label: 'Low-pass cut-off', abbr: 'cut-off', min: 1, max: 10, step: 0.5, default: 3, unit: 'Hz', dec: 1 },
@@ -1494,6 +1512,7 @@
     {
       id: 'peakvalley',
       name: 'Peak-to-valley',
+      credit: [CREDIT.zhao],
       tagline: 'A peak followed by a valley, around a threshold that follows the signal.',
       summary: 'Peak-to-valley (min-max) uses a threshold that moves with the signal: the midpoint of the highest and lowest smoothed values within a sliding window. Each rise above it followed by a fall below it is a step, marked at its peak, when the peak-to-valley swing is at least a set share of the typical (median) swing. Steps closer than the minimum interval keep the larger swing. It does not use h.',
       params: [{ key: 'pvWindow', label: 'Threshold window', abbr: 'window', min: 0.3, max: 3, step: 0.1, default: 1, unit: 's', dec: 1 },
@@ -1510,6 +1529,7 @@
     {
       id: 'zerocross',
       name: 'Zero-crossing',
+      credit: [Object.assign({ note: 'mean crossing counts' }, CREDIT.brajdic)],
       tagline: 'Upward crossings of the smoothed signal through its baseline.',
       summary: 'Zero-crossing uses timing, not peak height. The signal is low-pass filtered and a slow baseline (the signal low-passed at 0.3 Hz) is subtracted, which also removes gravity; each upward crossing of zero is a step. A hysteresis band (\u00b10.3 SD) stops noise near zero from adding crossings, and crossings closer than the minimum interval are ignored. Markers sit where the smoothed signal crosses its baseline, not on a peak. It does not use h.',
       params: [{ key: 'zcCutoff', label: 'Low-pass cut-off', abbr: 'cut-off', min: 1, max: 10, step: 0.5, default: 3, unit: 'Hz', dec: 1 },
@@ -1649,41 +1669,46 @@
 
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
      indicators set to Filtered run on; one set to Unfiltered keeps the recorded signal.
-     Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
+     Each entry: tagline (one line under the dropdown), credit (see CREDIT), apply(A, fs, p) -> filtered copy of
      evenly spaced samples (throws a RangeError saying what to change when the settings
      can't be used), label(p) for the export. Its settings are the rows under Advanced whose
      data-only lists its id. p: {filter, fOrder, fLow (Hz), fHigh (Hz, 0 = off), fRipple (dB),
      fAtten (dB)} */
   const ORDINAL = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
   // IIR filters from designFilter, run forwards and backwards
-  const iirEntry = (id, name, tagline, extra) => ({
-    id, name, tagline, iir: true,
+  const iirEntry = (id, name, tagline, credit, extra) => ({
+    id, name, tagline, credit: credit.concat(CREDIT.zeroPhase), iir: true,
     apply: (A, fs, p) => sosfiltfilt(designFilter({ type: id, order: p.fOrder, fs, lowpass: p.fLow, highpass: p.fHigh, rp: p.fRipple, rs: p.fAtten }).sos, A),
     label: p => name + ', ' + ORDINAL(p.fOrder) + ' order, ' + (p.fHigh > 0 ? fmt(p.fHigh, 1) + '\u2013' + fmt(p.fLow, 1) + ' Hz band-pass' : fmt(p.fLow, 1) + ' Hz low-pass') + (extra ? extra(p) : ''),
   });
   const FILTERS = [
-    { id: 'none', name: 'None', tagline: 'Detection runs on the recorded signal.' },
-    iirEntry('butter', 'Butterworth', 'Flat passband and the gentlest roll-off: the least change to the shape of each step.'),
-    iirEntry('bessel', 'Bessel', 'The most even delay across frequencies: steps keep their shape best, with the gentlest roll-off. The cut-off is where the phase is half delayed, not the -3 dB point.'),
-    iirEntry('cheby1', 'Chebyshev I', 'A steeper roll-off, paid for with ripple in the passband that slightly reshapes peaks.', p => ', ' + fmt(p.fRipple, 1) + ' dB ripple'),
-    iirEntry('cheby2', 'Chebyshev II', 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.', p => ', ' + fmt(p.fAtten, 0) + ' dB stopband'),
+    { id: 'none', name: 'None', tagline: 'Detection runs on the recorded signal.', credit: [] },
+    iirEntry('butter', 'Butterworth', 'Flat passband and the gentlest roll-off: the least change to the shape of each step.',
+      [{ text: 'Butterworth, 1930', note: 'Wireless Engineer 7: 536\u2013541' }]),
+    iirEntry('bessel', 'Bessel', 'The most even delay across frequencies: steps keep their shape best, with the gentlest roll-off. The cut-off is where the phase is half delayed, not the -3 dB point.',
+      [{ text: 'Thomson, 1949', doi: '10.1049/pi-3.1949.0101' }]),
+    iirEntry('cheby1', 'Chebyshev I', 'A steeper roll-off, paid for with ripple in the passband that slightly reshapes peaks.', [], p => ', ' + fmt(p.fRipple, 1) + ' dB ripple'),
+    iirEntry('cheby2', 'Chebyshev II', 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.', [], p => ', ' + fmt(p.fAtten, 0) + ' dB stopband'),
     iirEntry('ellip', 'Elliptic', 'The steepest roll-off for its order, with ripple in both passband and stopband. The cut-off is where the passband ripple ends.',
-      p => ', ' + fmt(p.fRipple, 1) + ' dB ripple, ' + fmt(p.fAtten, 0) + ' dB stopband'),
+      [{ text: 'Cauer, 1931', note: 'Siebschaltungen' }], p => ', ' + fmt(p.fRipple, 1) + ' dB ripple, ' + fmt(p.fAtten, 0) + ' dB stopband'),
     {
       id: 'movavg', name: 'Moving average',
       tagline: 'The mean over a sliding window: the simplest smoother. It also lowers peaks.',
+      credit: [],
       apply: (A, fs, p) => movingAverage(A, oddWindow(p.maWindow, fs, A.length, 3)),
       label: p => 'Moving average, ' + fmt(p.maWindow, 2) + ' s window',
     },
     {
       id: 'median', name: 'Median',
       tagline: 'The median over a sliding window: removes short spikes (a tap or knock) without rounding off real peaks.',
+      credit: [{ text: 'Tukey, 1977', note: 'Exploratory Data Analysis' }],
       apply: (A, fs, p) => movingMedian(A, oddWindow(p.medWindow, fs, A.length, 3)),
       label: p => 'Median, ' + fmt(p.medWindow, 2) + ' s window',
     },
     {
       id: 'savgol', name: 'Savitzky\u2013Golay',
       tagline: 'Fits a polynomial to a sliding window and keeps its centre: smooths noise while keeping peak heights and timing better than an average.',
+      credit: [{ text: 'Savitzky & Golay, 1964', doi: '10.1021/ac60214a047' }],
       apply: (A, fs, p) => {
         const w = oddWindow(p.sgWindow, fs, A.length, p.sgOrder + 2);
         return savgol(A, w, p.sgOrder);
@@ -1693,12 +1718,16 @@
     {
       id: 'wavelet', name: 'Wavelet (Daubechies-4)',
       tagline: 'Splits the signal into frequency bands over time and removes the small, noise-like detail. It keeps sharp heel strikes better than a low-pass that removes as much noise; a lower threshold keeps more.',
+      credit: [{ text: 'Donoho & Johnstone, 1994', doi: '10.1093/biomet/81.3.425', note: 'universal threshold' },
+        { text: 'Donoho, 1995', doi: '10.1109/18.382009', note: 'soft thresholding' },
+        { text: 'Daubechies, 1988', doi: '10.1002/cpa.3160410705', note: 'db4 wavelet' }],
       apply: (A, fs, p) => waveletDenoise(A, p.wLevel, p.wScale),
       label: p => 'Wavelet db4, ' + p.wLevel + ' levels, soft threshold \u00d7 ' + fmt(p.wScale, 2),
     },
     {
       id: 'notch', name: 'Notch',
       tagline: 'Removes one narrow frequency, such as 50/60 Hz mains hum or a known vibration, and leaves the rest. Matters only at high sampling rates.',
+      credit: [CREDIT.zeroPhase],
       apply: (A, fs, p) => sosfiltfilt(notchSos(p.notchFreq, p.notchQ, fs), A),
       label: p => 'Notch, ' + fmt(p.notchFreq, 1) + ' Hz, Q ' + p.notchQ,
     },
@@ -2397,7 +2426,7 @@
   const P_ENV_WIN = { key: 'envWindow', label: 'Window', abbr: 'window', min: 0.2, max: 3, step: 0.1, default: 1, unit: 's', dec: 1 };
   const ENVELOPES = [
     {
-      id: 'sliding', name: 'Sliding window', params: [P_ENV_WIN],
+      id: 'sliding', name: 'Sliding window', params: [P_ENV_WIN], credit: [],
       tagline: 'The highest and lowest value within a window around each moment.',
       compute: (A, t, p) => {
         const h = halfWindow(p.envWindow, p.fs);
@@ -2407,6 +2436,7 @@
     },
     {
       id: 'peaktrough', name: 'Peak-trough',
+      credit: [{ text: 'Fritsch & Carlson, 1980', doi: '10.1137/0717021', note: 'smooth joins' }],
       params: [{ key: 'envPeakWindow', label: 'Peak window', abbr: 'window', min: 0.1, max: 1, step: 0.05, default: 0.3, unit: 's', dec: 2, hint: 'A peak is the highest point within this window; the same for troughs.' },
         { key: 'envSmooth', label: 'Smooth joins', abbr: 'smooth', type: 'bool', default: false, hint: 'A monotone cubic through the peaks instead of straight lines. It never overshoots between them.' }],
       tagline: 'Lines joining successive peaks, and successive troughs: straight, or a smooth curve that never overshoots.',
@@ -2417,7 +2447,7 @@
       label: p => 'Envelope, peak-trough' + (p.envSmooth ? ' (smooth)' : ''),
     },
     {
-      id: 'dynamic', name: 'Dynamic threshold', params: [P_ENV_WIN],
+      id: 'dynamic', name: 'Dynamic threshold', params: [P_ENV_WIN], credit: [CREDIT.zhao],
       tagline: 'The midpoint of the sliding max and min: where an adaptive threshold would sit.',
       // the same dynamicThreshold that Peak-to-valley counts steps with
       compute: (A, t, p) => dynamicThreshold(A, halfWindow(p.envWindow, p.fs)),
@@ -2425,7 +2455,7 @@
       midName: 'Dynamic threshold (envelope)',
     },
     {
-      id: 'meansd', name: 'Mean \u00b1 k\u00b7SD',
+      id: 'meansd', name: 'Mean \u00b1 k\u00b7SD', credit: [],
       params: [P_ENV_WIN, { key: 'envK', label: 'k (standard deviations)', abbr: 'k', min: 0.25, max: 3, step: 0.25, default: 1, unit: 'SD', dec: 2, hint: 'k = 1: activity (RMS around the mean). k = 0.5: Threshold peaks\u2019 cut-off, following the signal.' }],
       tagline: 'The moving mean \u00b1 k standard deviations. With k = 1 it shows how hard the person moves at each moment (the RMS around the mean); with k = 0.5 its upper line is where Threshold peaks\u2019 cut-off would sit if it followed the signal.',
       compute: (A, t, p) => {
@@ -2437,6 +2467,8 @@
     },
     {
       id: 'hilbert', name: 'Hilbert envelope', params: [],
+      credit: [{ text: 'Gabor, 1946', doi: '10.1049/ji-3-2.1946.0074', note: 'analytic signal' },
+        { text: 'Marple, 1999', doi: '10.1109/78.782222', note: 'computed with the FFT' }],
       tagline: 'The amplitude of the swing at each moment, from the analytic signal (a frequency-domain method): a smooth band that follows every swing. It rings at the ends of the recording.',
       // on an even grid, around the signal's mean; uneven recordings are read back at their own timestamps
       compute: (A, t) => {
@@ -2448,7 +2480,7 @@
       label: () => 'Envelope, Hilbert amplitude around the mean',
     },
     {
-      id: 'percentile', name: 'Percentile band',
+      id: 'percentile', name: 'Percentile band', credit: [],
       params: [P_ENV_WIN, { key: 'envPct', label: 'Lower percentile (upper is 100 minus it)', abbr: 'pct', min: 1, max: 25, step: 1, default: 10, unit: 'ordinal', dec: 0 }],
       tagline: 'The 10th and 90th percentile (a setting) within a window around each moment: like the sliding max and min, but one spike can\u2019t stretch it.',
       compute: (A, t, p) => movingPercentiles(A, halfWindow(p.envWindow, p.fs), p.envPct),
@@ -2481,7 +2513,7 @@
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
-    median, mean, std, fmt, demoWalk, looksLikeText };
+    median, mean, std, fmt, demoWalk, looksLikeText, creditText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
 })(typeof self !== 'undefined' ? self : this);

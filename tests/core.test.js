@@ -1174,6 +1174,31 @@ test('the Python port\'s export and the dashboard\'s agree on Coza (walk.mat, co
     assert.ok(Number.isNaN(v) ? Number.isNaN(w) : close(v, w, 1e-12), name);
   });
 });
+// #63: every method says who made it, as "Surname et al., Year" with a DOI link, names only
+test('every detector, envelope and filter has a credit, with well-formed DOIs and no emails', () => {
+  const all = [...C.ALGORITHMS, ...C.ENVELOPES, ...C.FILTERS];
+  for (const d of all) {
+    assert.ok(Array.isArray(d.credit), d.id + ' declares its credit (an empty list when none is needed)');
+    for (const c of d.credit) {
+      assert.ok(typeof c.text === 'string' && c.text.length > 2, d.id + ': text');
+      if (c.doi) assert.match(c.doi, /^10\.\d{4,9}\/\S+$/, d.id + ': DOI');
+      if (c.url) assert.match(c.url, /^https:\/\/\S+$/, d.id + ': URL');
+      assert.ok(!(c.doi && c.url), d.id + ': a DOI or a URL, not both');
+    }
+    assert.ok(!/@/.test(JSON.stringify(d.credit)), d.id + ': no email addresses');
+  }
+  const credit = id => C.creditText(all.find(d => d.id === id).credit);
+  assert.match(credit('coza_original'), /^Dr\. Aurel Coza \(Lab 1 of Wearable Devices/);
+  assert.match(credit('coza'), /modified by Dr\. Soroush Dianaty \(tied peaks counted once/);
+  assert.equal(credit('savgol'), 'Savitzky & Golay, 1964 https://doi.org/10.1021/ac60214a047');
+  assert.equal(credit('sliding'), '');
+  assert.ok(C.FILTERS.filter(f => f.iir).every(f => /Likhterov & Kopeika, 2003/.test(C.creditText(f.credit))), 'zero-phase filtering');
+});
+test('docs/algorithm.md lists every DOI and URL the page credits', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'algorithm.md'), 'utf8');
+  for (const d of [...C.ALGORITHMS, ...C.ENVELOPES, ...C.FILTERS])
+    for (const c of d.credit) for (const ref of [c.doi, c.url].filter(Boolean)) assert.ok(doc.includes(ref), d.id + ': ' + ref + ' is in docs/algorithm.md');
+});
 test('VERSION matches package.json', () => {
   assert.equal(C.VERSION, require('../package.json').version);
 });
