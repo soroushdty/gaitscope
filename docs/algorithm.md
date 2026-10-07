@@ -361,6 +361,22 @@ method is shown. Walking repeats, so its rhythm shows as a tall peak.
   first and last steps are faint, under half size. It is an estimate: best on a steady walk,
   rougher when the phone is handled at the ends.
 
+* **Lomb–Scargle** (Whole recording → *Lomb–Scargle (uneven timing)*, #101): at each
+  frequency, a sine plus an offset is fitted directly at the samples' own times, with no
+  even grid, so a phone's wobbly timing is used as it is. `lombScargle` is Zechmeister &
+  Kürster's generalised periodogram (2009, eqs. 7–20), operation for operation as
+  `scipy.signal.lombscargle(t, y, 2πf, normalize=True, floating_mean=True)`, within 1e-12
+  on uneven times with repeated timestamps (`tests/fixtures/periodicity.json`). The power
+  is the share of the variance the sine explains (0 to 1). From 0.05 to 10 Hz every
+  0.01 Hz; above about 25 samples a second, consecutive samples are first averaged in
+  groups (their mean time and value) to about 20 a second, keeping the times uneven.
+* **Autocorrelation** (Whole recording → *Autocorrelation (repeats in time)*, #101): how
+  well the walk matches itself after each delay, on the walking band, as
+  `numpy.correlate(x, x, 'full')[n−1:] / numpy.dot(x, x)` with the mean removed (within
+  1e-13). The first two peaks from 0.25 s on are marked, each placed between samples by a
+  parabola. On the owner's noisy walk they fall at 0.60 s (0.45) and 1.19 s (0.53): one
+  step and one stride, with the stride repeating more faithfully than the step. On a delay
+  axis the notes and the log scale are switched off.
 * **Continuous wavelet transform** (Over time → *Continuous wavelet (CWT, Morlet)*, #101): a
   wavelet that stretches for slow rhythms and shrinks for fast ones, so the picture is sharp
   in time for fast changes and sharp in frequency for the slow stride at once.
@@ -566,5 +582,7 @@ trunk accelerations during human walking"). Don't use it.
 | Continuous wavelet transform (Morlet), its power per scale and cone of influence (#101) | Torrence & Compo, 1998 (read: sections 3b–3h, the Morlet wavelet, normalisation, eq. 14, the cone of influence) | [10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2](https://doi.org/10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2) |
 | Multiresolution analysis, behind the DWT bands (#101) | Mallat, 1989 (read: §I–III, pp. 674–682): the signal split level by level with a pair of filters and downsampling by 2 into a coarse approximation and orthogonal detail signals, each roughly one octave (p. 680), that add back up to the signal. The page uses Daubechies' db4 filters and PyWavelets' half-sample symmetric edges (Mallat mirrors about the end samples), and its band edges are nominal: Mallat notes the channels overlap | [10.1109/34.192463](https://doi.org/10.1109/34.192463) |
 | The CWT's discretisation and the DWT bands' wavedec/waverec, which the page follows exactly | Lee et al., 2019 (PyWavelets) | [10.21105/joss.01237](https://doi.org/10.21105/joss.01237) |
+| Generalised Lomb–Scargle periodogram (floating mean, normalised power), as scipy computes it (#101) | Zechmeister & Kürster, 2009 (read: sections 1–3, eqs. 4–20). Lomb 1976 and Scargle 1982, whose method it generalises, are not credited until read | [10.1051/0004-6361:200811296](https://doi.org/10.1051/0004-6361:200811296) |
+| Autocorrelation | none needed (a standard statistic) | |
 | Harmonic ratio | Smidt et al., 1971 (the origin; PubMed 5141651, no DOI); Menz et al., 2003 | [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5) |
 | Vertical acceleration from gravity (`gravitySplit`) | Mizell, 2003 | [10.1109/ISWC.2003.1241424](https://doi.org/10.1109/ISWC.2003.1241424) |

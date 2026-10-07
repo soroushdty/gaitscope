@@ -921,19 +921,28 @@
   }
   function renderSpectrum() {
     if (typeof Plotly === 'undefined') return;
-    const { specRaw: raw0, g: p } = S.res, def = methodOf('wholeSel');
-    const spec = def.compute(S.res.filt.A, S.ch.t, p, { spec: S.res.spec }), specRaw = def.id === 'welch' ? raw0 : null;
+    const { specRaw: raw0, g: p } = S.res, def = methodOf('wholeSel'), welch = def.id === 'welch', lag = def.id === 'autocorr';
+    // kept until the signal, the filter (S.cache is new then), the method or its settings change
+    const wkey = JSON.stringify([def.id, p.specSeg, def.params.map(q => p[q.key])]);
+    S.cache.wviews = S.cache.wviews || new Map();
+    if (!S.cache.wviews.has(wkey)) S.cache.wviews.set(wkey, def.compute(S.res.filt.A, S.ch.t, p, { spec: S.res.spec }));
+    const spec = S.cache.wviews.get(wkey), specRaw = welch ? raw0 : null;
+    // notes and the log scale belong to a frequency axis; the autocorrelation's is a delay
+    const tools = $('specCard').querySelector('.plot-tools');
+    if (lag && $('specNoteMode').checked) { $('specNoteMode').checked = false; $('specNoteMode').dispatchEvent(new Event('change')); }
+    tools.hidden = lag; $('specLog').disabled = lag;
+    if (lag) return renderDelays(spec);
     const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') };
     const top = Math.min(spec.fs / 2, 10), log = $('specLog').checked;
     const cut = r => { let k = 0; while (k < r.f.length && r.f[k] <= Math.min(spec.fs / 2, 25)) k++; return { f: Array.from(r.f.subarray(0, k)), psd: Array.from(r.psd.subarray(0, k)) }; };
     const sp = cut(spec), raw = specRaw ? cut(specRaw) : null;
-    const gain = C.filterGain(p, spec.fs, sp.f);
+    const gain = welch ? C.filterGain(p, spec.fs, sp.f) : null; // the filter's gain goes with Welch's power
     const unit = chanInfo().unit;
     const traces = [
       { x: raw ? raw.f : [], y: raw ? raw.psd : [], type: 'scatter', mode: 'lines', name: 'Recorded', visible: !!raw, opacity: 0.35, line: { color: colors.signal, width: 1.2 }, meta: { role: 'specRecorded' },
         hovertemplate: 'Recorded<br>%{x:.2f} Hz<br>%{y:.3g}<extra></extra>' },
       { x: sp.f, y: sp.psd, type: 'scatter', mode: 'lines', name: raw ? 'Filtered' : 'Signal', line: { color: colors.signal, width: 1.6 }, meta: { role: 'spectrum' },
-        hovertemplate: '%{x:.2f} Hz (%{customdata:.0f}/min)<br>%{y:.3g}<extra></extra>', customdata: sp.f.map(v => v * 60) },
+        hovertemplate: '%{x:.2f} Hz (%{customdata:.0f}/min)<br>' + (welch ? '%{y:.3g}' : 'explains %{y:.1%} of the variance') + '<extra></extra>', customdata: sp.f.map(v => v * 60) },
       { x: gain ? sp.f : [], y: gain || [], type: 'scatter', mode: 'lines', name: 'Filter gain', visible: !!gain, yaxis: 'y2', line: { color: colors.algo, width: 1.3, dash: 'dash' }, meta: { role: 'gain' },
         hovertemplate: 'Filter keeps %{y:.2f} of the swing at %{x:.2f} Hz<extra></extra>' },
     ];
@@ -943,7 +952,7 @@
       margin: { l: 58, r: gain ? 50 : 14, t: 8, b: 44 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: cssVar('--font') || 'sans-serif', color: colors.muted, size: 12 }, showlegend: false, hovermode: 'closest',
       xaxis: { title: { text: 'Frequency (Hz)' }, range: [0, top], gridcolor: colors.line, zeroline: false },
-      yaxis: { title: { text: 'Power' + fsUnit }, type: log ? 'log' : 'linear', gridcolor: colors.line, zeroline: false, automargin: true, exponentformat: 'power' },
+      yaxis: { title: { text: welch ? 'Power' + fsUnit : 'Share of variance explained' }, type: log ? 'log' : 'linear', gridcolor: colors.line, zeroline: false, automargin: true, exponentformat: 'power' },
       yaxis2: { overlaying: 'y', side: 'right', range: [0, 1.05], visible: !!gain, title: { text: 'Filter gain' }, showgrid: false, zeroline: false },
       shapes: pk.clear ? [{ type: 'line', xref: 'x', x0: pk.freq, x1: pk.freq, yref: 'paper', y0: 0, y1: 1, line: { color: colors.algo, width: 1.2, dash: 'dot' } }] : [],
       annotations: pk.clear ? [{ x: pk.freq, xref: 'x', y: 1, yref: 'paper', yanchor: 'top', xanchor: 'left', showarrow: false, bgcolor: cssVar('--surface'),
@@ -956,7 +965,8 @@
     Plotly.react(sel, traces, layout, config);
     if (!sel.__bound) { sel.on('plotly_click', ev => onNoteClick('spectrum', ev)); sel.__bound = true; }
     $('specNote').textContent = (pk.clear ? 'The strongest rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz is ' + fmt(pk.freq, 2) + ' Hz: ' + fmt(pk.freq * 60, 0) + ' per minute' + (p.stride ? ', counted as strides (One leg), so ' + fmt(pk.freq * 120, 0) + ' steps/min. ' : '. ') : 'No clear walking rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz. ') +
-      'Welch\u2019s method, ' + fmt(spec.segment, 1) + ' s segments' + (spec.resampled ? ', on an even ' + fmt(spec.fs, 1) + ' Hz grid' : '') + '. ' +
+      (welch ? 'Welch\u2019s method, ' + fmt(spec.segment, 1) + ' s segments' + (spec.resampled ? ', on an even ' + fmt(spec.fs, 1) + ' Hz grid' : '') + '. '
+        : 'Lomb\u2013Scargle at the samples\u2019 own times (about ' + fmt(spec.fs, 0) + ' a second), every 0.01 Hz. ') +
       (gain ? 'The dashed line is the filter\u2019s gain: the share of each frequency\u2019s swing it keeps.' : p.filter === 'median' ? 'The median filter isn\u2019t linear, so it has no fixed gain to draw.' : '');
   }
 
@@ -968,6 +978,27 @@
     const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h || '') || /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(h || '');
     return m ? m.slice(1, 4).map(v => parseInt(v.length === 1 ? v + v : v, 16)) : [61, 95, 130];
   };
+  // the autocorrelation: how alike the signal is to itself after each delay (#101)
+  function renderDelays(res) {
+    const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') }, pk = res.peaks.slice(0, 2);
+    const traces = [{ x: Array.from(res.lag), y: Array.from(res.r), type: 'scatter', mode: 'lines', name: 'Autocorrelation', line: { color: colors.signal, width: 1.6 }, meta: { role: 'acf' },
+      hovertemplate: 'after %{x:.2f} s: %{y:.2f}<extra></extra>' }];
+    const layout = {
+      uirevision: S.file.name + '|' + S.chanKey + '|delay', margin: { l: 58, r: 14, t: 8, b: 44 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { family: cssVar('--font') || 'sans-serif', color: colors.muted, size: 12 }, showlegend: false, hovermode: 'closest',
+      xaxis: { title: { text: 'Delay (s)' }, range: [0, res.lag[res.lag.length - 1]], gridcolor: colors.line, zeroline: false },
+      yaxis: { title: { text: 'Autocorrelation' }, range: [-1, 1.05], gridcolor: colors.line, zerolinecolor: colors.line },
+      shapes: pk.map(q => ({ type: 'line', xref: 'x', x0: q.lag, x1: q.lag, yref: 'paper', y0: 0, y1: 1, line: { color: colors.algo, width: 1.2, dash: 'dot' } })),
+      annotations: pk.map((q, k) => ({ x: q.lag, xref: 'x', y: k ? 0.88 : 1, yref: 'paper', yanchor: 'top', xanchor: 'left', showarrow: false, bgcolor: cssVar('--surface'),
+        text: fmt(q.lag, 2) + ' s = ' + fmt(60 / q.lag, 0) + '/min', font: { color: colors.algo, size: 12 } })),
+    };
+    const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
+    Plotly.react($('specPlot'), traces, layout, config);
+    $('specNote').textContent = (pk.length ? 'The walk matches itself best after ' + fmt(pk[0].lag, 2) + ' s (' + fmt(pk[0].r, 2) + ')' + (pk[1] ? ' and again after ' + fmt(pk[1].lag, 2) + ' s (' + fmt(pk[1].r, 2) + ')' : '') +
+      '. On the up-and-down signal the first is usually one step and the second one stride; a lower first peak means neighbouring steps, left and right, are less alike than neighbouring strides. '
+      : 'No delay up to 3 s where the walk clearly repeats. ') + 'On the walking band at about ' + fmt(res.fs, 0) + ' samples a second, each peak placed between samples by a parabola.';
+  }
+
   function renderSpectrogram() {
     if (typeof Plotly === 'undefined') return;
     const el = $('spectroPlot'), { t } = S.ch, def = methodOf('timeSel');
