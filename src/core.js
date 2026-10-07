@@ -1429,6 +1429,54 @@
     return f;
   }
 
+  /* Power spectral density by Welch's method, as scipy.signal.welch(A, fs, window='hann',
+     nperseg, noverlap, nfft, detrend='constant', scaling='density'): the signal is cut into
+     segments overlapping by noverlap, each has its mean removed and is multiplied by a
+     periodic Hann window, and the one-sided |FFT|² of the segments are averaged. A signal
+     shorter than nperseg is one segment. Returns {f (Hz), psd (units²/Hz)}. */
+  function welch(A, fs, { nperseg, noverlap, nfft }) {
+    const n = A.length;
+    nperseg = Math.min(nperseg, n);
+    noverlap = noverlap === undefined ? Math.floor(nperseg / 2) : Math.min(noverlap, nperseg - 1);
+    nfft = Math.max(nfft || nperseg, nperseg);
+    const w = Float64Array.from({ length: nperseg }, (_, k) => 0.5 - 0.5 * Math.cos(2 * Math.PI * k / nperseg));
+    let w2 = 0; for (const v of w) w2 += v * v;
+    const step = nperseg - noverlap, segs = Math.floor((n - noverlap) / step), bins = Math.floor(nfft / 2) + 1;
+    const psd = new Float64Array(bins), seg = new Float64Array(nfft);
+    for (let s = 0; s < segs; s++) {
+      const o = s * step;
+      let m = 0; for (let k = 0; k < nperseg; k++) m += A[o + k];
+      m /= nperseg;
+      seg.fill(0);
+      for (let k = 0; k < nperseg; k++) seg[k] = (A[o + k] - m) * w[k];
+      const X = fft(seg);
+      for (let k = 0; k < bins; k++) psd[k] += X.re[k] * X.re[k] + X.im[k] * X.im[k];
+    }
+    const scale = 1 / (fs * w2 * segs);
+    for (let k = 0; k < bins; k++) psd[k] *= scale * (k === 0 || (nfft % 2 === 0 && k === bins - 1) ? 1 : 2);
+    return { f: Float64Array.from({ length: bins }, (_, k) => k * fs / nfft), psd };
+  }
+
+  // The walking band: 0.5 to 3.5 Hz holds both stride (about 1 Hz) and step (about 2 Hz) rates.
+  const GAIT_BAND = [0.5, 3.5];
+  /* The spectrum of a prepared channel: Welch over segments of p.specSeg seconds (default
+     8 s, or the whole recording if shorter), on an even grid. Zero-padded to bins of at most
+     0.01 Hz so the peak is read precisely; the true resolution is about 1 / segment length.
+     Returns {f, psd, fs, resampled, segment (s)} plus the dominant frequency in the walking
+     band: peak {freq, power, clear}, clear when it stands at least 5× above the band's median. */
+  function spectrum(A, t, p) {
+    const g = evenGrid(A, t), nperseg = Math.min(g.A.length, Math.max(8, Math.round((p.specSeg || 8) * g.fs)));
+    let nfft = 1; while (nfft < Math.max(nperseg, Math.ceil(g.fs / 0.01))) nfft *= 2;
+    const r = welch(g.A, g.fs, { nperseg, nfft });
+    return Object.assign(r, { fs: g.fs, resampled: g.resampled, segment: nperseg / g.fs, peak: dominantFrequency(r.f, r.psd) });
+  }
+  function dominantFrequency(f, psd, band = GAIT_BAND) {
+    let best = -1; const inBand = [];
+    for (let k = 0; k < f.length; k++) if (f[k] >= band[0] && f[k] <= band[1]) { inBand.push(psd[k]); if (best < 0 || psd[k] > psd[best]) best = k; }
+    if (best < 0) return { freq: NaN, power: NaN, clear: false };
+    return { freq: f[best], power: psd[best], clear: psd[best] >= 5 * median(inBand) };
+  }
+
   /* The signal on an even time grid at the median sampling rate, for methods that assume even
      spacing (IIR and smoothing filters, FFT). Returns {A, t, fs, resampled, jitter, gaps}:
      the input itself when the timestamps vary by under 1%, or when long gaps would make the
@@ -1612,7 +1660,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, welch, spectrum, dominantFrequency, GAIT_BAND, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

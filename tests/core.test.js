@@ -366,6 +366,34 @@ test('the FFT matches numpy.fft for powers of two and other lengths, and inverts
   }
 });
 
+test('Welch spectrum matches scipy.signal.welch', () => {
+  for (const c of SPEC.welch) {
+    const x = Float64Array.from({ length: Math.round(c.fs * 10) }, (_, i) => { const t = i / c.fs; return 1 + Math.sin(2 * Math.PI * 1.8 * t) + 0.3 * Math.sin(2 * Math.PI * 17 * t + 0.4) + 0.1 * Math.sin(2 * Math.PI * 0.2 * t); });
+    const r = C.welch(x, c.fs, { nperseg: c.nperseg, nfft: c.nfft });
+    assert.equal(r.psd.length, c.psd.length);
+    const top = Math.max(...c.psd);
+    c.psd.forEach((v, k) => { assert.ok(Math.abs(r.psd[k] - v) < 1e-12 * top, c.fs + ' Hz, nfft ' + c.nfft + ', bin ' + k); assert.ok(Math.abs(r.f[k] - c.f[k]) < 1e-12); });
+  }
+});
+
+test('the spectrum finds the cadence of a known walk, and the stride rate of a one-leg walk', () => {
+  for (const fsr of [57, 100, 460]) {
+    const w = knownWalk({ fs: fsr, n: 40 });
+    const sp = C.spectrum(w.A, w.t, { specSeg: 8 });
+    const iv = w.rise.slice(1).map((v, k) => v - w.rise[k]), cadence = 60 / C.mean(iv);
+    assert.ok(sp.peak.clear, fsr + ' Hz: clear peak');
+    // resolution is about 60 / 8 s = 7.5 steps/min, but a steady walk lands much closer (0.4 here)
+    assert.ok(Math.abs(sp.peak.freq * 60 - cadence) < 1, fsr + ' Hz: ' + sp.peak.freq * 60 + ' vs ' + cadence + ' steps/min');
+  }
+  // phone on one leg: each stride (1 Hz) has one big swing; the steps (2 Hz) are a weaker harmonic
+  const t = Float64Array.from({ length: 2000 }, (_, i) => i / 100), A = t.map(v => Math.sin(2 * Math.PI * v) + 0.3 * Math.sin(4 * Math.PI * v + 1));
+  const sp = C.spectrum(A, t, { specSeg: 8 });
+  assert.ok(Math.abs(sp.peak.freq - 1) < 0.02, 'main peak at the stride rate, half the step rate');
+  // standing still: no clear peak
+  const still = t.map((v, i) => 0.01 * Math.sin(i * 12.9898) * 43758.5453 % 1);
+  assert.equal(C.spectrum(still, t, { specSeg: 8 }).peak.clear, false);
+});
+
 /* ------------------------------------------------------- envelopes */
 const ENV_P = { fs: 100, envWindow: 1, envPeakWindow: 0.3 };
 const env = id => C.ENVELOPES.find(e => e.id === id);
