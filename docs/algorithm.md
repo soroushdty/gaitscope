@@ -119,6 +119,20 @@ algorithm back to the steps it finds on the clean walk (`tests/core.test.js`). T
 algorithms that smooth internally (Threshold peaks, Peak-to-valley, Zero-crossing) still
 apply their own low-pass on top of the filter.
 
+## Envelopes (`ENVELOPES`)
+
+An **Envelope** select in the plot toolbar draws curves around the signal the algorithm
+sees: the filtered signal when a filter is on, the recorded signal otherwise. Envelopes
+are a view, like notes: they never change the detected steps, the metrics or the
+exports. The fixed `h` line stays, so the two kinds of threshold can be compared.
+Windows are in seconds, so an envelope looks the same at 57 Hz and 460 Hz.
+
+| Envelope | How it is computed | What it shows |
+|---|---|---|
+| Sliding window | Running max and min over a centred window (default 1 s), `windowExtreme` | How big the swings are at each moment: walking vs. standing, speeding up, slowing down |
+| Peak-trough | Peaks are samples that are the highest within ±half a window (default 0.3 s), ties counted once as in Coza; troughs likewise. Successive peaks, and successive troughs, are joined by straight lines and held flat past the ends. | The outline of the step pattern. Uneven steps (one leg stronger) show as a zig-zag in the upper line. |
+| Dynamic threshold | The sliding window band plus its midline `(max + min) / 2`, `dynamicThreshold` | Where an adaptive threshold would sit, next to the fixed `h`. It is the same function and window rounding Peak-to-valley counts steps with, so on the signal that algorithm smooths it draws exactly that algorithm's threshold. |
+
 ## Threshold peaks (`detectThresholdPeaks`)
 
 The textbook peak detector. Coza is already a threshold-based peak detector, so this

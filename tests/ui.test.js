@@ -41,7 +41,7 @@ async function upload(pg, file) {
   await sleep(60);
 }
 // Plot trace order (src/app.js renderPlot): hidden traces stay in place so these never move.
-const TR = { signal: 0, filtered: 1, guide: 2, guide2: 3, lab: 4, algo: 5, algoIv: 6, labIv: 7 };
+const TR = { envLower: 0, envUpper: 1, signal: 2, filtered: 3, envMid: 4, guide: 5, guide2: 6, lab: 7, algo: 8, algoIv: 9, labIv: 10 };
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
 test('loads a MAT file, compares versions and exports', async () => {
@@ -335,6 +335,55 @@ test('impossible filter settings are reported, not applied', async () => {
   assert.match(text(pg, 'valList'), /Filter not applied.*high-pass cut-off must be below the low-pass.*To fix: Change the filter settings under Advanced/);
   assert.equal(pg.plots.at(-1).traces[TR.filtered].visible, false);
   assert.equal($('legFilter').hidden, true);
+});
+
+test('envelopes are drawn around the signal and never change steps, metrics or exports', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  const sel = $('envSel');
+  assert.deepEqual([...sel.options].map(o => o.textContent), ['None', 'Sliding window', 'Peak-trough', 'Dynamic threshold']);
+  assert.equal(sel.value, 'none');
+  assert.ok(sel.closest('.plot-tools'), 'a view option, in the plot toolbar');
+  let last = pg.plots.at(-1);
+  assert.equal(last.traces[TR.envUpper].visible, false); assert.equal(last.traces[TR.envMid].visible, false);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  const exportText = async () => { $('expMetrics').click(); return new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); }); };
+  const snapshot = async () => ({ steps: pg.plots.at(-1).traces[TR.algo].x.join(), lab: pg.plots.at(-1).traces[TR.lab].x.join(),
+    metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await exportText() });
+  const before = await snapshot();
+  const n = before.steps.split(',').length;
+  for (const id of ['sliding', 'peaktrough', 'dynamic']) {
+    sel.value = id; sel.dispatchEvent(new pg.w.Event('change'));
+    await sleep(40);
+    last = pg.plots.at(-1);
+    const { y: lo } = last.traces[TR.envLower], { y: hi, fill } = last.traces[TR.envUpper], sig = last.traces[TR.signal].y;
+    assert.equal(fill, 'tonexty', id + ': shaded band');
+    assert.ok(Array.from(sig).every((v, i) => hi[i] >= lo[i]), id + ': upper above lower');
+    if (id !== 'peaktrough') assert.ok(Array.from(sig).every((v, i) => lo[i] <= v && v <= hi[i]), id + ': the signal stays inside');
+    assert.equal(last.traces[TR.envMid].visible, id === 'dynamic', id + ': midline only for the dynamic threshold');
+    assert.equal($('legEnv').hidden, false); assert.equal($('legEnvMid').hidden, id !== 'dynamic');
+    assert.deepEqual(await snapshot(), before, id + ': a view only');
+    assert.equal(last.layout.shapes.length, 1, id + ': the fixed h line stays for comparison');
+  }
+  assert.equal(text(pg, 'legEnvText'), 'Envelope, sliding 1.0 s');
+  assert.equal(pg.d.querySelector('.env-opts[data-env="sliding dynamic"]').hidden, false);
+  assert.equal(pg.d.querySelector('.env-opts[data-env="peaktrough"]').hidden, true);
+  const win = $('envWinIn');
+  win.value = '2'; win.dispatchEvent(new pg.w.Event('input'));
+  await sleep(40);
+  assert.equal(text(pg, 'legEnvText'), 'Envelope, sliding 2.0 s');
+  assert.equal(pg.plots.at(-1).traces[TR.algo].x.length, n, 'steps unchanged by the window');
+
+  // with a filter on, the envelope follows the filtered signal the algorithm sees
+  $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  last = pg.plots.at(-1);
+  const f = last.traces[TR.filtered].y, hi = last.traces[TR.envUpper].y;
+  assert.ok(Array.from(f).every((v, i) => v <= hi[i]));
+  assert.ok(Array.from(last.traces[TR.signal].y).some((v, i) => v > hi[i]), 'not the recorded signal');
+  sel.value = 'none'; sel.dispatchEvent(new pg.w.Event('change'));
+  assert.equal(pg.plots.at(-1).traces[TR.envUpper].visible, false); assert.equal($('legEnv').hidden, true);
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {

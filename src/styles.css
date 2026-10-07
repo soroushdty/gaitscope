@@ -1,6 +1,6 @@
 :root {
   --bg: #F3F5F7; --surface: #FFFFFF; --sunk: #EEF1F4; --ink: #17222D; --muted: #5A6774; --line: #D8DEE4;
-  --signal: #3D5F82; --orig: #B7790A; --algo: #0D7A64; --note: #6B4FC8;
+  --signal: #3D5F82; --orig: #B7790A; --algo: #0D7A64; --note: #6B4FC8; --env: #A4407A;
   --err: #B42318; --err-bg: #FDF0EE; --warn: #8F5400; --warn-bg: #FDF5E8; --ok: #2F7D32; --ok-bg: #EEF7EE;
   --info: #3D5F82; --info-bg: #EEF3F8; --focus: #2B6CB0;
   --font: "Public Sans", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -12,14 +12,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #10171E; --surface: #172029; --sunk: #131B23; --ink: #E4EAF0; --muted: #97A4B1; --line: #2A3643;
-    --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2;
+    --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2; --env: #E58BBE;
     --err: #F07A6E; --err-bg: #2A1716; --warn: #E0A548; --warn-bg: #271F12; --ok: #6CC070; --ok-bg: #16241A;
     --info: #8DB0D6; --info-bg: #16212C; --focus: #7FB2EC; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #10171E; --surface: #172029; --sunk: #131B23; --ink: #E4EAF0; --muted: #97A4B1; --line: #2A3643;
-  --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2;
+  --signal: #8DB0D6; --orig: #E3A93B; --algo: #3DC1A2; --note: #A68CF2; --env: #E58BBE;
   --err: #F07A6E; --err-bg: #2A1716; --warn: #E0A548; --warn-bg: #271F12; --ok: #6CC070; --ok-bg: #16241A;
   --info: #8DB0D6; --info-bg: #16212C; --focus: #7FB2EC; color-scheme: dark;
 }
@@ -126,6 +126,8 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .toggle:has(input:checked) { border-color: var(--note); color: var(--note); }
 .toggle:has(input:disabled) { opacity: .5; cursor: not-allowed; }
 .toggle.iv input { accent-color: var(--algo); }
+.toggle.env { cursor: default; }
+.toggle.env select { margin: 0; padding: 1px 4px; border: 0; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
 .toggle.iv:has(input:checked) { border-color: var(--algo); color: var(--algo); }
 .note-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .note-form label { color: var(--note); font-weight: 500; }
