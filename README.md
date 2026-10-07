@@ -51,8 +51,10 @@ deploy from the `main` branch, root folder. The page will be at
 
 `python/lab_step_det.py` is a 1:1 translation of `LabStepDet_2025.m`. It also reads
 Physics Toolbox CSV exports: the time, x, y and z columns are put in the Walking.mat
-layout, so `--col 2/3/4` picks x/y/z. It prints the measured sampling rate and warns
-when it is not about 100 Hz, because the lab code divides by 100 to get seconds.
+layout, so `--col 2/3/4` picks x/y/z. It warns when the data reaching the lab code is not
+within 5% of 100 Hz, because the lab code divides by 100 to get seconds and counts its
+window `w` in samples. The rate comes from the time column of CSV exports and of `.mat`
+files in the Walking.mat layout, after any `--resample` (so `--resample 50` warns too).
 Physics Toolbox only lets you choose the rate in the paid version, and the free version
 records at about 460 Hz. `--resample 100` linearly interpolates the recording onto a
 100 Hz grid first (MATLAB: `interp1(t, A, 0:0.01:t(end))`). The detector itself is
