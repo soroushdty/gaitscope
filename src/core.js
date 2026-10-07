@@ -382,7 +382,8 @@
         if (min > best) { best = min; delim = d; }
       }
     }
-    const decimalComma = delim === ';' && sample.slice(1).some(l => /\d,\d/.test(l));
+    // decimal commas come with ';' (Physics Toolbox) or tabs (phyphox "Tabulator, decimal comma")
+    const decimalComma = (delim === ';' || delim === '\t') && sample.slice(1).some(l => /\d,\d/.test(l));
     const isNumericLine = l => {
       const toks = l.split(delim);
       const nums = toks.filter(t => { const v = parseNumberToken(t, decimalComma); return v !== null; }).length;

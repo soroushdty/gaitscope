@@ -767,6 +767,13 @@ test('semicolon-separated export with decimal commas', () => {
   const a = C.prepareChannel(ds, 1), b = C.prepareChannel(ref, 1);
   assert.deepEqual(C.detectOriginal(a.A, 30, 1), C.detectOriginal(b.A, 30, 1));
 });
+test('tab-separated export with decimal commas', () => {
+  const rows = Array.from({ length: 40 }, (_, i) => [i / 100, Math.sin(i / 5) + 0.25, -1.5, 2].map(v => String(v).replace('.', ',')).join('\t'));
+  const p = C.parseCsv('time\tax\tay\taz\n' + rows.join('\n'));
+  assert.equal(p.delim, '\t'); assert.equal(p.decimalComma, true);
+  assert.deepEqual(p.names, ['time', 'ax', 'ay', 'az']);
+  assert.equal(p.cols[0][3], 0.03); assert.equal(p.cols[1][0], 0.25); assert.equal(p.cols[2][7], -1.5);
+});
 test('newer export with # metadata lines and units in the headers', () => {
   const { p, ds } = loadCsvDataset(path.join(FIX, 'ptb_metadata_units.csv'));
   assert.equal(p.delim, ','); assert.equal(p.hasHeader, true);

@@ -91,6 +91,15 @@ def test_csv_gives_walking_layout(name, time_tol):
         assert detect_steps(D[:, c])[1].tolist() == detect_steps(W[:, c])[1].tolist()
 
 
+def test_csv_tab_separated_with_decimal_commas(tmp_path):
+    f = tmp_path / "tab_comma.csv"
+    rows = [[i / 100, np.sin(i / 5) + 0.25, -1.5, 2.0] for i in range(40)]
+    f.write_text("time\tax\tay\taz\n" + "\n".join("\t".join(str(v).replace(".", ",") for v in r) for r in rows))
+    D, names = load_csv(str(f))
+    assert names == ["time", "ax", "ay", "az"]
+    assert np.array_equal(D, np.array(rows))
+
+
 def test_csv_gforce_columns_and_rate():
     D, names = load_csv(os.path.join(FIX, "ptb_gforce.csv"))
     assert names == ["time", "gFx", "gFy", "gFz"]  # TgF is not used as an axis
