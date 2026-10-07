@@ -791,6 +791,9 @@
     return sosfiltfilt(designFilter({ type: 'butter', order: 2, fs, lowpass: fc }).sos, A, Math.round(3 * fs / fc));
   }
 
+  // Half of a centred window of the given length in seconds, in samples (at least 1).
+  function halfWindow(seconds, fs) { return Math.max(1, Math.round(seconds * fs / 2)); }
+
   // Sliding max and min over A[i-half .. i+half] and their midpoint, the dynamic threshold
   // of peak-to-valley step counters (Zhao 2010). Also the envelope a plot can draw (#13).
   function dynamicThreshold(A, half) {
@@ -903,7 +906,7 @@
   const PV_CUTOFF = 5; // light smoothing (Hz): enough to stop noise splitting a run in two
   function detectPeakToValley(A, t, fs, opts) {
     const s = lowpass(A, fs, PV_CUTOFF), n = s.length;
-    const threshold = dynamicThreshold(s, Math.max(1, Math.round(opts.window * fs / 2))).mid;
+    const threshold = dynamicThreshold(s, halfWindow(opts.window, fs)).mid;
     const runs = [];
     for (let i = 0, start = 0; i < n; i++) {
       const above = s[i] >= threshold[i];
@@ -1099,6 +1102,51 @@
       detail: 'Timing varies by ' + Math.round(jitter * 100) + '% between samples and the filter needs even spacing, so the signal was interpolated onto an even ' + fmt(1 / md, 1) + ' Hz grid, filtered, and read back at the original timestamps.' }] };
   }
 
+  /* Envelopes: curves drawn around the signal the algorithm sees, to show how the size of
+     each swing changes. A view only: they never change the detected steps or metrics.
+     compute(A, t, p) -> {upper?, lower?, mid?}, arrays with one value per sample.
+     p: {fs, envWindow (s, sliding and dynamic), envPeakWindow (s, peak-trough)} */
+  // Samples that are the highest (isMax) or lowest within ±half samples, a run of equal values
+  // counted once at its first sample (Coza's tie rule); the first and last samples are skipped.
+  function localExtrema(A, half, isMax) {
+    const M = windowExtreme(A, half, half, isMax), L = windowExtreme(A, half, -1, isMax), out = [];
+    for (let i = 1; i < A.length - 1; i++) if (A[i] === M[i] && (isMax ? A[i] > L[i] : A[i] < L[i])) out.push(i);
+    return out;
+  }
+  // Straight lines through the given samples, held flat before the first and after the last.
+  function joinPoints(idx, A, t) {
+    if (!idx.length) return null;
+    return interpAt(Float64Array.from(idx, i => t[i]), Float64Array.from(idx, i => A[i]), t);
+  }
+  const ENVELOPES = [
+    { id: 'none', name: 'None' },
+    {
+      id: 'sliding', name: 'Sliding window',
+      tagline: 'The highest and lowest value within a window around each moment.',
+      compute: (A, t, p) => {
+        const h = halfWindow(p.envWindow, p.fs);
+        return { upper: windowExtreme(A, h, h, true), lower: windowExtreme(A, h, h, false) };
+      },
+      label: p => 'Envelope, sliding ' + fmt(p.envWindow, 1) + ' s',
+    },
+    {
+      id: 'peaktrough', name: 'Peak-trough',
+      tagline: 'Straight lines joining successive peaks, and successive troughs.',
+      compute: (A, t, p) => {
+        const h = halfWindow(p.envPeakWindow, p.fs);
+        return { upper: joinPoints(localExtrema(A, h, true), A, t), lower: joinPoints(localExtrema(A, h, false), A, t) };
+      },
+      label: p => 'Envelope, peak-trough',
+    },
+    {
+      id: 'dynamic', name: 'Dynamic threshold',
+      tagline: 'The midpoint of the sliding max and min: where an adaptive threshold would sit.',
+      // the same dynamicThreshold that Peak-to-valley counts steps with
+      compute: (A, t, p) => dynamicThreshold(A, halfWindow(p.envWindow, p.fs)),
+      label: p => 'Envelope, sliding ' + fmt(p.envWindow, 1) + ' s',
+    },
+  ];
+
   /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
   function demoWalk() {
     const fs = 100, dur = 22, n = fs * dur;
@@ -1123,7 +1171,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt,
+    FILTERS, filterLabel, applyFilter, interpAt, ENVELOPES, localExtrema, halfWindow,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

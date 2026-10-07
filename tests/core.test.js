@@ -299,6 +299,42 @@ test('a filter that cannot be built leaves the signal alone and says what to cha
   assert.equal(C.filterLabel({ filter: 'none' }), 'none');
 });
 
+/* ------------------------------------------------------- envelopes */
+const ENV_P = { fs: 100, envWindow: 1, envPeakWindow: 0.3 };
+const env = id => C.ENVELOPES.find(e => e.id === id);
+
+test('sliding-window envelope is the running max and min over the window', () => {
+  const t = Float64Array.from({ length: 400 }, (_, i) => i / 100), A = t.map(v => Math.sin(5 * v) * (1 + v) + ((v * 100) % 7) / 10);
+  const { upper, lower } = env('sliding').compute(A, t, ENV_P);
+  for (let i = 0; i < A.length; i++) {
+    const w = A.slice(Math.max(0, i - 50), Math.min(A.length, i + 51));
+    assert.equal(upper[i], Math.max(...w)); assert.equal(lower[i], Math.min(...w));
+  }
+});
+
+test('dynamic-threshold envelope is (max + min) / 2, the same threshold Peak-to-valley counts with', () => {
+  const w = knownWalk({ fs: 460 });
+  const d = env('dynamic').compute(w.A, w.t, Object.assign({}, ENV_P, { fs: 460 }));
+  for (let i = 0; i < w.A.length; i += 13) assert.equal(d.mid[i], (d.upper[i] + d.lower[i]) / 2);
+  // fed the signal Peak-to-valley smooths internally, it draws exactly that algorithm's threshold
+  const pv = C.detectPeakToValley(w.A, w.t, 460, { window: 1, minSwing: 0.4, minInterval: 0.25 });
+  assert.deepEqual(env('dynamic').compute(pv.smooth, w.t, Object.assign({}, ENV_P, { fs: 460 })).mid, pv.threshold);
+});
+
+test('peak-trough envelope joins peaks and troughs by straight lines', () => {
+  const t = Float64Array.from({ length: 1000 }, (_, i) => i / 100);
+  const amp = v => 1 + v / 5, A = t.map(v => amp(v) * Math.sin(2 * Math.PI * v));
+  A[226] = A[225]; // a tied peak (rounded data): one point, not two
+  const { upper, lower } = env('peaktrough').compute(A, t, ENV_P);
+  const peaks = C.localExtrema(A, C.halfWindow(0.3, 100), true);
+  assert.equal(peaks.length, 10); assert.equal(peaks[2], 225, 'the tie counts once, at its first sample');
+  for (const i of peaks) assert.equal(upper[i], A[i]);
+  for (let i = peaks[0]; i < peaks[9]; i += 17) assert.ok(Math.abs(upper[i] - amp(t[i])) < 0.02 && Math.abs(lower[i] + amp(t[i])) < 0.15);
+  assert.equal(upper[0], upper[peaks[0]], 'held flat before the first peak');
+  const flat = env('peaktrough').compute(new Float64Array(50), t.slice(0, 50), ENV_P);
+  assert.equal(flat.upper, null, 'no peaks, no line');
+});
+
 test('Coza window is in seconds, so it finds the same steps at 100 Hz and 460 Hz', () => {
   const d = C.demoWalk(), t = d.cols[0], x = d.cols[1];
   const t4 = Float64Array.from({ length: Math.floor((t[t.length - 1] - t[0]) * 460) }, (_, i) => t[0] + i / 460);
