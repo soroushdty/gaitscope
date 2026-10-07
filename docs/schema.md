@@ -112,7 +112,7 @@ the lab code always runs on the recorded signal.
 
 | Check | Level | Why |
 |---|---|---|
-| Settings can't be built (cut-off at or above half the sampling rate, high-pass not below low-pass, ripple or attenuation ≤ 0) | warn + fix, filter not applied | The message gives the allowed range. The low-pass slider already stops below half the sampling rate. |
+| Settings can't be used (cut-off or notch frequency at or above half the sampling rate, high-pass not below low-pass, ripple or attenuation ≤ 0, elliptic attenuation not above its ripple, smoothing window under 3 samples (Savitzky–Golay: order + 2) or longer than the recording) | warn + fix, filter not applied | The message gives the allowed range or the shortest usable window. The low-pass and notch sliders already stop below half the sampling rate. |
 | Timestamps vary by more than 1% | info, resampled | IIR filters need even spacing, so the signal is interpolated onto an even grid at the median rate, filtered, and read back at the original timestamps. |
 | An even grid would be over 4× the recording (long gaps) | warn + fix, filtered as if even | Resampling across long gaps would make a huge grid; the cut-off is blurred instead. |
 | High-pass on, with an algorithm that uses `h` | info | The band-pass centres the signal on zero, so `h` means something else. |
