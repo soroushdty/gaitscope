@@ -377,7 +377,7 @@
     const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '' && !l.trimStart().startsWith('#'));
     if (lines.length < 2) throw new InputError('The CSV file has fewer than 2 lines of data.', 'Record for longer, or check that the export completed.');
     const meta = phyphoxMetaFile(lines[0]);
-    if (meta) throw new InputError('This is phyphox\'s ' + meta + ', not the sensor data.', 'Upload "Raw Data.csv" from the zip that phyphox exported.');
+    if (meta) throw new InputError('This is phyphox\'s ' + meta + ', not the sensor data.', 'Upload the whole zip that phyphox exported, or the "Raw Data.csv" inside it.');
     const sample = lines.slice(0, Math.min(lines.length, 12));
     // Prefer a delimiter that splits every sampled line (header included) into the same number of fields.
     let delim = null, bestFields = 1;
@@ -428,6 +428,119 @@
     return { names, cols: keep, hasHeader: !!headers, delim, decimalComma, dropped,
       clockTime: clockCol.some(c => c > body.length * 0.5) };
   }
+
+  /* ------------------------------------------------------------------ ZIP */
+  function isZip(u8) { return u8.length >= 4 && u8[0] === 0x50 && u8[1] === 0x4b && u8[2] === 3 && u8[3] === 4; }
+
+  /* Files in a zip archive, from its central directory: [{name, size, read()}]. read()
+     returns the bytes, inflated with inflateRaw (pako's) when the entry is deflated. */
+  function parseZip(u8, inflateRaw) {
+    const damaged = () => new InputError('This zip file is incomplete or damaged.', 'Export it again, or unzip it and upload the CSV inside.');
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let eocd = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw damaged();
+    const count = dv.getUint16(eocd + 10, true);
+    let p = dv.getUint32(eocd + 16, true);
+    const entries = [];
+    for (let k = 0; k < count; k++) {
+      if (p + 46 > u8.length || dv.getUint32(p, true) !== 0x02014b50) throw damaged();
+      const flags = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true);
+      const csize = dv.getUint32(p + 20, true), size = dv.getUint32(p + 24, true);
+      const nlen = dv.getUint16(p + 28, true), skip = dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+      const local = dv.getUint32(p + 42, true);
+      const name = new TextDecoder('utf-8').decode(u8.subarray(p + 46, p + 46 + nlen));
+      p += 46 + nlen + skip;
+      if (name.endsWith('/')) continue; // folder
+      entries.push({ name, size, read() {
+        if (flags & 1) throw new InputError('"' + name + '" in the zip is password-protected.', 'Unzip it yourself and upload the CSV inside.');
+        if (csize === 0xffffffff || size === 0xffffffff) throw new InputError('The zip uses the ZIP64 format, which is not supported.', 'Unzip it and upload the CSV inside.');
+        if (local + 30 > u8.length || dv.getUint32(local, true) !== 0x04034b50) throw damaged();
+        const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+        if (start + csize > u8.length) throw damaged();
+        const raw = u8.subarray(start, start + csize);
+        let out;
+        if (method === 0) out = raw;
+        else if (method === 8) {
+          if (!inflateRaw) throw new InputError('The zip is compressed and the decompressor did not load.', 'Check your internet connection and reload the page.');
+          try { out = inflateRaw(raw); } catch (e) { throw damaged(); }
+        } else throw new InputError('"' + name + '" in the zip uses a compression method this page cannot read (' + method + ').', 'Unzip it and upload the CSV inside.');
+        if (!out || out.length !== size) throw damaged();
+        return out;
+      } });
+    }
+    return entries;
+  }
+
+  /* A phyphox export: a zip holding the data ("Raw Data.csv") and meta/device.csv and
+     meta/time.csv. Returns {text, name, checks}: the data CSV's text and what the
+     metadata says (phone, sensor chip, start time, length, pauses). */
+  function readPhyphoxZip(u8, inflateRaw) {
+    const entries = parseZip(u8, inflateRaw);
+    const base = e => e.name.split('/').pop();
+    const isMeta = e => /(^|\/)meta\//.test(e.name);
+    const csvs = entries.filter(e => /\.(csv|txt|tsv)$/i.test(e.name) && !isMeta(e) && !/(^|\/)__MACOSX\//.test(e.name));
+    if (!csvs.length) {
+      const xls = entries.some(e => /\.xlsx?$/i.test(e.name));
+      throw new InputError(xls ? 'This zip holds an Excel export, not a CSV.' : 'This zip holds no CSV file' + (entries.length ? ' (it has ' + entries.slice(0, 4).map(base).join(', ') + (entries.length > 4 ? ', …' : '') + ').' : '.'),
+        'In phyphox, choose Export data → CSV (comma, decimal point) and upload that zip, or upload the CSV itself.');
+    }
+    const data = csvs.find(e => base(e) === 'Raw Data.csv') || csvs.reduce((a, b) => (b.size > a.size ? b : a));
+    const text = new TextDecoder('utf-8').decode(data.read());
+    const checks = [];
+    const others = csvs.filter(e => e !== data).map(base);
+    const metaFile = name => entries.find(e => isMeta(e) && base(e) === name);
+    const rows = e => { try { return metaRows(new TextDecoder('utf-8').decode(e.read())); } catch (err) { return null; } };
+    const dev = metaFile('device.csv') && rows(metaFile('device.csv'));
+    const time = metaFile('time.csv') && rows(metaFile('time.csv'));
+    const props = new Map((dev || []).slice(1).map(r => [r[0], r[1]]));
+    const prop = k => { const v = props.get(k); return v && v !== 'null' ? v : ''; };
+
+    const parts = [];
+    const model = prop('deviceModel'), brand = prop('deviceManufacturer') || prop('deviceBrand');
+    if (model) parts.push('recorded on ' + (brand && !model.toLowerCase().startsWith(brand.toLowerCase()) ? brand + ' ' : '') + model + (prop('version') ? ' with phyphox ' + prop('version') : ''));
+    const header = (text.split(/\r\n|\n|\r/)[0] || '').toLowerCase();
+    const sensorKey = /linear acceleration/.test(header) ? 'linear_acceleration' : /acceleration [xyz]/.test(header) ? 'accelerometer'
+      : /gyroscope/.test(header) ? 'gyroscope' : /magnetic/.test(header) ? 'magnetic_field' : null;
+    if (sensorKey && prop(sensorKey + ' Name')) parts.push('sensor: ' + prop(sensorKey + ' Name') + (prop(sensorKey + ' Vendor') ? ' (' + prop(sensorKey + ' Vendor') + ')' : ''));
+    // time.csv: one START and one PAUSE row per stretch of recording, in experiment time,
+    // which leaves out the pauses (and system time, which does not)
+    const events = (time || []).slice(1).map(r => ({ event: (r[0] || '').toUpperCase(), t: metaNumber(r[1]), text: r[3] || '' })).filter(e => Number.isFinite(e.t));
+    const starts = events.filter(e => e.event === 'START');
+    if (starts.length && starts[0].text) parts.push('started ' + starts[0].text);
+    const last = events[events.length - 1];
+    if (last && last.event === 'PAUSE') parts.push(fmt(last.t, 1) + ' s of recording');
+    checks.push({ level: 'pass', title: 'phyphox export read', detail: '"' + data.name + '" from the zip' + (parts.length ? '; ' + parts.join(', ') : '') + '.' +
+      (others.length ? ' Also in the zip, not used: ' + others.join(', ') + '.' : '') + (dev || time ? '' : ' No meta/ folder, so there are no recording details.') });
+    if (starts.length > 1) {
+      const joins = starts.slice(1).map(e => fmt(e.t, 1) + ' s');
+      checks.push({ level: 'warn', title: 'Recording paused ' + (starts.length - 1) + ' time' + (starts.length > 2 ? 's' : ''),
+        detail: 'phyphox’s time leaves out pauses, so the stretches are joined with no gap at ' + joins.join(', ') + '. A step across a join can be missed or counted twice, and the interval across it is wrong.' });
+    }
+    return { text, name: data.name, checks };
+  }
+
+  /* Rows of a small quoted CSV (phyphox meta files), in whichever delimiter it uses. */
+  function metaRows(text) {
+    const lines = text.replace(/^﻿/, '').split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
+    if (!lines.length) return [];
+    const m = lines[0].match(/^"[^"]*"([,;\t])/), delim = m ? m[1] : ',';
+    return lines.map(l => {
+      const out = [];
+      let cur = '', q = false;
+      for (const ch of l) {
+        if (ch === '"') q = !q;
+        else if (ch === delim && !q) { out.push(cur); cur = ''; }
+        else cur += ch;
+      }
+      out.push(cur);
+      return out.map(v => v.trim());
+    });
+  }
+  // decimal comma in the "decimal comma" exports
+  function metaNumber(s) { return s === undefined || s === '' ? NaN : Number(String(s).replace(',', '.')); }
 
   /* -------------------------------------------------------- column roles */
   const RX = {
@@ -1918,7 +2031,7 @@
     return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m] };
   }
 
-  const api = { InputError, MAX_BYTES, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, buildDataset,
+  const api = { InputError, MAX_BYTES, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,

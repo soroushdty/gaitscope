@@ -18,6 +18,7 @@ import struct
 from fractions import Fraction
 import os
 import sys
+import zipfile
 
 import h5py
 import numpy as np
@@ -290,6 +291,26 @@ PHYPHOX_TIME = ('"event","experiment time","system time","system time text"\n'
                 '"PAUSE",1.800000000E1,1790000018.000,"2026-09-21 07:13:38.000 UTC-07:00"\n')
 
 
+PHYPHOX_TIME_PAUSED = ('"event","experiment time","system time","system time text"\n'
+                       '"START",0.000000000E0,1790000000.000,"2026-09-21 07:13:20.000 UTC-07:00"\n'
+                       '"PAUSE",9.000000000E0,1790000009.000,"2026-09-21 07:13:29.000 UTC-07:00"\n'
+                       '"START",9.000000000E0,1790000021.500,"2026-09-21 07:13:41.500 UTC-07:00"\n'
+                       '"PAUSE",1.800000000E1,1790000030.500,"2026-09-21 07:13:50.500 UTC-07:00"\n')
+PHYPHOX_DEVICE = "".join(f'"{k}","{v}"\n' for k, v in [
+    ("property", "value"), ("version", "1.2.1"), ("deviceModel", "Pixel 9a"), ("deviceBrand", "google"),
+    ("deviceManufacturer", "Google"), ("accelerometer Name", "Test Accelerometer"), ("accelerometer Vendor", "Test Vendor"),
+    ("linear_acceleration Name", "Linear Acceleration Sensor"), ("humidity Name", "null")])
+
+
+def write_zip(path, files):
+    """Zip of (name, text, deflate) with a fixed date, so regenerating doesn't change it."""
+    with zipfile.ZipFile(path, "w") as z:
+        for name, text, deflate in files:
+            info = zipfile.ZipInfo(name, date_time=(2026, 9, 21, 7, 13, 50))
+            info.compress_type = zipfile.ZIP_DEFLATED if deflate else zipfile.ZIP_STORED
+            z.writestr(info, text)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     W = synthetic_walk()
@@ -358,6 +379,13 @@ def main():
     write_phyphox(p("phyphox_linear_tab.csv"), phyphox_rows(W), "Linear Acceleration", "\t", decimal_comma=True)
     with open(p("phyphox_time.csv"), "w") as f:  # meta/time.csv on its own: not sensor data
         f.write(PHYPHOX_TIME)
+    # the zip phyphox exports, paused once at 9 s; meta/device.csv stored, the rest deflated
+    write_zip(p("phyphox.zip"), [
+        ("Raw Data.csv", phyphox_csv(phyphox_rows(W, gravity=True), "Acceleration", ","), True),
+        ("meta/device.csv", PHYPHOX_DEVICE, False),
+        ("meta/time.csv", PHYPHOX_TIME_PAUSED, True),
+    ])
+    write_zip(p("bad_phyphox_excel.zip"), [("Raw Data.xls", "not really Excel", True)])
     np.savetxt(p("plain_noheader.csv"), W, delimiter=",", fmt="%.5f")
     with open(p("bad_backwards_time.csv"), "w") as f:
         f.write("time,ax\n")

@@ -15,7 +15,7 @@
 <header class="top">
   <div>
     <h1>Step detector</h1>
-    <p id="subtitle">Upload a walking recording from MATLAB (.mat) or Physics Toolbox (.csv), tune the Lab 1 peak detector, and compare it with a corrected version.</p>
+    <p id="subtitle">Upload a walking recording from MATLAB (.mat), Physics Toolbox (.csv) or phyphox (.zip), tune the Lab 1 peak detector, and compare it with a corrected version.</p>
   </div>
   <div class="filechip" id="fileChip" hidden></div>
 </header>
@@ -25,9 +25,9 @@
     <section>
       <h2>Recording</h2>
       <label class="drop" id="drop">
-        <input type="file" id="fileIn" accept=".mat,.csv,.txt,.tsv">
+        <input type="file" id="fileIn" accept=".mat,.csv,.txt,.tsv,.zip">
         <strong>Choose a file</strong>
-        <span>or drop it here. MATLAB .mat or CSV, up to 50 MB.</span>
+        <span>or drop it here. MATLAB .mat, CSV or phyphox .zip, up to 50 MB.</span>
       </label>
       <p class="hint"><button class="link" id="demoBtn" type="button">Try a synthetic walk</button></p>
       <div id="dataControls" hidden>
@@ -238,6 +238,7 @@
       <div class="formats">
         <p><b>MATLAB .mat</b> files saved by MATLAB or Octave (v5 to v7, and v7.3, which loads a 41 KB reader the first time), like the lab's Walking.mat. Any variable name works. Samples should run down the rows; a time column first is optional.</p>
         <p><b>Physics Toolbox .csv</b> exports from the G-Force Meter, Linear Accelerometer, Gyroscope or Multi Record, with elapsed or clock time, comma or semicolon separated.</p>
+        <p><b>phyphox .zip</b> exports (Export data → CSV) of Acceleration with g or without g, as phyphox saves them, or the <i>Raw Data.csv</i> inside. The phone, sensor and start time from its <i>meta</i> folder are listed with the checks.</p>
         <p><b>Other CSV files</b> with numbers in columns, with or without a header row.</p>
       </div>
     </div>

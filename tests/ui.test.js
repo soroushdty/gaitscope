@@ -565,6 +565,23 @@ test('reads a MATLAB v7.3 file like the v5 one', async () => {
   assert.match(text(pg, 'valList'), /"labels" is a cell array/);
 });
 
+test('reads a phyphox zip and lists what its metadata says', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'phyphox.zip'));
+  assert.doesNotMatch(text(pg, 'valTitle'), /can’t be analysed/);
+  const opts = [...pg.d.getElementById('chanSel').options].map(o => o.textContent);
+  assert.deepEqual(opts.slice(0, 4), ['x (Acceleration x)', 'y (Acceleration y)', 'z (Acceleration z)', 'magnitude (Absolute acceleration)']);
+  assert.ok(opts.includes('vertical (along gravity, computed)'), 'phyphox "Acceleration" keeps gravity');
+  assert.match(text(pg, 'valList'), /Recording paused 1 time/);
+  pg.d.getElementById('passToggle').click();
+  assert.match(text(pg, 'valList'), /phyphox export read.*Google Pixel 9a/);
+  assert.match(text(pg, 'valList'), /Units: m\/s².*Includes gravity/);
+
+  await upload(pg, path.join(FIX, 'bad_phyphox_excel.zip'));
+  assert.match(text(pg, 'valTitle'), /can’t be analysed/);
+  assert.match(text(pg, 'valList'), /Excel export.*Export data → CSV/);
+});
+
 test('shows a fix for an unreadable file', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'bad_v73.mat'));

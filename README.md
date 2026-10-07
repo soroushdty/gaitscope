@@ -3,8 +3,8 @@
 A browser dashboard and a Python port of the step-detection code from Lab 1 of
 *Wearable Devices for Sport, Health, and Wellness* (ASU, Fall 2026).
 
-Upload a MATLAB `.mat` file or a [Physics Toolbox Sensor Suite](https://play.google.com/store/apps/details?id=com.chrystianvieyra.physicstoolboxsuite)
-CSV export. The dashboard checks that the file is usable, runs the lab's peak
+Upload a MATLAB `.mat` file, a [Physics Toolbox Sensor Suite](https://play.google.com/store/apps/details?id=com.chrystianvieyra.physicstoolboxsuite)
+CSV export or a [phyphox](https://phyphox.org) export zip. The dashboard checks that the file is usable, runs the lab's peak
 detector, and shows it next to a corrected version. You can then tune the settings,
 fix individual steps by hand, and export the results.
 
@@ -14,7 +14,9 @@ fix individual steps by hand, and export the results.
 
 - **Upload** `.mat` files (MATLAB/Octave v5–v7, any variable name, structs searched)
   or CSV files (Physics Toolbox G-Force, Linear Accelerometer, Gyroscope and Multi
-  Record exports, comma or semicolon separated, elapsed or clock time).
+  Record exports, comma or semicolon separated, elapsed or clock time), or phyphox
+  export zips ("Acceleration with g" or "without g"; the phone, sensor chip and start
+  time from its `meta/` folder are listed with the checks).
 - **Validation.** Every file is checked against an [input schema](docs/schema.md)
   before analysis. Problems come with a concrete fix, such as the exact MATLAB line
   to re-save a file in a format the page can't read.

@@ -62,11 +62,14 @@
     const isText = C.looksLikeText(buf);
     try {
       // MATLAB v7.3 (HDF5): fetch the HDF5 reader first, the only time it is needed
-      if (!isText && C.isMat73(buf)) loadMat(buf, await loadHdf5().catch(() => null));
+      if (!isText && C.isZip(buf)) loadZip(buf);
+      else if (!isText && C.isMat73(buf)) loadMat(buf, await loadHdf5().catch(() => null));
       else if (ext === 'mat' && !isText) loadMat(buf);
       else if (isText) loadCsv(new TextDecoder('utf-8').decode(buf), ext === 'mat');
       else if (ext === 'csv' || ext === 'txt' || ext === 'tsv') {
         return fatal('This file has a text extension but contains binary data.', 'If it is a MATLAB file, rename it to .mat.');
+      } else if (ext === 'zip') {
+        return fatal('This file is named .zip but is not a zip archive.', 'Export it again, or upload the CSV or MAT file itself.');
       } else loadMat(buf);
     } catch (e) {
       if (e instanceof C.InputError) return fatal(e.message, e.fix);
@@ -138,6 +141,14 @@
     if (transposed) extra.push({ level: 'warn', title: 'Matrix rotated', detail: '"' + cand.path + '" is stored as ' + origDims.join('×') + '. It was read as ' + cols[0].length + ' samples × ' + cols.length + ' channel' + (cols.length > 1 ? 's' : '') + ', since samples should run down the rows.' });
     S.varName = cand.path;
     setDataset(cols.map((_, k) => 'Column ' + (k + 1)), cols, 'mat', extra);
+  }
+
+  // a phyphox export: the data CSV inside, with the phone and recording details as checks
+  function loadZip(buf) {
+    if (typeof pako === 'undefined') throw new C.InputError('The decompression library did not load.', 'Check your internet connection and reload the page.');
+    const z = C.readPhyphoxZip(buf, u8 => pako.inflateRaw(u8));
+    S.fileChecks.push(...z.checks);
+    loadCsv(z.text);
   }
 
   function loadCsv(text, wasMat) {
