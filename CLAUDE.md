@@ -204,8 +204,9 @@ unless the course file is present in `data/`.
       (#96); 24 of 24 counted steps on the total. The device line said Chrome (CriOS); the owner
       remembers Safari. Both run on WebKit.
 - [ ] #51 on an iPhone (no device yet): the same checks, plus the permission prompt and that
-      the flip from #96 gives +1 g on z lying screen up. Also: turning left with the device
-      flat should give a positive `wz` (Apple's rotation sign, kept as given).
+      the flip from #96 gives +1 g on z lying screen up. Apple's rotation sign already matches
+      Android's (the iPad's left turns, lying flat, gave a positive rate about z), so it isn't
+      flipped.
 - [ ] Faint first and last steps (2026-10-07, owner's observation): the synthetic walk has
       17 cycles, the first and last at a third and a quarter of full height but on rhythm.
       Coza and Zero-crossing find 17; Peak-to-valley 16; Coza (modified) and Threshold
