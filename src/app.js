@@ -429,6 +429,7 @@
     const band = !!(env.upper && env.lower), envFill = withAlpha(cssVar('--env'), 0.16);
     $('legEnv').hidden = !band; $('legEnvMid').hidden = !env.mid;
     if (band) $('legEnvText').textContent = envDef.label(p);
+    if (env.mid) $('legEnvMidText').textContent = envDef.midName;
 
     // 5–6: the algorithm's guide lines (e.g. the smoothed signal and its threshold), under the markers
     const guides = fx.guides || [];
@@ -450,8 +451,8 @@
       { x: filt.applied ? t : [], y: filt.applied ? filt.A : [], type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.6 }, name: 'Filtered', visible: filt.applied,
         hovertemplate: 'Filtered<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       // 4: envelope midline (dynamic threshold)
-      { x: env.mid ? t : [], y: env.mid || [], type: 'scatter', mode: 'lines', name: 'Dynamic threshold (envelope)', visible: !!env.mid, line: { color: cssVar('--env'), width: 1.6 },
-        hovertemplate: 'Dynamic threshold (envelope)<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      { x: env.mid ? t : [], y: env.mid || [], type: 'scatter', mode: 'lines', name: env.mid ? envDef.midName : '', visible: !!env.mid, line: { color: cssVar('--env'), width: 1.6 },
+        hovertemplate: env.mid ? esc(envDef.midName) + '<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' : '' },
       guide(0), guide(1),
       { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code', visible: showLab(),
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
