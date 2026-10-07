@@ -35,8 +35,8 @@ the course data are never committed.
 
 ## Where to see it
 
-- **Commits.** Every commit on `main` (63 of 63 on 2026-10-07) carries a
-  `Co-Authored-By: Claude` trailer. Merging into `main` is the owner's.
+- **Commits.** Every commit on `main` (108 of 108 before this page, on 2026-10-07)
+  carries a `Co-Authored-By: Claude` trailer. Merging into `main` is the owner's.
 - **Pull requests.** Descriptions written by the AI end with "Generated with Claude Code"
   and a link to the session. Requests from the owner are marked "Requested by the owner".
 - **Issues.** Analyses list the decisions they need. The owner's answers are recorded in
