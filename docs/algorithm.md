@@ -267,8 +267,12 @@ values over time. Walking repeats, so its rhythm shows as a tall peak.
 * **Rhythm over time:** short-time spectra (`spectrogram`, as `scipy.signal.spectrogram`,
   within 1e-12) in 4 s windows every 0.5 s. With *Step intervals* on, the strip under the
   plot draws the period of each window's main rhythm next to the time between detected
-  steps, so speeding up, slowing down or a mismatch shows along the walk. On a walk speeding
-  up from 90 to 130 steps/min the rhythm follows within 0.06 Hz.
+  steps, so speeding up, slowing down or a mismatch shows along the walk. Only the walking
+  band matters here, so above 50 Hz the signal is low-passed at 8 Hz and decimated to about
+  20 Hz first (10 minutes at 460 Hz: 2.7 s down to 0.17 s). On a walk speeding up from 90
+  to 130 steps/min the rhythm follows within 0.06 Hz, at 100 and 460 Hz.
+* The filter, spectra and rhythm are cached, and recomputed only when the channel or their own
+  settings change, so moving h or an algorithm's settings stays quick.
 
 * **Harmonic ratio** (`harmonicRatio`, a Metrics row): a gait-symmetry measure from the
   literature (e.g. Menz et al. 2003).

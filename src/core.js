@@ -1545,16 +1545,21 @@
   }
 
   /* Cadence over time: the dominant walking frequency in windows of p.specWin seconds (default
-     4 s) every 0.5 s, on an even grid. Returns {t (window centres, in the recording's time),
-     freq (Hz, NaN where a window has no clear walking peak), window (s)}. */
-  const SPEC_HOP = 0.5;
+     4 s) every 0.5 s, on an even grid. Only the walking band (up to 3.5 Hz) matters here, so
+     above 50 Hz the signal is low-passed at 8 Hz and kept every q-th sample (about 20 Hz),
+     which makes a 10-minute 460 Hz recording about 20× quicker. Returns {t (window centres, in
+     the recording's time), freq (Hz, NaN where a window has no clear walking peak), window (s)}. */
+  const SPEC_HOP = 0.5, RHYTHM_RATE = 20;
   function rhythmOverTime(A, t, p) {
-    const g = evenGrid(A, t), nperseg = Math.round((p.specWin || 4) * g.fs);
-    if (g.A.length < nperseg) return { t: new Float64Array(0), freq: new Float64Array(0), window: nperseg / g.fs };
-    let nfft = 1; while (nfft < Math.max(nperseg, Math.ceil(g.fs / 0.01))) nfft *= 2;
-    const sg = spectrogram(g.A, g.fs, { nperseg, noverlap: nperseg - Math.max(1, Math.round(SPEC_HOP * g.fs)), nfft });
+    const g = evenGrid(A, t), q = Math.max(1, Math.floor(g.fs / RHYTHM_RATE));
+    let x = g.A, fs = g.fs;
+    if (q > 2) { const lp = lowpass(x, fs, 8); x = Float64Array.from({ length: Math.ceil(lp.length / q) }, (_, k) => lp[k * q]); fs /= q; }
+    const nperseg = Math.round((p.specWin || 4) * fs);
+    if (x.length < nperseg) return { t: new Float64Array(0), freq: new Float64Array(0), window: nperseg / fs };
+    let nfft = 1; while (nfft < Math.max(nperseg, Math.ceil(fs / 0.01))) nfft *= 2;
+    const sg = spectrogram(x, fs, { nperseg, noverlap: nperseg - Math.max(1, Math.round(SPEC_HOP * fs)), nfft });
     const freq = Float64Array.from(sg.S, P => { const pk = dominantFrequency(sg.f, P); return pk.clear ? pk.freq : NaN; });
-    return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / g.fs };
+    return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / fs };
   }
 
   /* Harmonic ratio, a gait-symmetry measure (e.g. Menz et al. 2003): each stride (two steps,
