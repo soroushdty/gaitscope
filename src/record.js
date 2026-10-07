@@ -9,8 +9,9 @@
   const C = window.StepCore;
   const $ = id => document.getElementById(id);
   const HOLD_MS = 1000, PRESS_MARGIN_MS = 300, NO_SENSOR_MS = 2500, MAX_S = 30 * 60;
-  // The countdown is a setting (#recCount, remembered in this browser): 3 s was too short to put
-  // the phone in a pocket (the owner's recordings, 2026-10-07).
+  // The countdown is a setting (#recCount, remembered in this browser), 3 s by default (owner):
+  // too short to put the phone in a pocket, so it can be made longer (the owner's recordings,
+  // 2026-10-07).
   const COUNTDOWNS = ['3', '5', '10', '15', '30'], COUNTDOWN_KEY = 'gaitscope-countdown';
   // A locked screen hides the page, and browsers send no motion data to hidden pages (#86).
   const LOCK_ON = 'The screen stays on by itself; don\u2019t lock it, or the recording stops.',
@@ -85,7 +86,7 @@
     st.timers.push(setTimeout(() => {
       if (st && !st.gotData) fail('No motion sensor is sending data.', 'Open this page on a phone. Most computers have no accelerometer.');
     }, NO_SENSOR_MS));
-    let left = Number($('recCount').value) || 5;
+    let left = Number($('recCount').value) || 3;
     show('countdown', 'Get ready', String(left), 'Put the phone where you will carry it. Don\u2019t lock the screen: the recording stops when it locks. Tap to start now.');
     st.timers.push(setInterval(() => { if (--left <= 0) begin(); else $('recBig').textContent = String(left); }, 1000));
   }
