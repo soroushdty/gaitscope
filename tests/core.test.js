@@ -1164,6 +1164,7 @@ test('the Python port\'s export and the dashboard\'s agree on Coza (walk.mat, co
   assert.equal(py.about.generator, 'gaitscope python port'); assert.equal(py.about.version, model.about.version);
   assert.equal(py.about.format_version, model.about.format_version);
   assert.deepEqual(py.indicators.type, ['coza_original']); assert.deepEqual(JSON.parse(py.indicators.params[0]), { w: 30, h: 1 });
+  assert.deepEqual(py.indicators.credit, [model.indicators.credit[model.indicators.type.indexOf('coza_original')]], 'the same credit for Coza');
   assert.ok(sameNum(py.signals.time_s, model.signals.time_s) && sameNum(py.signals.signal, model.signals.signal), 'same time base and signal');
   const rows = model.steps.coza.map((v, j) => (v === 'step' ? j : -1)).filter(j => j >= 0);
   for (const c of ['time_s', 'sample_matlab', 'value']) assert.ok(sameNum(py.steps[c], rows.map(j => model.steps[c][j])), 'steps.' + c);
@@ -1198,6 +1199,12 @@ test('docs/algorithm.md lists every DOI and URL the page credits', () => {
   const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'algorithm.md'), 'utf8');
   for (const d of [...C.ALGORITHMS, ...C.ENVELOPES, ...C.FILTERS])
     for (const c of d.credit) for (const ref of [c.doi, c.url].filter(Boolean)) assert.ok(doc.includes(ref), d.id + ': ' + ref + ' is in docs/algorithm.md');
+});
+test('the export\'s indicators table credits each indicator', () => {
+  const { model } = walkExport();
+  assert.deepEqual(model.indicators.credit, ['coza_original', 'coza', 'sliding'].map(id => C.creditText([...C.ALGORITHMS, ...C.ENVELOPES].find(d => d.id === id).credit)));
+  assert.match(model.indicators.credit[0], /^Dr\. Aurel Coza/);
+  assert.equal(model.indicators.credit[2], '', 'the sliding window needs none');
 });
 test('VERSION matches package.json', () => {
   assert.equal(C.VERSION, require('../package.json').version);

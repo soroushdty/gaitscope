@@ -86,6 +86,7 @@ One row per step detector and envelope on the plot.
 | `color` | its colour slot, `c1`…`c6` |
 | `params` | its settings as JSON text, e.g. `{"w":30,"h":1}` |
 | `settings` | what a detector derived from them, as JSON text, e.g. `{"coza_window_samples":30}` |
+| `credit` | who made it, as one line: `Surname et al., Year (what for) https://doi.org/…`, several joined with `; `; empty when none is needed (see `docs/algorithm.md`, Credits) |
 
 ### signals (table)
 

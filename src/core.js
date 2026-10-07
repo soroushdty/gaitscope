@@ -2151,7 +2151,8 @@
     const ind = x.indicators || [];
     model.indicators = { id: ind.map(i => i.id), kind: ind.map(i => i.kind), type: ind.map(i => i.type), name: ind.map(i => i.name),
       source: ind.map(i => i.source || ''), color: ind.map(i => i.color || ''), params: ind.map(i => JSON.stringify(i.params || {})),
-      settings: ind.map(i => JSON.stringify(i.settings || {})) }; // what a detector derived from its params (e.g. its window in samples)
+      settings: ind.map(i => JSON.stringify(i.settings || {})), // what a detector derived from its params (e.g. its window in samples)
+      credit: ind.map(i => creditText(((i.kind === 'envelope' ? ENVELOPES : ALGORITHMS).find(d => d.id === i.type) || {}).credit)) };
     if (parts.signals) {
       model.signals = { time_s: Array.from(x.t), signal: Array.from(x.A) };
       if (x.filtered) model.signals.filtered = Array.from(x.filtered);

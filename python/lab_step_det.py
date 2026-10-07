@@ -430,6 +430,8 @@ VERSION = "0.1.0"  # as in package.json, pyproject.toml and src/core.js
 EXPORT_FORMAT_VERSION = 2
 TEXT_COLUMNS = {"metric", "unit", "text", "id", "kind", "type", "name", "source", "color", "params", "settings"}
 TABLES = ("indicators", "signals", "recorded", "steps", "metrics", "notes")
+# Coza's credit as the dashboard writes it in the indicators table (creditText in src/core.js, #63)
+COZA_CREDIT = "Dr. Aurel Coza (Lab 1 of Wearable Devices for Sport, Health, and Wellness, ASU; LabStepDet_2025.m)"
 RECORDS = ("about", "settings", "params", "spectrum")
 
 
@@ -476,7 +478,7 @@ def export_model(t, A, idx, about, settings, w=30, h=1):
         "settings": settings,
         "params": {},
         "indicators": {"id": ["coza"], "kind": ["detector"], "type": ["coza_original"], "name": ["Coza"], "source": ["recorded"],
-                       "color": ["c1"], "params": [json.dumps({"w": w, "h": h})], "settings": ["{}"]},
+                       "color": ["c1"], "params": [json.dumps({"w": w, "h": h})], "settings": ["{}"], "credit": [COZA_CREDIT]},
         "signals": {"time_s": np.asarray(t, float), "signal": np.asarray(A, float)},
         "steps": {"time_s": np.asarray(t, float)[idx - 1], "sample_matlab": idx.astype(float),
                   "value": np.asarray(A, float)[idx - 1], "coza": ["step"] * len(idx)},
