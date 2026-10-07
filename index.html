@@ -151,6 +151,14 @@
         <input type="range" id="fAttenIn" data-param="fAtten" min="20" max="80" value="40" step="5">
       </div>
       </div>
+      <div class="spec-opts">
+      <h3>Spectrum</h3>
+      <div class="ctl">
+        <div class="ctl-head"><label for="specSegIn">Segment length</label><output id="specSegOut" for="specSegIn" data-unit="s" data-dec="0">8 s</output></div>
+        <input type="range" id="specSegIn" data-param="specSeg" min="2" max="20" value="8" step="1">
+      </div>
+      <p class="hint">Longer segments separate close frequencies better (resolution about 1 ÷ length); shorter ones average more segments and look smoother.</p>
+      </div>
       <div class="algo-opts" data-algo="coza">
       <h3>Coza</h3>
       <div class="ctl">
@@ -257,6 +265,15 @@
           </div>
           <div id="plot" role="img" aria-label="Signal with detected steps"></div>
           <ul class="note-list" id="noteList" hidden></ul>
+        </section>
+
+        <section class="card spectrum-card" id="specCard">
+          <div class="card-head">
+            <h2>Spectrum</h2>
+            <label class="toggle" title="Show power on a logarithmic scale, to see the noise and what a filter removes"><input type="checkbox" id="specLog"><span>Log scale</span></label>
+          </div>
+          <div id="specPlot" role="img" aria-label="Spectrum of the signal the algorithm sees"></div>
+          <p class="note" id="specNote"></p>
         </section>
 
         <div class="results">

@@ -19,16 +19,17 @@ function makePage() {
     .replace(/<link[^>]+>/g, '')
     .replace('<script src="src/core.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/core.js'), 'utf8') + '</script>')
     .replace('<script src="src/app.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8') + '</script>');
-  const plots = [], blobs = [];
+  const plots = [], spectra = [], blobs = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
   const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
     w.pako = pako; w.TextDecoder = TextDecoder;
     w.matchMedia = () => ({ matches: false, addEventListener() {} });
-    w.Plotly = { react(el, traces, layout, config) { plots.push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
+    // the main plot and the spectrum are recorded separately
+    w.Plotly = { react(el, traces, layout, config) { (el.id === 'specPlot' ? spectra : plots).push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
     w.URL.createObjectURL = b => { blobs.push(b); return 'blob:x'; }; w.URL.revokeObjectURL = () => {};
   } });
-  return { w: dom.window, d: dom.window.document, plots, blobs };
+  return { w: dom.window, d: dom.window.document, plots, spectra, blobs };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function upload(pg, file) {
@@ -77,7 +78,7 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.match(text(pg, 'algoDetail'), /tied peaks are counted once/, 'the full list is under How detection works');
   assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
   const names = [...pg.d.querySelectorAll('#metricsTable td .tip')];
-  assert.equal(names.length, 7);
+  assert.equal(names.length, 8);
   assert.ok(names.every(n => n.title.length > 20), 'every metric explains itself in a tooltip');
   assert.equal(pg.d.querySelectorAll('#metricsTable small').length, 0, 'no grey explanations under the values');
   assert.ok([...pg.d.querySelectorAll('#metricsTable td')].filter(td => td.textContent.startsWith('—')).every(td => td.textContent === '—'));
@@ -433,6 +434,47 @@ test('envelopes are drawn around the signal and never change steps, metrics or e
   assert.ok(Array.from(last.traces[TR.signal].y).some((v, i) => v > hi[i]), 'not the recorded signal');
   sel.value = 'none'; sel.dispatchEvent(new pg.w.Event('change'));
   assert.equal(pg.plots.at(-1).traces[TR.envUpper].visible, false); assert.equal($('legEnv').hidden, true);
+});
+
+test('the spectrum panel shows the walking rhythm, the filter gain and a cadence cross-check', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
+  let sp = pg.spectra.at(-1);
+  assert.ok(sp, 'drawn with the main plot');
+  assert.equal(sp.traces[0].visible, false, 'no faded recording without a filter');
+  assert.equal(sp.traces[2].visible, false, 'no filter gain without a filter');
+  assert.match(sp.layout.annotations[0].text, /^0\.9\d Hz = 5\d\/min$/, 'the stride-rate peak of column 2');
+  assert.equal(sp.layout.yaxis.type, 'linear');
+  const row = name => [...pg.d.querySelectorAll('#metricsTable tbody tr')].find(r => r.cells[0].textContent === name);
+  assert.match(row('Cadence (spectrum)').cells[2].textContent, /^5\d\.\d steps\/min$/);
+  assert.match(row('Cadence (spectrum)').querySelector('.tip').title, /resolution is about 60 ÷ the segment length/);
+  assert.match(text(pg, 'specNote'), /strongest rhythm .* 0\.9\d Hz: 5\d per minute/);
+
+  $('specLog').checked = true; $('specLog').dispatchEvent(new pg.w.Event('change'));
+  assert.equal(pg.spectra.at(-1).layout.yaxis.type, 'log');
+
+  $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  sp = pg.spectra.at(-1);
+  assert.equal(sp.traces[0].visible, true, 'recording faded behind the filtered spectrum');
+  assert.equal(sp.traces[2].visible, true); assert.equal(sp.traces[2].yaxis, 'y2');
+  const g = sp.traces[2].y, f = sp.traces[2].x;
+  assert.ok(g[f.findIndex(v => v >= 1)] > 0.95 && g[f.findIndex(v => v >= 8)] < 0.05, 'keeps 1 Hz, removes 8 Hz');
+  $('filterSel').value = 'median'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  assert.equal(pg.spectra.at(-1).traces[2].visible, false); assert.match(text(pg, 'specNote'), /isn’t linear/);
+
+  // magnitude: two bumps per stride, so the spectrum's rhythm is twice Coza's peak rate
+  $('filterSel').value = 'none'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+  $('chanSel').value = '4'; $('chanSel').dispatchEvent(new pg.w.Event('change'));
+  await sleep(40);
+  assert.match(text(pg, 'valList'), /Spectrum and steps differ by a factor of 2/);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('expMetrics').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /\ncadence_spectrum,,1\d\d\.\d+,,steps\/min/);
+  assert.match(csv, /\nspectrum_segment_s,(7\.99|8\.00)\d*\n/, "8 s, as a whole number of samples");
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {

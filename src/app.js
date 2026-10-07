@@ -318,7 +318,10 @@
     const finalIdx = fx.idx, finalSet = new Set(finalIdx);
     const algM = C.timingMetrics(finalIdx, t, { stride: p.stride });
     const weakSet = new Set(fx.weakDropped);
-    S.res = { p, algo, filt, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet };
+    // spectrum of the signal the algorithm sees, and of the recording when a filter changed it
+    const spec = C.spectrum(filt.A, t, p), specRaw = filt.applied ? C.spectrum(A, t, p) : null;
+    const specCadence = spec.peak.clear ? spec.peak.freq * 60 * (p.stride ? 2 : 1) : NaN;
+    S.res = { p, algo, filt, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet, spec, specRaw, specCadence };
     render();
   }
 
@@ -345,6 +348,15 @@
     if (p.weak && fx.weakDropped && fx.weakDropped.length) {
       out.push({ level: 'info', title: fx.weakDropped.length + ' weak peak' + (fx.weakDropped.length > 1 ? 's' : '') + ' dropped', detail: 'At ' + fx.weakDropped.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(C.WEAK_RATIO * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
     }
+    const { spec, specCadence, algM: am } = S.res;
+    if (!spec.peak.clear) {
+      out.push({ level: 'info', title: 'No clear walking rhythm in the spectrum', detail: 'No frequency between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz stands well above the rest (at least 5× the median), so Cadence (spectrum) is left empty. Short or irregular walks, or mostly standing, do this.' });
+    } else if (Number.isFinite(am.cadence) && finalIdx.length >= 3) {
+      const ratio = specCadence / am.cadence;
+      if (Math.abs(ratio - 2) < 0.2 || Math.abs(ratio - 0.5) < 0.05) {
+        out.push({ level: 'info', title: 'Spectrum and steps differ by a factor of 2', detail: 'The spectrum\u2019s main rhythm gives ' + fmt(specCadence, 0) + ' steps/min and ' + S.res.algo.name + '\u2019s steps give ' + fmt(am.cadence, 0) + '. One of them is counting strides (left plus right step) rather than steps. With the phone on one leg the strongest rhythm is usually the stride; at the waist, the step.' });
+      }
+    }
     if (finalIdx.length >= 3 && !p.stride) {
       const iv = S.res.algM.stepInterval;
       if (iv > 0.85 && iv < 1.6) out.push({ level: 'info', title: 'Steps may be strides', detail: 'Detected steps are ' + fmt(iv, 2) + ' s apart, slow for single steps (usually 0.45 to 0.7 s). If the phone was on one leg, each peak is a left-plus-right stride; set Phone position to "One leg" under Recording.' });
@@ -356,6 +368,7 @@
   function render() {
     renderValidation(derivedChecks());
     renderPlot();
+    renderSpectrum();
     renderMetrics();
     renderSteps();
     renderNotes();
@@ -494,6 +507,44 @@
     $('plotTitle').textContent = name + ', ' + chLabel;
   }
 
+  // Spectrum panel: power of the signal the algorithm sees (and of the recording, faded, when a
+  // filter changed it), the filter's gain on a second axis, and the dominant walking frequency.
+  function renderSpectrum() {
+    if (typeof Plotly === 'undefined') return;
+    const { spec, specRaw, p } = S.res;
+    const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') };
+    const top = Math.min(spec.fs / 2, 10), log = $('specLog').checked;
+    const cut = r => { let k = 0; while (k < r.f.length && r.f[k] <= Math.min(spec.fs / 2, 25)) k++; return { f: Array.from(r.f.subarray(0, k)), psd: Array.from(r.psd.subarray(0, k)) }; };
+    const sp = cut(spec), raw = specRaw ? cut(specRaw) : null;
+    const gain = C.filterGain(p, spec.fs, sp.f);
+    const unit = chanInfo().unit;
+    const traces = [
+      { x: raw ? raw.f : [], y: raw ? raw.psd : [], type: 'scatter', mode: 'lines', name: 'Recorded', visible: !!raw, opacity: 0.35, line: { color: colors.signal, width: 1.2 },
+        hovertemplate: 'Recorded<br>%{x:.2f} Hz<br>%{y:.3g}<extra></extra>' },
+      { x: sp.f, y: sp.psd, type: 'scatter', mode: 'lines', name: raw ? 'Filtered' : 'Signal', line: { color: colors.signal, width: 1.6 },
+        hovertemplate: '%{x:.2f} Hz (%{customdata:.0f}/min)<br>%{y:.3g}<extra></extra>', customdata: sp.f.map(v => v * 60) },
+      { x: gain ? sp.f : [], y: gain || [], type: 'scatter', mode: 'lines', name: 'Filter gain', visible: !!gain, yaxis: 'y2', line: { color: colors.algo, width: 1.3, dash: 'dash' },
+        hovertemplate: 'Filter keeps %{y:.2f} of the swing at %{x:.2f} Hz<extra></extra>' },
+    ];
+    const pk = spec.peak, fsUnit = unit ? ' (' + unit + ')²/Hz' : '';
+    const layout = {
+      uirevision: S.file.name + '|' + S.chanKey,
+      margin: { l: 58, r: gain ? 50 : 14, t: 8, b: 44 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { family: cssVar('--font') || 'sans-serif', color: colors.muted, size: 12 }, showlegend: false, hovermode: 'closest',
+      xaxis: { title: { text: 'Frequency (Hz)' }, range: [0, top], gridcolor: colors.line, zeroline: false },
+      yaxis: { title: { text: 'Power' + fsUnit }, type: log ? 'log' : 'linear', gridcolor: colors.line, zeroline: false, automargin: true, exponentformat: 'power' },
+      yaxis2: { overlaying: 'y', side: 'right', range: [0, 1.05], visible: !!gain, title: { text: 'Filter gain' }, showgrid: false, zeroline: false },
+      shapes: pk.clear ? [{ type: 'line', xref: 'x', x0: pk.freq, x1: pk.freq, yref: 'paper', y0: 0, y1: 1, line: { color: colors.algo, width: 1.2, dash: 'dot' } }] : [],
+      annotations: pk.clear ? [{ x: pk.freq, xref: 'x', y: 1, yref: 'paper', yanchor: 'top', xanchor: 'left', showarrow: false, bgcolor: cssVar('--surface'),
+        text: fmt(pk.freq, 2) + ' Hz = ' + fmt(pk.freq * 60, 0) + '/min', font: { color: colors.algo, size: 12 } }] : [],
+    };
+    const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
+    Plotly.react($('specPlot'), traces, layout, config);
+    $('specNote').textContent = (pk.clear ? 'The strongest rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz is ' + fmt(pk.freq, 2) + ' Hz: ' + fmt(pk.freq * 60, 0) + ' per minute' + (p.stride ? ', counted as strides (One leg), so ' + fmt(pk.freq * 120, 0) + ' steps/min. ' : '. ') : 'No clear walking rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz. ') +
+      'Welch\u2019s method, ' + fmt(spec.segment, 1) + ' s segments' + (spec.resampled ? ', on an even ' + fmt(spec.fs, 1) + ' Hz grid' : '') + '. ' +
+      (gain ? 'The dashed line is the filter\u2019s gain: the share of each frequency\u2019s swing it keeps.' : p.filter === 'median' ? 'The median filter isn\u2019t linear, so it has no fixed gain to draw.' : '');
+  }
+
   /* ------------------------------------------------------------- notes */
   function onPlotClick(ev) {
     if (!$('noteMode').checked || !S.ch || !ev.points || !ev.points.length) return;
@@ -556,6 +607,8 @@
       { name: 'Gait asymmetry', tip: 'Mean of the even intervals ÷ mean of the odd intervals; 1.000 is symmetric.' + (p.stride ? ' Not reported for strides, because it needs single steps.' : ''),
         lab: f(orig.asymmetry, 3), algo: p.stride ? '—' : f(algM.asymmetry, 3) },
       { name: 'Walking span', tip: 'Time from the first to the last ' + name + ' step.', lab: '—', algo: f(algM.span, 1, 's') },
+      { name: 'Cadence (spectrum)', tip: '60 × the strongest frequency between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz in the spectrum of the signal ' + name + ' sees (× 2 with Phone position on One leg). No steps are detected, so it cross-checks Cadence. Its resolution is about 60 ÷ the segment length (' + fmt(S.res.spec.segment, 0) + ' s): ' + fmt(60 / S.res.spec.segment, 1) + ' steps/min. — means the spectrum has no clear walking peak.',
+        lab: '—', algo: f(S.res.specCadence, 1, 'steps/min') },
     ];
     const lab = showLab();
     $('labNote').hidden = !lab;
@@ -626,6 +679,7 @@
       csvRow([p.stride ? 'stride_time_variability' : 'step_time_variability', n(orig.variabilitySamples), n(algM.variabilityMs), 'samples (SD)', 'ms (SD)']),
       csvRow(['coefficient_of_variation', '', n(algM.cv), '', '%']),
       csvRow(['gait_asymmetry', n(orig.asymmetry), p.stride ? '' : n(algM.asymmetry), 'even/odd intervals', 'even/odd intervals']),
+      csvRow(['cadence_spectrum', '', n(S.res.specCadence), '', 'steps/min (dominant frequency × 60)']),
       '',
       csvRow(['setting', 'value']),
       csvRow(['algorithm', S.res.algo.name]),
@@ -637,6 +691,7 @@
       csvRow(['sampling_rate_hz', n(S.ch.fs)]),
       csvRow(['filter', C.filterLabel(p) + (S.res.filt.applied ? '' : p.filter !== 'none' ? ' (not applied)' : '')]),
       csvRow(['filter_resampled', S.res.filt.resampled ? 'yes' : 'no']),
+      csvRow(['spectrum_segment_s', n(S.res.spec.segment)]),
       ...S.res.algo.settings(p, S.res.fx).map(csvRow),
       csvRow(['phone_position', p.stride ? 'one leg (each peak is a stride)' : 'hand or waist (each peak is a step)']),
     ];
@@ -690,6 +745,7 @@
   $('showLab').addEventListener('change', () => { $('legLab').hidden = $('wCtl').hidden = !showLab(); showH(); if (S.ch && S.res) render(); });
   showAlgo();
   $('showIntervals').addEventListener('change', () => { if (S.ch && S.res) renderPlot(); });
+  $('specLog').addEventListener('change', () => { if (S.ch && S.res) renderSpectrum(); });
   $('noteMode').addEventListener('change', () => { if (!$('noteMode').checked) closeNoteForm(); else updateNoteUi(); });
   $('noteForm').addEventListener('submit', addNote);
   $('noteCancel').addEventListener('click', closeNoteForm);
@@ -700,7 +756,7 @@
   $('expMetrics').addEventListener('click', exportMetrics);
   $('valToggle').addEventListener('click', () => { const open = $('valToggle').getAttribute('aria-expanded') !== 'true'; valOpenedByUser = open; setValOpen(open); });
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
-  const rerenderTheme = () => { if (S.ch && S.res) renderPlot(); };
+  const rerenderTheme = () => { if (S.ch && S.res) { renderPlot(); renderSpectrum(); } };
   if (mq.addEventListener) mq.addEventListener('change', rerenderTheme);
   new MutationObserver(rerenderTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   setControlsEnabled(false);
