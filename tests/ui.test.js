@@ -1024,7 +1024,9 @@ test('the theme button cycles System, Light and Dark, redraws the plots and reme
 
 test('recorder: the countdown is a setting, remembered in the browser', async () => {
   const storage = memoryStorage(), pg = makePage({ coarse: true, motion: true, storage }), $ = id => pg.d.getElementById(id);
-  assert.equal($('recCountRow').hidden, false); assert.equal($('recCount').value, '5');
+  assert.equal($('recCountRow').hidden, false); assert.equal($('recCount').value, '3', '3 s unless changed (owner)');
+  $('recCount').value = '5'; $('recCount').dispatchEvent(new pg.w.Event('change'));
+  assert.equal(storage.m['gaitscope-countdown'], '5');
   $('recCount').value = '3'; $('recCount').dispatchEvent(new pg.w.Event('change'));
   assert.equal(storage.m['gaitscope-countdown'], '3');
   $('recBtn').click(); await sleep(20);
@@ -1040,7 +1042,7 @@ test('recorder: the countdown is a setting, remembered in the browser', async ()
   pg2.d.getElementById('recBtn').click(); await sleep(20);
   assert.equal(text(pg2, 'recBig'), '15');
   esc(pg2);
-  assert.equal(makePage({ coarse: true, motion: true, storage: memoryStorage({ 'gaitscope-countdown': '7' }) }).d.getElementById('recCount').value, '5', 'not one of the choices');
+  assert.equal(makePage({ coarse: true, motion: true, storage: memoryStorage({ 'gaitscope-countdown': '7' }) }).d.getElementById('recCount').value, '3', 'not one of the choices');
   const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
   const pg3 = makePage({ coarse: true, motion: true, storage: blocked });
   pg3.d.getElementById('recCount').value = '10'; pg3.d.getElementById('recCount').dispatchEvent(new pg3.w.Event('change'));

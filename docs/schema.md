@@ -53,7 +53,7 @@ device, rate, how it stopped, and the two optional answers (`steps_counted`,
 `phone_position`).
 
 The countdown before recording is a setting next to **Record a walk** (3, 5, 10, 15 or 30 s;
-5 by default, remembered in the browser), so there is time to put the phone in a pocket. Tap
+3 by default, remembered in the browser), so there is time to put the phone in a pocket. Tap
 the countdown to start at once.
 
 Holding Stop moves the phone: the hand reaches for it, then the finger presses. In the owner's
