@@ -187,9 +187,11 @@ unless the course file is present in `data/`.
 - [ ] Record walks with a known step count (e.g. 20 steps counted by hand, phone in the
       hand and in a pocket) to rank the algorithms (#11, decision 4). The dashboard's
       recorder (#51) saves the count and position in the CSV and compares them.
-- [ ] #51 on the owner's Pixel 9a: 20 counted steps in the hand and in a front pocket, next
-      to a Physics Toolbox recording of the same walk. Check that the axes and signs match,
-      note the rate, and lock the screen mid-recording.
+- [ ] #51 on the owner's Pixel 9a (Firefox 157, 2026-10-07; files in `data/`): 57.4 Hz, even
+      timing; face up reads +0.98 g on z (Android's direction). Walks of 10 steps (flat at the
+      chest) and 28 (front pocket): inside the walk every detector is within one step on the
+      vertical signal; the extras come from the ends. Locking the screen ends the recording and
+      keeps what came before (#86). Still to do: a Physics Toolbox recording of the same walk.
 - [ ] #51 on an iPhone (no device yet): the same checks, plus the permission prompt and
       whether Safari inverts the axis signs.
 - [ ] Faint first and last steps (2026-10-07, owner's observation): the synthetic walk has
