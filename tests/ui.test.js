@@ -23,7 +23,8 @@ function makePage(opts = {}) {
   const plots = [], spectra = [], blobs = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
-  const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
+  const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, url: opts.url, beforeParse(w) {
+    if (opts.insecure) Object.defineProperty(w, 'isSecureContext', { value: false });
     w.pako = pako; w.TextDecoder = TextDecoder;
     if (opts.hdf5 !== false) w.hdf5 = require('jsfive'); // the page loads it from jsDelivr when a v7.3 file arrives
     w.matchMedia = q => ({ matches: !!(opts.coarse && /pointer: coarse/.test(q)), addEventListener() {} }); // coarse: a phone
@@ -794,4 +795,13 @@ test('recorder: iPhone permission refused, and a computer without a sensor', asy
   quiet.d.getElementById('recBtn').click(); await sleep(2600);
   assert.equal(quiet.d.getElementById('recOverlay').dataset.phase, 'error');
   assert.match(text(quiet, 'recErrText'), /No motion sensor is sending data/);
+});
+
+test('recorder on an http page: says why and links to the same page over https', async () => {
+  const pg = makePage({ coarse: true, motion: true, insecure: true, url: 'http://example.org/gaitscope/?x=1' });
+  pg.d.getElementById('recBtn').click(); await sleep(20);
+  assert.equal(pg.d.getElementById('recOverlay').dataset.phase, 'error');
+  assert.match(text(pg, 'recErrText'), /need a secure \(https:\/\/\) page, and this one was opened over http/);
+  const a = pg.d.getElementById('recErrLink');
+  assert.equal(a.hidden, false); assert.equal(a.href, 'https://example.org/gaitscope/?x=1');
 });
