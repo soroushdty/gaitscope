@@ -192,7 +192,7 @@ test('notes are pinned to the plot, listed, exported and deleted, without changi
   assert.equal($('noteList').children.length, 1);
 
   const csv = await exportCsv(pg);
-  assert.match(csv, /note_time_s,note\n3\.250,turned <around>\n/);
+  assert.match(csv, /note_plot,note_kind,note_x,note_y,note\nsignal,time,3\.250,,turned <around>\n/);
   assert.match(csv, /\ncoza,Coza: w 30 · h 1 \(filtered\)\ncoza_modified,Coza \(modified\): h 1 · window 0\.30 s · weak peaks dropped \(filtered\)\n/, 'each detector with its settings');
 
   $('noteList').querySelector('button').click();

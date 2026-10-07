@@ -427,8 +427,8 @@ def gaps(t, factor=5):
 # --- export (#53): the dashboard's content model, Coza only (docs/export.md) ---------------
 
 VERSION = "0.1.0"  # as in package.json, pyproject.toml and src/core.js
-EXPORT_FORMAT_VERSION = 2
-TEXT_COLUMNS = {"metric", "unit", "text", "id", "kind", "type", "name", "source", "color", "params", "settings"}
+EXPORT_FORMAT_VERSION = 3
+TEXT_COLUMNS = {"metric", "unit", "text", "id", "kind", "type", "name", "source", "color", "params", "settings", "plot"}
 TABLES = ("indicators", "signals", "recorded", "steps", "metrics", "notes")
 # Coza's credit as the dashboard writes it in the indicators table (creditText in src/core.js, #63)
 COZA_CREDIT = "Dr. Aurel Coza (BME 598/494; LabStepDet_2025.m)"
@@ -448,7 +448,7 @@ def _timing(t, idx):
 
 
 def export_model(t, A, idx, about, settings, w=30, h=1):
-    """The export model (format 2) for Coza's result: about, settings, one indicator (coza),
+    """The export model (format 3) for Coza's result: about, settings, one indicator (coza),
     signals (time_s, signal), steps (time_s, sample_matlab 1-based, value, coza), metrics
     (metric, unit, coza) and an empty notes table. Same layout as buildExport in
     src/core.js; the timing rows come from the timestamps, the coza_ rows from the .m file's
@@ -484,7 +484,7 @@ def export_model(t, A, idx, about, settings, w=30, h=1):
                   "value": np.asarray(A, float)[idx - 1], "coza": ["step"] * len(idx)},
         "metrics": {"metric": [r[0] for r in rows], "unit": [r[1] for r in rows],
                     "coza": np.array([float(r[2]) if np.isfinite(r[2]) else np.nan for r in rows])},
-        "notes": {"time_s": np.zeros(0), "text": []},
+        "notes": {"time_s": np.zeros(0), "plot": [], "kind": [], "x": np.zeros(0), "y": np.zeros(0), "text": []},
     }
 
 

@@ -43,7 +43,7 @@ kind. The ids name the columns of `steps` and `metrics` and the envelope columns
 | Key | Meaning |
 |---|---|
 | `format` | always `gaitscope-export` |
-| `format_version` | `2` (indicators). Version 1 had one algorithm next to the course code. Readers refuse versions newer than they know, and the dashboard reopens version 1 as Coza plus that algorithm. |
+| `format_version` | `3` (notes at a time, a level or a point, on the signal or the spectrum; #80). Version 2 had notes only at a time on the signal (`time_s`, `text`), and version 1 had one algorithm next to the course code. Readers refuse versions newer than they know. The dashboard reopens version 2 notes as time notes, and version 1 as Coza plus that algorithm. |
 | `generator` | `gaitscope dashboard` or `gaitscope python port` |
 | `version` | gaitscope's version (`package.json`, `pyproject.toml`) |
 | `exported` | export time, ISO 8601 in UTC |
@@ -126,7 +126,16 @@ detector has no value.
 
 ### notes (table)
 
-`time_s` and `text` of the notes pinned to the plot. Empty from the Python port.
+One row per note pinned to the signal or the spectrum. Empty from the Python port.
+
+| Column | Meaning |
+|---|---|
+| `time_s` | the time, for notes at a time or a point on the signal (as in version 2); NaN otherwise |
+| `plot` | `signal` or `spectrum` |
+| `kind` | `time` (a vertical line), `level` (a horizontal line) or `point` |
+| `x` | the time in s (signal) or the frequency in Hz (spectrum); NaN for a level |
+| `y` | the value (signal) or the power (spectrum); NaN for a time |
+| `text` | the note |
 
 ## How each format stores it
 

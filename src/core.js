@@ -2097,10 +2097,10 @@
   // The fields are described in docs/export.md; python/lab_step_det.py --export writes the
   // same model (Coza only). Sample numbers are 1-based, like MATLAB, everywhere.
   const VERSION = '0.1.0'; // as in package.json and pyproject.toml (a test keeps them equal)
-  const EXPORT_FORMAT_VERSION = 2;
+  const EXPORT_FORMAT_VERSION = 3;
   // Column types: these names are always text, the rest follow their values (text, true/false
   // or numbers), so a detector's column of step statuses is text.
-  const TEXT_COLUMNS = new Set(['metric', 'unit', 'text', 'id', 'kind', 'type', 'name', 'source', 'color', 'params', 'settings']);
+  const TEXT_COLUMNS = new Set(['metric', 'unit', 'text', 'id', 'kind', 'type', 'name', 'source', 'color', 'params', 'settings', 'plot']);
   function columnKind(name, values) {
     if (TEXT_COLUMNS.has(name)) return 'str';
     const v = values ? Array.from(values).find(x => x !== null && x !== undefined && !(typeof x === 'number' && Number.isNaN(x))) : undefined;
@@ -2142,11 +2142,12 @@
     return out;
   }
 
-  /* The export model (format_version 2; docs/export.md). x: {about, settings, params (the
+  /* The export model (format_version 3; docs/export.md). x: {about, settings, params (the
      page's own controls), spectrum? {}, t, A (the analysed signal), filtered?, recorded? {t, A}
      (before resampling), indicators [{id, kind, type, name, source, color, params, settings}],
      detectors [{id, type, idx, weak, metrics, hr, script}], envelopes [{id, upper, lower,
-     mid}], stride, notes [{t, text}], parts {signals, envelope}}. Ids are short names that
+     mid}], stride, notes [{plot, kind, x, y, text}] (a bare {t, text} is a time note on the
+     signal), parts {signals, envelope}}. Ids are short names that
      work as MATLAB fields (coza, coza_modified, threshold_2, …). */
   function buildExport(x) {
     const parts = Object.assign({ signals: true, envelope: false }, x.parts);
@@ -2171,8 +2172,28 @@
     model.steps = { time_s: st.rows.map(i => x.t[i]), sample_matlab: st.rows.map(i => i + 1), value: st.rows.map(i => x.A[i]) };
     for (const d of dets) model.steps[d.id] = st.status[d.id];
     model.metrics = metricRows(dets, x.stride);
-    model.notes = { time_s: (x.notes || []).map(n => n.t), text: (x.notes || []).map(n => n.text) };
+    // format 3 (#80): a note is a time, a level or a point, on the signal or the spectrum. time_s
+    // repeats x for notes at a time on the signal, as format 2 had it.
+    const notes = (x.notes || []).map(noteOf);
+    model.notes = { time_s: notes.map(n => (n.plot === 'signal' && n.kind !== 'level' ? n.x : NaN)), plot: notes.map(n => n.plot), kind: notes.map(n => n.kind),
+      x: notes.map(n => n.x), y: notes.map(n => n.y), text: notes.map(n => n.text) };
     return model;
+  }
+
+  /* A note as {plot: 'signal' | 'spectrum', kind: 'time' | 'level' | 'point', x, y, text} (#80):
+     x is the time (s) or frequency (Hz), y the value or power; what a kind doesn't use is NaN.
+     A format 1 or 2 note ({t, text} or a row with only time_s) is a time note on the signal. */
+  const NOTE_PLOTS = ['signal', 'spectrum'], NOTE_KINDS = ['time', 'level', 'point'];
+  function noteOf(n) {
+    const plot = NOTE_PLOTS.includes(n.plot) ? n.plot : 'signal', kind = NOTE_KINDS.includes(n.kind) ? n.kind : 'time';
+    const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+    return { plot, kind, x: kind === 'level' ? NaN : num(n.x !== undefined ? n.x : n.t), y: kind === 'time' ? NaN : num(n.y), text: String(n.text === undefined ? '' : n.text) };
+  }
+  // the notes of a reopened export, whatever its format
+  function exportNotes(m) {
+    const t = m.notes || {}, n = (t.text || []).length;
+    return Array.from({ length: n }, (_, k) => noteOf(t.kind ? { plot: t.plot[k], kind: t.kind[k], x: t.x[k], y: t.y[k], text: t.text[k] } : { t: t.time_s[k], text: t.text[k] }))
+      .filter(nt => (nt.kind === 'level' ? Number.isFinite(nt.y) : Number.isFinite(nt.x)) && (nt.kind !== 'point' || Number.isFinite(nt.y)));
   }
 
   /* Short ids for indicators, usable as MATLAB field names: the type (coza_original → coza,
@@ -2527,7 +2548,7 @@
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
-    median, mean, std, fmt, demoWalk, looksLikeText, creditText };
+    median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
 })(typeof self !== 'undefined' ? self : this);

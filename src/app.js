@@ -14,7 +14,7 @@
     chanKey: null,
     ch: null,          // prepared channel
     res: null,         // detection results
-    notes: [],         // [{t, text}] pinned by the user; never change the steps
+    notes: [],         // [{plot, kind, x, y, text}] pinned by the user (C.noteOf, #80); never change the steps
     noteT: null,       // time of the note being written
     plotReady: false,
   };
@@ -198,7 +198,7 @@
     S.countedBy = known[0]; S.counted = known[1] === null ? null : Number(known[1]);
     setDataset(['time', a.signal_name || a.signal || 'signal'], [m.signals.time_s, m.signals.signal], 'csv');
     if (!S.ch) return;
-    S.notes = Array.from(m.notes ? m.notes.time_s : [], (t, k) => ({ t, text: String(m.notes.text[k]) }));
+    S.notes = C.exportNotes(m);
     restoreExport(m);
   }
   // Every control and indicator from an export. Format 1 (before indicators) had the course
@@ -806,10 +806,10 @@
       yaxis2: { visible: iv, domain: [0, 0.22], title: { text: 'Interval (s)' }, gridcolor: colors.line, zeroline: false, rangemode: 'tozero', automargin: true },
       // each threshold-based detector's h, dashed in its colour
       shapes: dets.filter(usesH).map(d => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: d.p.h, y1: d.p.h, line: { color: colorOf(d.ind), width: 1.2, dash: 'dash' } }))
-        .concat(S.notes.map(n => ({ type: 'line', xref: 'x', x0: n.t, x1: n.t, yref: 'paper', y0: 0, y1: 1, line: { color: colors.note, width: 1.3, dash: 'dot' } }))),
+        .concat(S.notes.map(n => ({ type: 'line', xref: 'x', x0: n.x, x1: n.x, yref: 'paper', y0: 0, y1: 1, line: { color: colors.note, width: 1.3, dash: 'dot' } }))),
       // labels in the right quarter extend leftwards so they don't run off the plot or under the toolbar
-      annotations: S.notes.map(n => ({ x: n.t, xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', showarrow: false,
-        xanchor: n.t > t[0] + 0.75 * (tMax - t[0]) ? 'right' : 'left',
+      annotations: S.notes.map(n => ({ x: n.x, xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', showarrow: false,
+        xanchor: n.x > t[0] + 0.75 * (tMax - t[0]) ? 'right' : 'left',
         text: esc(n.text), font: { color: colors.note, size: 12 }, bgcolor: colors.surface })),
     };
     if (S.notes.length) layout.margin.t = 26; // room for the note labels
@@ -884,8 +884,8 @@
     e.preventDefault();
     const text = $('noteText').value.trim();
     if (!text || S.noteT === null) { $('noteText').focus(); return; }
-    S.notes.push({ t: S.noteT, text });
-    S.notes.sort((a, b) => a.t - b.t);
+    S.notes.push(C.noteOf({ plot: 'signal', kind: 'time', x: S.noteT, text }));
+    S.notes.sort((a, b) => a.x - b.x);
     closeNoteForm();
     renderNotes(); renderPlot();
   }
@@ -894,8 +894,8 @@
     renderNotes(); renderPlot();
   }
   function renderNotes() {
-    $('noteList').innerHTML = S.notes.map((n, i) => '<li><b>' + fmt(n.t, 2) + ' s</b>' + esc(n.text) +
-      '<button type="button" data-i="' + i + '" aria-label="Delete note at ' + fmt(n.t, 2) + ' s" title="Delete note">×</button></li>').join('');
+    $('noteList').innerHTML = S.notes.map((n, i) => '<li><b>' + fmt(n.x, 2) + ' s</b>' + esc(n.text) +
+      '<button type="button" data-i="' + i + '" aria-label="Delete note at ' + fmt(n.x, 2) + ' s" title="Delete note">×</button></li>').join('');
     $('noteList').hidden = !S.notes.length;
     $('legNotes').hidden = !S.notes.length;
   }
@@ -973,7 +973,8 @@
       const def = registry(m.indicators.kind[k]).find(d => d.id === m.indicators.type[k]), sum = C.paramSummary(def, JSON.parse(m.indicators.params[k]));
       L.push(csvRow([id, m.indicators.name[k] + (sum ? ': ' + sum : '') + ' (' + (m.indicators.source[k] === 'recorded' ? 'unfiltered' : 'filtered') + ')']));
     });
-    if (S.notes.length) L.push('', csvRow(['note_time_s', 'note']), ...S.notes.map(n => csvRow([n.t.toFixed(3), n.text])));
+    if (S.notes.length) L.push('', csvRow(['note_plot', 'note_kind', 'note_x', 'note_y', 'note']),
+      ...S.notes.map(n => csvRow([n.plot, n.kind, Number.isFinite(n.x) ? n.x.toFixed(3) : '', Number.isFinite(n.y) ? String(+n.y.toPrecision(6)) : '', n.text])));
     save(baseName() + '_metrics.csv', L.join('\n') + '\n');
   }
   /* Export… (#53): one model (C.buildExport) in the chosen format; docs/export.md */
