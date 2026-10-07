@@ -33,7 +33,7 @@
         <strong>Choose a file</strong>
         <span>or drop it here. MATLAB .mat, CSV or phyphox .zip, up to 50 MB.</span>
       </label>
-      <p class="hint">Try a demo walk: <button class="link" type="button" data-demo="hand">in the hand</button> · <button class="link" type="button" data-demo="pocket">in a pocket</button> · <button class="link" id="demoBtn" type="button" data-demo="synthetic">synthetic</button></p>
+      <p class="hint">Try a demo walk: <button class="link" type="button" data-demo="hand">in the hand</button> · <button class="link" type="button" data-demo="pocket">in a pocket</button> · <button class="link" type="button" data-demo="noisy">noisy</button> · <button class="link" id="demoBtn" type="button" data-demo="synthetic">synthetic</button></p>
       <button class="btn rec-btn" id="recBtn" type="button" hidden>Record a walk</button>
       <label class="field" id="recCountRow" hidden>Countdown before recording<select id="recCount">
         <option value="3" selected>3 s</option>
@@ -183,7 +183,8 @@
           <div class="exp-panel">
             <button class="demo-pick" type="button" data-demo="hand"><b>1. Hand</b><span>A real walk with the phone held flat at the chest: 10 steps, counted while walking.</span></button>
             <button class="demo-pick" type="button" data-demo="pocket"><b>2. Pocket</b><span>A real walk with the phone in a front trouser pocket: 28 steps counted, with putting it in and taking it out.</span></button>
-            <button class="demo-pick" id="emptyDemo" type="button" data-demo="synthetic"><b>3. Synthetic</b><span>A generated walk whose exact number of steps is known.</span></button>
+            <button class="demo-pick" type="button" data-demo="noisy"><b>3. Noisy walk: phone moved around</b><span>A real walk with the phone held flat, swung at the side, then moved to the other hand: what changing position does to the signal. Steps not counted.</span></button>
+            <button class="demo-pick" id="emptyDemo" type="button" data-demo="synthetic"><b>4. Synthetic</b><span>A generated walk whose exact number of steps is known.</span></button>
           </div>
         </details>
         <button class="btn" id="emptyRec" type="button" hidden>Record a walk</button>

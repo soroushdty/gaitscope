@@ -102,6 +102,9 @@
       about: 'Recorded with this page on a Pixel 9a (Firefox) on 2026-10-07 by Dr. Soroush Dianaty: the phone held flat, in portrait, at the chest just below the breastbone, for exactly 10 steps. The last step brings the feet together, then comes a pause while Stop is held. The plot opens on the total (TgF), which doesn’t depend on how the phone is held.' },
     pocket: { file: 'demo/walk-pocket.csv', title: 'Pocket walk',
       about: 'Recorded with this page on a Pixel 9a (Firefox) on 2026-10-07 by Dr. Soroush Dianaty: the phone in the right front trouser pocket for exactly 28 steps. The first 2 s are the phone going into the pocket, and the last 4 s taking it out and holding Stop; detectors count some of that as steps. The plot opens on the total (TgF), which doesn’t depend on how the phone sits in the pocket.' },
+    // no step count: nothing to score the detectors against (#91)
+    noisy: { file: 'demo/walk-noisy.csv', title: 'Noisy walk',
+      about: 'Recorded with this page on a Pixel 9a (Firefox) on 2026-10-07 by Dr. Soroush Dianaty, changing how the phone was held: flat in front (0–5.5 s), at the side with the arm swinging (6.5–14 s), flat in front again (15.5–22 s), in the left hand at the side (23–26 s), then flat and nearly still at chest level. Each change shows as a jump in the separate axes, and the detectors disagree with each other. The steps weren’t counted, so there is nothing to score them against; the spectrum’s walking rhythm, about 99 steps a minute, suggests about 70. The plot opens on the total (TgF).' },
   };
   let demoSeq = 0;
   function loadDemo(id) {
