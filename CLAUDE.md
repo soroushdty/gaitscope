@@ -105,6 +105,15 @@ unless the course file is present in `data/`.
       intended? Are the peaks steps or strides?
 - [ ] Record walks with a known step count (e.g. 20 steps counted by hand, phone in the
       hand and in a pocket) to rank the algorithms (#11, decision 4).
+- [ ] #35: vertical and horizontal acceleration from x/y/z by the direction of gravity
+      (needs a recording that still includes gravity, such as G-Force).
+- [ ] #36: frequency domain (spectrum, cadence from the spectrum, spectrogram, Hilbert
+      envelope, wavelet denoising, harmonic ratio). The spectrum would also settle
+      steps vs. strides.
+- [ ] #37: more filters (presets, Bessel, elliptic, Savitzky–Golay, moving average,
+      median, notch). #38: more envelopes (RMS / SD, mean ± k·SD, percentile, smooth
+      peak-trough).
+- [ ] #15: phyphox exports.
 - [x] GitHub Pages is enabled (main / root).
 - [ ] Maybe: support MAT v7.3 via h5wasm (large WebAssembly download; probably not
       worth it), batch processing of several files, overlaying x/y/z channels.
