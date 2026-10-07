@@ -25,6 +25,10 @@
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
   }
+  function withAlpha(hex, a) {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    return m ? 'rgba(' + [1, 2, 3].map(k => parseInt(m[k], 16)).join(',') + ',' + a + ')' : hex;
+  }
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   function niceStep(range) {
     const raw = range / 200, p = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -191,7 +195,7 @@
   }
 
   function setControlsEnabled(on) {
-    for (const id of ['filterSel', 'algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['filterSel', 'envSel', 'algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
     for (const el of optionInputs()) el.disabled = !on;
     updateExportButtons();
   }
@@ -253,6 +257,11 @@
     $('filterDesc').textContent = C.FILTERS.find(x => x.id === f).tagline;
     $('filterOpts').hidden = f === 'none';
     for (const el of $('filterOpts').querySelectorAll('[data-only]')) el.hidden = el.dataset.only !== f;
+  }
+  // Envelopes are a view: changing one redraws the plot and never recomputes the steps.
+  function showEnv() {
+    const e = $('envSel').value;
+    for (const el of document.querySelectorAll('.env-opts')) el.hidden = !el.dataset.env.split(' ').includes(e);
   }
   function selectedAlgo() { return C.ALGORITHMS.find(a => a.id === $('algoSel').value) || C.ALGORITHMS[0]; }
   function showAlgo() {
@@ -397,8 +406,14 @@
     const mid = idx => { const x = [], y = [], wd = []; for (let k = 1; k < idx.length; k++) { const a = t[idx[k - 1]], b = t[idx[k]]; x.push((a + b) / 2); y.push(b - a); wd.push((b - a) * 0.86); } return { x, y, wd }; };
     const oi = mid(origIdx), fi = mid(finalIdx);
     const iv = $('showIntervals').checked; // interval strip under the signal, off by default
+    // envelope around the signal the algorithm sees (filtered when a filter is on)
+    const envDef = C.ENVELOPES.find(e => e.id === $('envSel').value);
+    const env = envDef && envDef.compute ? envDef.compute(filt.A, t, p) : {};
+    const band = !!(env.upper && env.lower), envFill = withAlpha(cssVar('--env'), 0.16);
+    $('legEnv').hidden = !band; $('legEnvMid').hidden = !env.mid;
+    if (band) $('legEnvText').textContent = envDef.label(p);
 
-    // 2–3: the algorithm's guide lines (e.g. the smoothed signal and its threshold), under the markers
+    // 5–6: the algorithm's guide lines (e.g. the smoothed signal and its threshold), under the markers
     const guides = fx.guides || [];
     const guide = g => {
       const gd = guides[g], level = gd && typeof gd.y === 'number';
@@ -407,11 +422,19 @@
         hovertemplate: gd ? esc(gd.name) + '<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' : '' };
     };
     const traces = [
-      // 0: the recorded signal, faded when 1, the filtered signal the algorithm sees, is drawn on it
+      // 0–1: envelope band (lower, then upper filled down to it), under everything else
+      { x: band ? t : [], y: band ? env.lower : [], type: 'scatter', mode: 'lines', name: 'Envelope lower', visible: band, line: { color: cssVar('--env'), width: 0.8 },
+        hovertemplate: 'Envelope lower<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      { x: band ? t : [], y: band ? env.upper : [], type: 'scatter', mode: 'lines', name: 'Envelope upper', visible: band, line: { color: cssVar('--env'), width: 0.8 },
+        fill: 'tonexty', fillcolor: envFill, hovertemplate: 'Envelope upper<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      // 2: the recorded signal, faded when 3, the filtered signal the algorithm sees, is drawn on it
       { x: t, y: A, type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.3 }, opacity: filt.applied ? 0.35 : 1, name: 'Signal',
         hovertemplate: (filt.applied ? 'Recorded<br>' : '') + '%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       { x: filt.applied ? t : [], y: filt.applied ? filt.A : [], type: 'scatter', mode: 'lines', line: { color: colors.signal, width: 1.6 }, name: 'Filtered', visible: filt.applied,
         hovertemplate: 'Filtered<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
+      // 4: envelope midline (dynamic threshold)
+      { x: env.mid ? t : [], y: env.mid || [], type: 'scatter', mode: 'lines', name: 'Dynamic threshold (envelope)', visible: !!env.mid, line: { color: cssVar('--env'), width: 1.6 },
+        hovertemplate: 'Dynamic threshold (envelope)<br>%{x:.3f} s<br>%{y:.3f}<extra></extra>' },
       guide(0), guide(1),
       { x: origIdx.map(i => t[i]), y: origIdx.map(i => A[i] + lift), customdata: cd(origIdx), type: 'scatter', mode: 'markers', name: 'Lab code', visible: showLab(),
         marker: { symbol: 'triangle-down', size: 10, color: colors.orig, line: { color: colors.surface, width: 1 } }, hovertemplate: hov('Lab code step') },
@@ -631,6 +654,9 @@
   $('hNum').addEventListener('input', e => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value !== '') { $('hIn').value = String(v); schedule(); } });
   for (const id of ['fxWeak', 'posSel']) $(id).addEventListener('change', schedule);
   $('posSel').addEventListener('change', updatePosHint);
+  $('envSel').innerHTML = C.ENVELOPES.map(e => '<option value="' + esc(e.id) + '"' + (e.tagline ? ' title="' + esc(e.tagline) + '"' : '') + '>' + esc(e.name) + '</option>').join('');
+  $('envSel').addEventListener('change', () => { showEnv(); if (S.ch && S.res) renderPlot(); });
+  showEnv();
   $('filterSel').innerHTML = C.FILTERS.map(f => '<option value="' + esc(f.id) + '">' + esc(f.name) + '</option>').join('');
   $('filterSel').addEventListener('change', () => { showFilter(); schedule(); });
   showFilter();
