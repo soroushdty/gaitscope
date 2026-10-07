@@ -990,8 +990,9 @@ test('a browser recording becomes CSV text that reads back to the same numbers',
     assert.equal(p.cols[0][i], (s.ts - rec[0].ts) / 1000, 'time: seconds from the first event, as captured');
     assert.equal(p.cols[1][i], s.g[0] / C.STANDARD_GRAVITY);
     assert.equal(p.cols[5][i], s.a[0]);
-    assert.equal(p.cols[9][i], s.r[1] * (Math.PI / 180), 'wx from beta (rotation about x)');
-    assert.equal(p.cols[11][i], s.r[0] * (Math.PI / 180), 'wz from alpha (rotation about z)');
+    assert.equal(p.cols[9][i], s.r[0] * (Math.PI / 180), 'wx from alpha (rotation about x, §6.3.2)');
+    assert.equal(p.cols[10][i], s.r[1] * (Math.PI / 180), 'wy from beta (about y)');
+    assert.equal(p.cols[11][i], s.r[2] * (Math.PI / 180), 'wz from gamma (about z)');
   });
   const ds = C.buildDataset(p.names, p.cols, 'csv');
   assert.equal(ds.x.name, 'gFx (g)'); assert.equal(ds.mag.name, 'TgF (g)');

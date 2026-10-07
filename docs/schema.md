@@ -50,7 +50,9 @@ On a phone, **Record a walk** captures the motion sensors through the browser's
 runs unchanged. Nothing is resampled; the dashboard's Resample step does that afterwards.
 Columns: `gFx`, `gFy`, `gFz`, `TgF` in g with gravity (accelerationIncludingGravity ÷
 9.80665, like Physics Toolbox's G-Force Meter), `ax`…`aT` in m/s² without gravity, and
-`wx`…`wz` in rad/s, when the browser gives them. Metadata lines record the start time,
+`wx`…`wz` in rad/s, when the browser gives them: rotationRate's alpha, beta and gamma, the
+rates about x, y and z (W3C Device Orientation and Motion §6.3.2). Recordings made before #93
+hold rotation about y, z and x in `wx`, `wy`, `wz`. Metadata lines record the start time,
 device, rate, how it stopped, and the two optional answers (`steps_counted`,
 `phone_position`).
 

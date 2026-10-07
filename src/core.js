@@ -573,8 +573,9 @@
     const rows = samples.map(s => {
       const g = s.g.map(v => v / STANDARD_GRAVITY), out = [(s.ts - ts0) / 1000, ...g, Math.hypot(...g)];
       if (lin) out.push(...(s.a ? [...s.a, Math.hypot(...s.a)] : [NaN, NaN, NaN, NaN]));
-      // rotationRate: alpha about z, beta about x, gamma about y
-      if (rot) out.push(...(s.r ? [s.r[1] * deg, s.r[2] * deg, s.r[0] * deg] : [NaN, NaN, NaN]));
+      // rotationRate: alpha about x, beta about y, gamma about z (W3C Device Orientation and
+      // Motion §6.3.2; the owner's Android and iPad recordings agree, #93)
+      if (rot) out.push(...(s.r ? [s.r[0] * deg, s.r[1] * deg, s.r[2] * deg] : [NaN, NaN, NaN]));
       return out.map(num).join(',');
     });
     const metaLines = Object.entries(meta || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
