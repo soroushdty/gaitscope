@@ -85,6 +85,9 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
 
 ### Around the page
 
+- **Home:** the button in the header goes back to the start screen. If there are notes, a
+  phone recording not yet downloaded, or changed settings, it first offers to save them as
+  one file (a JSON export that reopens the analysis): Export, Discard or Cancel.
 - **Signal only:** one button above the plot takes away every detector and envelope, the
   filter, resampling and the step intervals, to look at just the signal. Notes stay, and
   Undo puts everything back.
