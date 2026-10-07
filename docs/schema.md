@@ -97,6 +97,14 @@ If x, y and z are known but no magnitude column exists, a computed magnitude is 
 MAT columns keep their MATLAB numbers in labels ("x (column 2)") so they map directly
 onto `Walking(:,2)` in Coza's `.m` file.
 
+**The signal a file opens on.** A MAT file opens on column 2, like Coza's `.m` file. A
+phone's own acceleration export (Physics Toolbox, phyphox, the dashboard's recorder) opens
+on its magnitude (`TgF`, `aT`, `Absolute acceleration`). One axis depends on how the phone
+was held: for a phone held flat, x is the sideways sway, which repeats once per stride and
+never reaches Coza's h = 1. The magnitude doesn't depend on the phone's tilt, and with
+gravity in it, it rests at 1 g. Decided by the owner on 2026-10-07, after the session
+measured both on the owner's recordings. Any other file opens on its first signal.
+
 ## 5. Units
 
 Coza's threshold `h = 1` is in the signal's own units, so units matter most of all:

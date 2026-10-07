@@ -281,6 +281,10 @@
     $('chanSel').innerHTML = opts.map(o => '<option value="' + o.key + '"' + (o.disabled ? ' disabled' : '') + '>' + esc(o.label) + '</option>').join('');
     let def = opts[0].key;
     if (source === 'mat') { const c2 = S.ds.columns.find(c => c.matCol === 2 && c.role !== 'time'); if (c2) def = String(c2.index); }
+    // A phone's own acceleration export (Physics Toolbox, phyphox, the recorder) opens on its
+    // total: one axis depends on how the phone is held, and for a phone held flat x is the
+    // sideways sway, where Coza finds nothing at h = 1 (owner's decision, 2026-10-07).
+    else if (S.ds.mag && S.ds.mag.sensor && S.ds.mag.sensor.accel) def = String(S.ds.mag.index);
     $('chanSel').value = def;
     $('dataControls').hidden = false;
     $('fsRow').hidden = !!S.ds.t;
