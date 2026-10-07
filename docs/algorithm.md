@@ -124,6 +124,7 @@ edges included, on a signal with spikes (`smoothing` in `tests/fixtures/filters.
 |---|---|---|---|
 | Moving average | Mean over the window (default 0.1 s) | Repeat the end sample (scipy `ndimage.uniform_filter1d`, `mode='nearest'`) | The simplest smoother; it also lowers peaks |
 | Median | Median over the window (default 0.05 s) | Repeat the end sample (scipy `ndimage.median_filter`, `mode='nearest'`) | Removes spikes shorter than half the window (a tap or knock) and keeps real peaks at their height. Not a frequency filter. |
+| Savitzky–Golay | Least-squares polynomial (default order 3) over the window (default 0.3 s); keeps its centre value | The first and last half-windows use the polynomial fitted to the first and last full window (scipy `savgol_filter`, `mode='interp'`) | Smooths noise while keeping peak heights and timing better than an average. The window needs at least order + 2 samples. Checked against scipy where scipy is exact to 1e-12, and against exact rational weights for a 231-sample, order-5 window, where scipy's own weights are off by 1.5e-10 (it fits unscaled positions; this fit scales them to [−1, 1]). |
 
 Settings, under Advanced: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
 kept below half the sampling rate), and an optional high-pass cut-off (default off). A

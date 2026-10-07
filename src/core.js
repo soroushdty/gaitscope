@@ -1240,6 +1240,39 @@
     return out;
   }
 
+  /* Savitzky–Golay, as scipy.signal.savgol_filter(A, w, order, mode='interp'): a polynomial of
+     the given order is fitted by least squares to each window and its centre value kept; the
+     first and last half-windows take the values of the polynomial fitted to the first and
+     last full window. Positions are scaled to [−1, 1] so the fit stays well conditioned. */
+  function savgolWeights(w, order) {
+    const h = (w - 1) / 2, P = order + 1;
+    const u = Array.from({ length: w }, (_, j) => (j - h) / h);
+    // G = VᵀV, then W = G⁻¹Vᵀ by Gauss–Jordan on [G | Vᵀ]
+    const M = Array.from({ length: P }, (_, r) => {
+      const row = new Array(P + w);
+      for (let c = 0; c < P; c++) { let sum = 0; for (let j = 0; j < w; j++) sum += Math.pow(u[j], r + c); row[c] = sum; }
+      for (let j = 0; j < w; j++) row[P + j] = Math.pow(u[j], r);
+      return row;
+    });
+    for (let c = 0; c < P; c++) {
+      let piv = c;
+      for (let r = c + 1; r < P; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+      [M[c], M[piv]] = [M[piv], M[c]];
+      const d = M[c][c];
+      for (let k = 0; k < P + w; k++) M[c][k] /= d;
+      for (let r = 0; r < P; r++) if (r !== c) { const f = M[r][c]; if (f) for (let k = 0; k < P + w; k++) M[r][k] -= f * M[c][k]; }
+    }
+    // weights for the fitted value at window position q: Σ_k u_q^k W[k][·]
+    return q => { const out = new Float64Array(w); for (let k = 0; k < P; k++) { const uk = Math.pow(u[q], k); for (let j = 0; j < w; j++) out[j] += uk * M[k][P + j]; } return out; };
+  }
+  function savgol(A, w, order) {
+    const n = A.length, h = (w - 1) / 2, at = savgolWeights(w, order), mid = at(h), out = new Float64Array(n);
+    const dot = (wt, start) => { let sum = 0; for (let j = 0; j < w; j++) sum += wt[j] * A[start + j]; return sum; };
+    for (let i = h; i < n - h; i++) out[i] = dot(mid, i - h);
+    for (let q = 0; q < h; q++) { out[q] = dot(at(q), 0); out[n - h + q] = dot(at(h + 1 + q), n - w); }
+    return out;
+  }
+
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
      algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
      Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
@@ -1273,6 +1306,15 @@
       tagline: 'The median over a sliding window: removes short spikes (a tap or knock) without rounding off real peaks.',
       apply: (A, fs, p) => movingMedian(A, oddWindow(p.medWindow, fs, A.length, 3)),
       label: p => 'Median, ' + fmt(p.medWindow, 2) + ' s window',
+    },
+    {
+      id: 'savgol', name: 'Savitzky\u2013Golay',
+      tagline: 'Fits a polynomial to a sliding window and keeps its centre: smooths noise while keeping peak heights and timing better than an average.',
+      apply: (A, fs, p) => {
+        const w = oddWindow(p.sgWindow, fs, A.length, p.sgOrder + 2);
+        return savgol(A, w, p.sgOrder);
+      },
+      label: p => 'Savitzky\u2013Golay, ' + fmt(p.sgWindow, 2) + ' s window, order ' + p.sgOrder,
     },
   ];
   function filterLabel(p) {
@@ -1402,7 +1444,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
+    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
