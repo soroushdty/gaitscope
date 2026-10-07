@@ -1,4 +1,4 @@
-/* Step detector core: file parsing, schema validation, step detection.
+/* GaitScope core: file parsing, schema validation, step detection.
    Pure functions, no DOM. Runs in the browser and in Node for testing. */
 (function (root) {
   'use strict';
@@ -2156,11 +2156,11 @@
     return '{\n' + parts.join(',\n') + '\n}\n';
   }
   /* A JSON export read back: number columns with null as NaN. Throws InputError when it is
-     not a gaitscope export, or a later format_version than this page knows. */
+     not a GaitScope export, or a later format_version than this page knows. */
   function parseExportJson(text) {
     let m;
     try { m = JSON.parse(text); } catch (e) { throw new InputError('This JSON file could not be read: ' + e.message + '.', 'Export it from the dashboard again.'); }
-    if (!m || !m.about || m.about.format !== 'gaitscope-export') throw new InputError('This JSON file is not a gaitscope export.', 'Open a .json file saved with Export… → JSON, or the recording itself.');
+    if (!m || !m.about || m.about.format !== 'gaitscope-export') throw new InputError('This JSON file is not a GaitScope export.', 'Open a .json file saved with Export… → JSON, or the recording itself.');
     if (!(m.about.format_version <= EXPORT_FORMAT_VERSION)) throw new InputError('This export uses format version ' + m.about.format_version + ', newer than this page (' + EXPORT_FORMAT_VERSION + ').', 'Reload the page to get the latest version.');
     if (!m.signals || !Array.isArray(m.signals.time_s) || !Array.isArray(m.signals.signal)) throw new InputError('This export has no signals, so it can’t be reopened.', 'Export again with Signals ticked.');
     for (const k of TABLES) if (m[k]) for (const c of Object.keys(m[k])) if (columnKind(c, m[k][c]) === 'f8') m[k][c] = Float64Array.from(m[k][c], v => (v === null ? NaN : v));

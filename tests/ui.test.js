@@ -882,7 +882,7 @@ test('Export… writes zip, MATLAB, NumPy and JSON; a JSON export reopens to the
   const pg2 = makePage();
   await uploadText(pg2, 'walk_gaitscope.json', json);
   const $2 = id => pg2.d.getElementById(id);
-  assert.match(text(pg2, 'valList'), /gaitscope export reopened.*by the dashboard \(version 0\.1\.0\) from "walk\.mat", variable Walking, signal x \(column 2\)/);
+  assert.match(text(pg2, 'valList'), /GaitScope export reopened.*by the dashboard \(version 0\.1\.0\) from "walk\.mat", variable Walking, signal x \(column 2\)/);
   assert.equal($2('filterSel').value, 'butter'); assert.equal($2('posSel').value, 'leg');
   assert.deepEqual(indNames(pg2, 'detList'), ['Coza', 'Coza (modified)']); assert.deepEqual(indNames(pg2, 'envList'), ['Sliding window']);
   assert.equal(indRow(pg2, 'Coza').querySelector('[data-act=source]').value, 'recorded');
@@ -890,5 +890,5 @@ test('Export… writes zip, MATLAB, NumPy and JSON; a JSON export reopens to the
   assert.deepEqual(snap(pg2), before, 'same steps, metrics, step table, notes and envelope');
 
   await uploadText(pg2, 'other.json', '{"name": "not ours"}');
-  assert.match(text(pg2, 'valList'), /not a gaitscope export.*Export… → JSON/);
+  assert.match(text(pg2, 'valList'), /not a GaitScope export.*Export… → JSON/);
 });
