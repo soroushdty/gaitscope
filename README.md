@@ -79,8 +79,10 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
 - **Notes on the plot and the spectrum.** Pin a short note at a time ("turned around"), at a
   level ("resting level") or at a point ("counted twice"). On the spectrum, pin one at a
   frequency, a level or a point ("walking rhythm"). "Snap to the curve" puts a level or point
-  on the curve; turn it off to place it exactly where you click. Notes are listed under each
-  chart and exported; they never change the steps.
+  on the curve; turn it off to place it exactly where you click. A spectrum note between
+  0.5 and 3.5 Hz also shows its rate in everyday units ("every 1.10 s, 55 steps/min",
+  doubled for a phone on one leg). Notes are listed under each chart and exported; they
+  never change the steps.
 - **Export** in the format each tool wants: CSV files, a zip with one CSV per table,
   MATLAB `.mat` (a struct, for MATLAB or Octave), NumPy `.npz` (no pickle), or JSON, which
   reopens the whole analysis in GaitScope. Sample numbers are 1-based, as in MATLAB

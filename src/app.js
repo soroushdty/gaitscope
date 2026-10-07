@@ -911,6 +911,12 @@
     const xu = n.plot === 'signal' ? ' s' : ' Hz', yv = v => (n.plot === 'signal' ? fmt(v, 2) + (chanInfo().unit ? ' ' + chanInfo().unit : '') : 'power ' + String(+v.toPrecision(3)));
     return n.kind === 'time' ? fmt(n.x, 2) + xu : n.kind === 'level' ? 'level ' + yv(n.y) : fmt(n.x, 2) + xu + ', ' + yv(n.y);
   }
+  // a spectrum note in the walking band, in everyday units, worded by Phone position (owner's decision on #80)
+  function noteRate(n) {
+    if (n.plot !== 'spectrum' || n.kind === 'level' || !(n.x >= C.GAIT_BAND[0] && n.x <= C.GAIT_BAND[1])) return '';
+    const leg = $('posSel').value === 'leg';
+    return 'every ' + fmt(1 / n.x, 2) + ' s, ' + fmt(n.x * 60 * (leg ? 2 : 1), 0) + ' steps/min' + (leg ? ' (one leg: each repeat is a stride)' : '');
+  }
   function openNoteForm(plot, draft) {
     closeNoteForm();
     const u = NOTE_UI[plot];
@@ -943,8 +949,11 @@
   function renderNotes() {
     for (const plot of Object.keys(NOTE_UI)) {
       const u = NOTE_UI[plot], list = S.notes.map((n, i) => [n, i]).filter(([n]) => n.plot === plot);
-      $(u.list).innerHTML = list.map(([n, i]) => '<li><b>' + esc(noteWhere(n)) + '</b>' + esc(n.text) +
-        '<button type="button" data-i="' + i + '" aria-label="Delete note at ' + esc(noteWhere(n)) + '" title="Delete note">×</button></li>').join('');
+      $(u.list).innerHTML = list.map(([n, i]) => {
+        const rate = noteRate(n);
+        return '<li><b>' + esc(noteWhere(n)) + '</b>' + (rate ? '<span class="extra">' + esc(rate) + '</span>' : '') + esc(n.text) +
+          '<button type="button" data-i="' + i + '" aria-label="Delete note at ' + esc(noteWhere(n)) + '" title="Delete note">×</button></li>';
+      }).join('');
       $(u.list).hidden = !list.length;
     }
     $('legNotes').hidden = !S.notes.some(n => n.plot === 'signal');
@@ -1243,6 +1252,8 @@
     $(u.text).addEventListener('keydown', e => { if (e.key === 'Escape') closeNoteForm(plot); });
     $(u.list).addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) deleteNote(Number(b.dataset.i)); });
   }
+  // a spectrum note's rate follows Phone position
+  $('posSel').addEventListener('change', renderNotes);
   $('resetParams').addEventListener('click', () => resetParams(true));
   $('expSteps').addEventListener('click', exportSteps);
   $('expFmt').addEventListener('change', showExport);

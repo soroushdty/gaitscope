@@ -1110,7 +1110,7 @@ test('signal notes at a level or a point, snapped to the curve or exactly where 
   const csv = await exportCsv(pg);
   assert.match(csv, /note_plot,note_kind,note_x,note_y,note\nsignal,level,,3\.3,resting\nsignal,point,6\.400,8,here\nsignal,time,12\.500,,turned\n/);
 });
-test('spectrum notes: their own tools, a log axis, and a reopened export (#80)', async () => {
+test('spectrum notes: their own tools, the rate in everyday units in the walking band, a log axis, and a reopened export (#80)', async () => {
   const pg = makePage(), $ = id => pg.d.getElementById(id);
   pg.w.HTMLAnchorElement.prototype.click = function () {};
   $('demoBtn').click(); await sleep(40);
@@ -1120,14 +1120,18 @@ test('spectrum notes: their own tools, a log axis, and a reopened export (#80)',
   $('specPlot')._click({ points: [{ x: 0.91, y: 150, curveNumber: 1 }] });
   assert.equal(text(pg, 'specNoteAt'), 'Note at 0.91 Hz');
   await submitNote(pg, 'specNoteForm', 'specNoteText', 'walking rhythm');
-  assert.match(text(pg, 'specNoteList'), /^0\.91 Hz ?walking rhythm/);
+  assert.match(text(pg, 'specNoteList'), /^0\.91 Hz ?every 1\.10 s, 55 steps\/min ?walking rhythm/);
   assert.ok(pg.spectra.at(-1).layout.shapes.some(s => s.x0 === 0.91 && s.yref === 'paper' && s.line.dash === 'dot'), 'drawn on the spectrum');
   assert.ok(!pg.plots.at(-1).layout.annotations.some(a => a.text === 'walking rhythm'), 'and not on the signal (no mirroring)');
   assert.equal($('noteList').hidden, true);
+  // the rate follows Phone position, and only in the walking band
+  setVal(pg, 'posSel', 'leg'); await sleep(40);
+  assert.match(text(pg, 'specNoteList'), /every 1\.10 s, 109 steps\/min \(one leg: each repeat is a stride\)/);
+  setVal(pg, 'posSel', 'hand'); await sleep(40);
   setVal(pg, 'specNoteKind', 'point');
   $('specPlot')._click({ points: [{ x: 5, y: 0.4, curveNumber: 1, data: { meta: { role: 'spectrum' } } }] });
   await submitNote(pg, 'specNoteForm', 'specNoteText', 'noise');
-  assert.match(text(pg, 'specNoteList'), /5\.00 Hz, power 0\.4 ?noise/);
+  assert.match(text(pg, 'specNoteList'), /5\.00 Hz, power 0\.4 ?noise/); assert.doesNotMatch(text(pg, 'specNoteList'), /noise.*steps\/min|steps\/min ?noise/);
   // on a log axis, a point's height is in log10 units, as Plotly needs
   setVal(pg, 'specLog', true); await sleep(20);
   assert.ok(pg.spectra.at(-1).layout.annotations.some(a => a.text === 'noise' && Math.abs(a.y - Math.log10(0.4)) < 1e-12));
