@@ -60,6 +60,7 @@ device, rate, how it stopped, and the two optional answers (`steps_counted`,
 | Screen locked or page hidden while recording | warn + fix | The phone stops sending data; what was captured is kept and loaded. A full-screen overlay (hold for a second to stop) keeps pocket touches from changing anything, and the Screen Wake Lock keeps the screen on where the browser allows it. |
 | Recorded in the browser | info | Says when, at what rate, and the counted steps and phone position if given. A front-pocket recording sets Phone position to *One leg*. |
 | Stopped at the 30-minute limit | info | |
+| Recorded on an iPhone | info | Safari has been reported (W3C list, 2014) to give acceleration with the opposite sign from Android and the spec; not yet checked on a current iPhone, so nothing is flipped. Magnitude, vertical and horizontal don't depend on the sign. |
 
 ## 2. Variables (MAT)
 
