@@ -41,17 +41,36 @@ original script run in GNU Octave, for columns 2, 3 and 4
    1.14 s, which is slow for single steps (normally 0.45–0.7 s). If the phone rode
    on one leg, each peak is a left plus a right step.
 
-## Coza (`detectCoza`)
+## Coza (`coza_original`)
 
-Coza is the dashboard's first step detection algorithm: the lab code with the problems
-above fixed. It is picked from the **Algorithm** dropdown; later algorithms are added as
+The lab code's rule exactly as `LabStepDet_2025.m` has it, bugs included, as an entry in the
+**Algorithm** dropdown. It calls `detectOriginal` with the lab code's `w` (in samples) and
+`h`, so its steps are the lab code's: tied peaks count twice, the stop bump counts, and the
+window means ±0.3 s only at 100 Hz. Nothing is fixed. It is there so the original can be
+picked and compared like any algorithm, for example against Coza (modified) in an export,
+or with a filter in front of it.
+
+Two differences from the always-shown **Lab code** column, both from how the dashboard
+treats every algorithm:
+
+* It runs on the signal the algorithms get. With a filter on, that is the filtered signal,
+  while the lab code always uses the recorded one.
+* Its metrics come from `timingMetrics` (timestamps, cadence in steps/min), like every
+  algorithm's. The Lab code column keeps the `.m` file's formulas (`/100`, `Pace`).
+
+The tests that check algorithms resist noise and tilt leave it out: failing them is what
+the original's bugs look like.
+
+## Coza (modified) (`detectCoza`)
+
+Coza (modified) is the lab code with the problems above fixed. It is picked from the **Algorithm** dropdown; later algorithms are added as
 entries in `ALGORITHMS` in `src/core.js`, and the lab code stays alongside each of them
 as the MATLAB reference.
 
 Tied peaks are always counted once; the lab code, drawn alongside, shows the double
 count. Weak-peak removal can be switched off under Advanced.
 Threshold `h` is shared with the original. The window is not: the lab code keeps `w` in
-samples, as in MATLAB, and Coza has its own window in seconds.
+samples, as in MATLAB, and Coza (modified) has its own window in seconds.
 
 | Fix | Rule |
 |---|---|
@@ -86,7 +105,7 @@ offers two signals computed from x, y and z that don't depend on the tilt:
 1. **Gravity's direction:** x, y and z low-passed at 0.3 Hz (2nd-order Butterworth, run
    both ways). Slow enough to ignore the steps, fast enough to follow the phone tilting.
 2. **Vertical** = each sample projected onto that direction, minus the size of gravity.
-   Standing still reads 0 whatever the tilt, so `h` for Coza and the lab code belongs a
+   Standing still reads 0 whatever the tilt, so `h` for Coza (modified) and the lab code belongs a
    little above 0 (about 0.1 g or 1 m/s²), not at 1.
 3. **Horizontal** = the size of what is left after the vertical part is removed: forward
    and sideways sway.
@@ -174,7 +193,7 @@ kept below half the sampling rate), and an optional high-pass cut-off (default o
 Two presets set order 4 and a band-pass common in gait papers, walking 0.5–3 Hz and
 running 1–5 Hz, and keep the selected filter type. A
 high-pass removes gravity and drift and turns the filter into a band-pass of twice the
-order, as in scipy. The centred signal then needs a different `h` for Coza.
+order, as in scipy. The centred signal then needs a different `h` for Coza (modified).
 
 How it is built (`designFilter`, `sosfiltfilt`):
 
@@ -212,7 +231,7 @@ Windows are in seconds, so an envelope looks the same at 57 Hz and 460 Hz.
 | Envelope | How it is computed | What it shows |
 |---|---|---|
 | Sliding window | Running max and min over a centred window (default 1 s), `windowExtreme` | How big the swings are at each moment: walking vs. standing, speeding up, slowing down |
-| Peak-trough | Peaks are samples that are the highest within ±half a window (default 0.3 s), ties counted once as in Coza; troughs likewise. Successive peaks, and successive troughs, are joined by straight lines, or with *Smooth joins* by a monotone cubic (scipy's `PchipInterpolator`, checked against it) that never overshoots between peaks; both are held flat past the ends. | The outline of the step pattern. Uneven steps (one leg stronger) show as a zig-zag in the upper line. |
+| Peak-trough | Peaks are samples that are the highest within ±half a window (default 0.3 s), ties counted once as in Coza (modified); troughs likewise. Successive peaks, and successive troughs, are joined by straight lines, or with *Smooth joins* by a monotone cubic (scipy's `PchipInterpolator`, checked against it) that never overshoots between peaks; both are held flat past the ends. | The outline of the step pattern. Uneven steps (one leg stronger) show as a zig-zag in the upper line. |
 | Dynamic threshold | The sliding window band plus its midline `(max + min) / 2`, `dynamicThreshold` | Where an adaptive threshold would sit, next to the fixed `h`. It is the same function and window rounding Peak-to-valley counts steps with, so on the signal that algorithm smooths it draws exactly that algorithm's threshold. |
 | Mean ± k·SD | Moving mean (the midline) ± k × moving SD over a centred window (default 1 s, k = 1), shortened at the ends. The SD divides by N, so with k = 1 the band is ± the RMS around the mean. | With k = 1, how hard the person is moving: it separates walking from standing, and one spike can't stretch it the way it stretches the max/min band. With k = 0.5, the upper line is where Threshold peaks' cut-off (mean + 0.5 SD, over the whole recording) would sit if it followed the signal, which shows why that algorithm counts noise on recordings with long rests. #38 listed RMS, moving SD and mean ± k·SD separately; they are this one envelope with different k. |
 | Percentile band | The q-th and (100 − q)-th percentile (default 10th–90th) over a centred window (default 1 s), shortened at the ends, with numpy's default linear interpolation between ranks | Like the sliding max and min, but a single spike can't stretch it |
@@ -220,9 +239,9 @@ Windows are in seconds, so an envelope looks the same at 57 Hz and 460 Hz.
 
 ## Threshold peaks (`detectThresholdPeaks`)
 
-The textbook peak detector. Coza is already a threshold-based peak detector, so this
-one is not a copy: it adds exactly the parts Coza lacks, to test whether they beat
-Coza's fixes.
+The textbook peak detector. Coza (modified) is already a threshold-based peak detector, so this
+one is not a copy: it adds exactly the parts Coza (modified) lacks, to test whether they beat
+Coza (modified)'s fixes.
 
 1. Low-pass the signal (default 3 Hz).
 2. Threshold = mean + k × SD of the smoothed signal (default k = 0.5). It follows the
@@ -240,7 +259,7 @@ it.
 
 Min-max detection with a threshold that moves with the signal, after
 [Zhao (2010, Analog Devices)](https://www.analog.com/en/resources/analog-dialogue/articles/pedometer-design-3-axis-digital-acceler.html).
-Coza's threshold `h` is fixed for the whole recording; here it is recomputed at every
+Coza (modified)'s threshold `h` is fixed for the whole recording; here it is recomputed at every
 sample.
 
 1. Low-pass the signal lightly (5 Hz, fixed), so noise does not split one rise in two.
@@ -330,7 +349,7 @@ values over time. Walking repeats, so its rhythm shows as a tall peak.
 
 On `Walking.mat` this speaks to the open steps-vs-strides question:
 - The x axis (column 2) has its strongest rhythm at 0.88 Hz, 52.7/min, matching the 12
-  clean peaks Coza counts (52.2/min).
+  clean peaks Coza (modified) counts (52.2/min).
 - The magnitude (column 5) peaks at twice that rate, 104.7/min.
 
 So the x axis rises once per stride and the magnitude once per step. That fits a phone on
@@ -343,7 +362,7 @@ timestamps, for every column). `Walking.mat` is the course file; the CSVs are th
 owner's Physics Toolbox recordings from 2026-09-23 (G-Force Meter at ~460 Hz, 6.6 s;
 Linear Accelerometer at ~57 Hz, 7.6 s). None of these files is committed.
 
-| Signal | Lab code | Coza | Threshold peaks | Peak-to-valley | Zero-crossing |
+| Signal | Lab code | Coza (modified) | Threshold peaks | Peak-to-valley | Zero-crossing |
 |---|---:|---:|---:|---:|---:|
 | `Walking.mat` x (column 2) | 15 (0.95 s) | 12 (1.15 s) | 12 (1.15 s) | 12 (1.15 s) | 12 (1.15 s) |
 | `Walking.mat` y (column 3) | 12 (1.14 s) | 12 (1.14 s) | 17 (0.98 s) | 13 (1.13 s) | 13 (1.13 s) |
@@ -360,7 +379,7 @@ Cadence per minute from each algorithm's steps (peaks or crossings, not adjusted
 strides) and from the spectrum alone (`Cadence (spectrum)`, 8 s segments; the phone
 recordings are shorter, so their whole length is one segment):
 
-| Signal | Spectrum | Coza | Threshold peaks | Peak-to-valley | Zero-crossing |
+| Signal | Spectrum | Coza (modified) | Threshold peaks | Peak-to-valley | Zero-crossing |
 |---|---:|---:|---:|---:|---:|
 | `Walking.mat` x (column 2) | 53 | 52 | 52 | 52 | 52 |
 | `Walking.mat` y (column 3) | 53 | 53 | 61 | 53 | 53 |
@@ -380,7 +399,7 @@ step; it says little on recordings that short.
 What this shows, and what it doesn't:
 
 * **On the lab's own channel (column 2) all four algorithms agree:** 12 steps,
-  1.15 s apart. The peak-based detectors put them at Coza's times to within 0.05 s.
+  1.15 s apart. The peak-based detectors put them at Coza (modified)'s times to within 0.05 s.
   Zero-crossing's are about 0.4 s earlier, because it marks the rise through the
   baseline rather than the peak. The lab code's 15 is these
   12 plus two tied duplicates and the stop bump.
@@ -392,8 +411,8 @@ What this shows, and what it doesn't:
 * **Columns 4 and 5 and the magnitudes** have several bumps per stride, and the
   algorithms disagree by up to 6 steps. Without a known count, none of them can be
   called right.
-* **G-Force vertical** rests at 0 g, so with `h = 1` Coza and the lab code find nothing.
-  At `h = 0.1`, Coza finds the same 7 steps on it as on the magnitude (TgF), and
+* **G-Force vertical** rests at 0 g, so with `h = 1` Coza (modified) and the lab code find nothing.
+  At `h = 0.1`, Coza (modified) finds the same 7 steps on it as on the magnitude (TgF), and
   Threshold peaks and Zero-crossing agree at 8.
 * **The phone recordings are too short** (fewer than 10 steps) and have no known count,
   so they only show that every algorithm except the lab code gives a plausible rate at

@@ -136,7 +136,7 @@
         <div class="ctl-head"><label for="fHighIn">High-pass cut-off</label><output id="fHighOut" for="fHighIn" data-unit="Hz" data-dec="2" data-zero="off">off</output></div>
         <input type="range" id="fHighIn" data-param="fHigh" min="0" max="1" value="0" step="0.05">
       </div>
-      <p class="hint" data-only="butter bessel cheby1 cheby2 ellip">A high-pass removes gravity and slow drift, making a band-pass. The signal is then centred on zero, so h needs to change for Coza.</p>
+      <p class="hint" data-only="butter bessel cheby1 cheby2 ellip">A high-pass removes gravity and slow drift, making a band-pass. The signal is then centred on zero, so h needs to change for Coza and Coza (modified).</p>
       <div class="ctl" data-only="movavg">
         <div class="ctl-head"><label for="maWinIn">Window</label><output id="maWinOut" for="maWinIn" data-unit="s" data-dec="2">0.10 s</output></div>
         <input type="range" id="maWinIn" data-param="maWindow" min="0.02" max="0.5" value="0.1" step="0.01">
@@ -195,7 +195,7 @@
       <p class="hint">With Step intervals on, a line in the strip shows how long the spectrum’s main rhythm takes, in windows of this length every 0.5 s.</p>
       </div>
       <div class="algo-opts" data-algo="coza">
-      <h3>Coza</h3>
+      <h3>Coza (modified)</h3>
       <div class="ctl">
         <div class="ctl-head"><label for="cwIn">Window</label><output id="cwOut" for="cwIn">0.30 s</output></div>
         <input type="range" id="cwIn" data-param="cozaWindow" min="0.05" max="1.5" value="0.3" step="0.01">
@@ -284,7 +284,7 @@
               <span id="legLab"><svg width="12" height="10"><path d="M1 1 H11 L6 9 Z" fill="var(--orig)"/></svg>Lab code (original)</span>
               <span id="legFilter" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="2"/></svg>Filtered<svg width="18" height="10"><path d="M1 5 H17" stroke="var(--signal)" stroke-width="1.3" opacity=".35"/></svg><span id="legFilterBase">Recorded</span></span>
               <span id="legResample" hidden><svg width="18" height="10"><path d="M1 5 H17" stroke="var(--muted)" stroke-width="1" opacity=".6"/></svg>Recorded, before resampling</span>
-              <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--algo)"/></svg><span id="legAlgo">Coza</span></span>
+              <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--algo)"/></svg><span id="legAlgo">Coza (modified)</span></span>
               <span id="legNotes" hidden><svg width="10" height="12"><path d="M5 1 V11" stroke="var(--note)" stroke-width="1.5" stroke-dasharray="2 2"/></svg>Your notes</span>
               <span id="legGuides"></span>
               <span id="legEnv" hidden><svg width="18" height="10"><rect x="1" y="1" width="16" height="8" fill="var(--env)" opacity=".18" stroke="var(--env)" stroke-width="1"/></svg><span id="legEnvText">Envelope</span></span>

@@ -1411,11 +1411,13 @@
   }
 
   /* Step detection algorithms offered in the dashboard. The lab code (detectOriginal /
-     originalMetrics) is the MATLAB reference, always shown for comparison, and is not listed.
+     originalMetrics) is the MATLAB reference, always shown for comparison; its rule is also
+     listed as Coza, to pick like any algorithm. The page opens on Coza (modified).
      Each entry:
        tagline   one line under the dropdown
        summary   shown in "How detection works"
        usesH     whether the threshold h applies (it always applies to the lab code)
+       usesW     whether it uses the lab code's window w (samples), so w stays shown
        detect(A, t, p) -> {idx, weakDropped?, w?, markY?, guides?}
                  idx: 0-based step samples. markY: values the markers sit on (default A).
                  guides: up to two lines drawn with the signal, [{name, y, dash?}], where y is
@@ -1425,10 +1427,24 @@
      the lab code's w (samples), the phone position and every algorithm's own options. */
   const ALGORITHMS = [
     {
-      id: 'coza',
+      // The lab's rule exactly as LabStepDet_2025.m has it, bugs included, as an algorithm to
+      // pick: detectOriginal, with the lab code's w (samples) and h. Run on the signal the
+      // algorithms get, so with no filter its steps are the lab code's. Its metrics come from
+      // the timestamps, like every algorithm's; the Lab code column keeps the .m formulas.
+      id: 'coza_original',
       name: 'Coza',
+      tagline: 'The lab detector exactly as written, bugs included.',
+      summary: 'Coza is LabStepDet_2025.m\u2019s rule unchanged: a sample is a step when it is the highest within w samples on each side and above h. The window counts samples, so it means \u00b10.3 s only at 100 Hz; tied peaks count twice and the stop bump counts as a step. It uses the lab code\u2019s w and h, so its steps match the lab code\u2019s (unless a filter is on); its metrics come from the timestamps, like every algorithm\u2019s.',
+      usesH: true,
+      usesW: true,
+      detect: (A, t, p) => ({ idx: detectOriginal(A, p.w, p.h), weakDropped: [] }),
+      settings: () => [],
+    },
+    {
+      id: 'coza',
+      name: 'Coza (modified)',
       tagline: 'The lab detector with its bugs fixed.',
-      summary: 'Coza fixes the lab code\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
+      summary: 'Coza (modified) fixes the lab code\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
       usesH: true,
       // Window in seconds, so it means the same at any sampling rate (the lab's w is samples).
       // Tied peaks are always counted once: showing the double count is the lab code's job.
