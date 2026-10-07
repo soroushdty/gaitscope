@@ -1096,19 +1096,27 @@
 
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
      algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
-     p: {filter, fOrder, fLow (Hz), fHigh (Hz, 0 = off), fRipple (dB), fAtten (dB)} */
+     Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
+     evenly spaced samples (throws a RangeError saying what to change when the settings
+     can't be used), label(p) for the export. Its settings are the rows under Advanced whose
+     data-only lists its id. p: {filter, fOrder, fLow (Hz), fHigh (Hz, 0 = off), fRipple (dB),
+     fAtten (dB)} */
+  const ORDINAL = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  // IIR filters from designFilter, run forwards and backwards
+  const iirEntry = (id, name, tagline, extra) => ({
+    id, name, tagline, iir: true,
+    apply: (A, fs, p) => sosfiltfilt(designFilter({ type: id, order: p.fOrder, fs, lowpass: p.fLow, highpass: p.fHigh, rp: p.fRipple, rs: p.fAtten }).sos, A),
+    label: p => name + ', ' + ORDINAL(p.fOrder) + ' order, ' + (p.fHigh > 0 ? fmt(p.fHigh, 1) + '\u2013' + fmt(p.fLow, 1) + ' Hz band-pass' : fmt(p.fLow, 1) + ' Hz low-pass') + (extra ? extra(p) : ''),
+  });
   const FILTERS = [
     { id: 'none', name: 'None', tagline: 'Detection runs on the recorded signal.' },
-    { id: 'butter', name: 'Butterworth', tagline: 'Flat passband and the gentlest roll-off: the least change to the shape of each step.' },
-    { id: 'cheby1', name: 'Chebyshev I', tagline: 'A steeper roll-off, paid for with ripple in the passband that slightly reshapes peaks.' },
-    { id: 'cheby2', name: 'Chebyshev II', tagline: 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.' },
+    iirEntry('butter', 'Butterworth', 'Flat passband and the gentlest roll-off: the least change to the shape of each step.'),
+    iirEntry('cheby1', 'Chebyshev I', 'A steeper roll-off, paid for with ripple in the passband that slightly reshapes peaks.', p => ', ' + fmt(p.fRipple, 1) + ' dB ripple'),
+    iirEntry('cheby2', 'Chebyshev II', 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.', p => ', ' + fmt(p.fAtten, 0) + ' dB stopband'),
   ];
-  const ORDINAL = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
   function filterLabel(p) {
     const f = FILTERS.find(x => x.id === p.filter);
-    if (!f || f.id === 'none') return 'none';
-    return f.name + ', ' + ORDINAL(p.fOrder) + ' order, ' + (p.fHigh > 0 ? fmt(p.fHigh, 1) + '\u2013' + fmt(p.fLow, 1) + ' Hz band-pass' : fmt(p.fLow, 1) + ' Hz low-pass') +
-      (f.id === 'cheby1' ? ', ' + fmt(p.fRipple, 1) + ' dB ripple' : f.id === 'cheby2' ? ', ' + fmt(p.fAtten, 0) + ' dB stopband' : '');
+    return !f || !f.apply ? 'none' : f.label(p);
   }
 
   // Values of y (sampled at increasing times ts, repeats allowed) at the times td, by straight
@@ -1131,34 +1139,38 @@
   /* Filter a prepared channel. IIR filters assume evenly spaced samples, and phone exports
      aren't, so when the timestamps vary by more than 1% the signal is interpolated onto an
      even grid at the median rate, filtered there and read back at the original timestamps:
-     the algorithm still sees one value per recorded sample. Returns {A, applied, resampled,
+     the algorithm still sees one value per recorded sample. Smoothing windows (moving
+     average, median, Savitzky–Golay) need even spacing just the same. Returns {A, applied, resampled,
      checks}; settings that can't be built leave the signal unfiltered with a check saying
      what to change. */
   function applyFilter(A, t, fs, p) {
     const none = { A, applied: false, resampled: false, checks: [] };
-    if (!p.filter || p.filter === 'none') return none;
-    let sos;
+    const f = FILTERS.find(x => x.id === p.filter);
+    if (!f || !f.apply) return none;
     try {
-      sos = designFilter({ type: p.filter, order: p.fOrder, fs, lowpass: p.fLow, highpass: p.fHigh, rp: p.fRipple, rs: p.fAtten }).sos;
+      return filterEvenly(A, t, fs, x => f.apply(x, fs, p));
     } catch (e) {
       if (!(e instanceof RangeError)) throw e;
       return Object.assign(none, { checks: [{ level: 'warn', title: 'Filter not applied', detail: e.message + ' Detection runs on the recorded signal.', fix: 'Change the filter settings under Advanced.' }] });
     }
+  }
+  function filterEvenly(A, t, fs, run) {
     const n = A.length, dts = [];
     for (let i = 1; i < n; i++) { const d = t[i] - t[i - 1]; if (d > 0) dts.push(d); }
     const md = median(dts), jitter = std(dts) / md;
-    if (!(jitter > RESAMPLE_JITTER)) return { A: sosfiltfilt(sos, A), applied: true, resampled: false, checks: [] };
+    if (!(jitter > RESAMPLE_JITTER)) return { A: run(A), applied: true, resampled: false, checks: [] };
     const m = Math.floor((t[n - 1] - t[0]) / md) + 1;
     if (m > 4 * n) {
-      return { A: sosfiltfilt(sos, A), applied: true, resampled: false, checks: [{ level: 'warn', title: 'Filtered as if evenly sampled',
+      return { A: run(A), applied: true, resampled: false, checks: [{ level: 'warn', title: 'Filtered as if evenly sampled',
         detail: 'The recording has long gaps, so an even grid would be over 4 times its length. The filter treats the samples as evenly spaced, which blurs its cut-off.',
         fix: 'Trim the gaps or split the recording.' }] };
     }
     const tg = Float64Array.from({ length: m }, (_, k) => t[0] + k * md);
-    const yg = sosfiltfilt(sos, interpAt(t, A, tg));
+    const yg = run(interpAt(t, A, tg));
     return { A: interpAt(tg, yg, t), applied: true, resampled: true, checks: [{ level: 'info', title: 'Resampled for filtering',
       detail: 'Timing varies by ' + Math.round(jitter * 100) + '% between samples and the filter needs even spacing, so the signal was interpolated onto an even ' + fmt(1 / md, 1) + ' Hz grid, filtered, and read back at the original timestamps.' }] };
   }
+
 
   /* Envelopes: curves drawn around the signal the algorithm sees, to show how the size of
      each swing changes. A view only: they never change the detected steps or metrics.

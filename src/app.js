@@ -270,7 +270,7 @@
     const f = $('filterSel').value;
     $('filterDesc').textContent = C.FILTERS.find(x => x.id === f).tagline;
     $('filterOpts').hidden = f === 'none';
-    for (const el of $('filterOpts').querySelectorAll('[data-only]')) el.hidden = el.dataset.only !== f;
+    for (const el of $('filterOpts').querySelectorAll('[data-only]')) el.hidden = !el.dataset.only.split(' ').includes(f);
   }
   // Envelopes are a view: changing one redraws the plot and never recomputes the steps.
   function showEnv() {
