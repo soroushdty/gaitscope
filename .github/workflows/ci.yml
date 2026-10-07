@@ -1,11 +1,16 @@
 name: tests
-# Branch pushes only. A pull_request trigger would test the same commit a second
-# time. A push run on main would also repeat work: "Rebase and merge" rewrites the
-# commits (new committer, new SHA), but "branch must be up to date" means the files
-# that land on main are exactly the files the branch run tested.
+# Pull requests into main only, from this repo's branches and from forks alike, so every
+# PR gets the required checks (node, python (3.12), python (3.14)) exactly once.
+# - Not on push: a fork's pushes run in the fork and don't count here, and a push trigger
+#   next to this one would test each branch twice. Skipping jobs by event isn't an option:
+#   a skipped job reports success under the same name as the required check.
+# - pull_request, not pull_request_target: a fork's code runs with a read-only token and
+#   no secrets. First-time contributors' runs wait for the owner's approval (repo setting).
+# - Not on main: "Rebase and merge" rewrites the commits, but "branch must be up to date"
+#   means the files that land on main are exactly the files the PR run tested.
 on:
-  push:
-    branches-ignore: [main]
+  pull_request:
+    branches: [main]
 jobs:
   node:
     runs-on: ubuntu-latest
