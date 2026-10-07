@@ -8,7 +8,10 @@
   'use strict';
   const C = window.StepCore;
   const $ = id => document.getElementById(id);
-  const COUNTDOWN_S = 3, HOLD_MS = 1000, PRESS_MARGIN_MS = 300, NO_SENSOR_MS = 2500, MAX_S = 30 * 60;
+  const HOLD_MS = 1000, PRESS_MARGIN_MS = 300, NO_SENSOR_MS = 2500, MAX_S = 30 * 60;
+  // The countdown is a setting (#recCount, remembered in this browser): 3 s was too short to put
+  // the phone in a pocket (the owner's recordings, 2026-10-07).
+  const COUNTDOWNS = ['3', '5', '10', '15', '30'], COUNTDOWN_KEY = 'gaitscope-countdown';
 
   // Phones and tablets: a motion API and a touch screen as the main pointer. Desktops usually
   // have the API but no sensor, so they get a hint to open the page on a phone instead.
@@ -76,7 +79,7 @@
     st.timers.push(setTimeout(() => {
       if (st && !st.gotData) fail('No motion sensor is sending data.', 'Open this page on a phone. Most computers have no accelerometer.');
     }, NO_SENSOR_MS));
-    let left = COUNTDOWN_S;
+    let left = Number($('recCount').value) || 5;
     show('countdown', 'Get ready', String(left), 'Put the phone where you will carry it. Recording starts in a moment; tap to start now.');
     st.timers.push(setInterval(() => { if (--left <= 0) begin(); else $('recBig').textContent = String(left); }, 1000));
   }
@@ -180,6 +183,10 @@
 
   function init(onDone) {
     const ok = available();
+    const cd = $('recCount');
+    try { const v = window.localStorage.getItem(COUNTDOWN_KEY); if (COUNTDOWNS.includes(v)) cd.value = v; } catch (e) { /* the default */ }
+    cd.addEventListener('change', () => { try { window.localStorage.setItem(COUNTDOWN_KEY, cd.value); } catch (e) { /* not remembered, still used */ } });
+    $('recCountRow').hidden = !ok;
     for (const id of ['recBtn', 'emptyRec']) {
       $(id).hidden = !ok;
       $(id).addEventListener('click', () => start(onDone));

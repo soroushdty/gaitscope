@@ -52,6 +52,10 @@ Columns: `gFx`, `gFy`, `gFz`, `TgF` in g with gravity (accelerationIncludingGrav
 device, rate, how it stopped, and the two optional answers (`steps_counted`,
 `phone_position`).
 
+The countdown before recording is a setting next to **Record a walk** (3, 5, 10, 15 or 30 s;
+5 by default, remembered in the browser), so there is time to put the phone in a pocket. Tap
+the countdown to start at once.
+
 Holding Stop moves the phone: the hand reaches for it, then the finger presses. In the owner's
 first recordings (2026-10-07) that showed up as a bump starting about 0.2 s before the touch,
 and Coza, Coza (modified) and Peak-to-valley counted it as a step. So when a hold stops the
