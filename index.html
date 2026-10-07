@@ -85,6 +85,9 @@
       </div>
       <div class="filter-opts" id="filterOpts" hidden>
       <h3>Filter</h3>
+      <p class="hint presets" data-only="butter bessel cheby1 cheby2 ellip">Presets (order 4, band-pass):
+        <button class="link" type="button" data-preset="0.5 3">Walking 0.5–3 Hz</button>
+        <button class="link" type="button" data-preset="1 5">Running 1–5 Hz</button></p>
       <div class="ctl" data-only="butter bessel cheby1 cheby2 ellip">
         <div class="ctl-head"><label for="fOrderIn">Order</label><output id="fOrderOut" for="fOrderIn" data-unit="order">4th order</output></div>
         <input type="range" id="fOrderIn" data-param="fOrder" min="2" max="6" value="4" step="1">

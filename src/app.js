@@ -209,6 +209,7 @@
   }
 
   function setControlsEnabled(on) {
+    for (const b of document.querySelectorAll('[data-preset]')) b.disabled = !on;
     for (const id of ['filterSel', 'envSel', 'algoSel', 'showLab', 'wIn', 'hIn', 'hNum', 'fxWeak', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
     for (const el of optionInputs()) el.disabled = !on;
     updateExportButtons();
@@ -675,6 +676,13 @@
   showEnv();
   $('filterSel').innerHTML = C.FILTERS.map(f => '<option value="' + esc(f.id) + '">' + esc(f.name) + '</option>').join('');
   $('filterSel').addEventListener('change', () => { showFilter(); schedule(); });
+  // presets set the order and band of whichever IIR filter is selected
+  for (const b of document.querySelectorAll('[data-preset]')) b.addEventListener('click', () => {
+    const [hp, lp] = b.dataset.preset.split(' ');
+    $('fOrderIn').value = '4'; $('fHighIn').value = hp; $('fLowIn').value = lp;
+    for (const el of ['fOrderIn', 'fHighIn', 'fLowIn']) updateOptionOut($(el));
+    schedule();
+  });
   showFilter();
   $('algoSel').innerHTML = C.ALGORITHMS.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>').join('');
   $('algoSel').addEventListener('change', () => { showAlgo(); schedule(); });
