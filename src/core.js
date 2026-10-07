@@ -1485,6 +1485,18 @@
     return null;
   }
 
+  /* Analytic signal, as scipy.signal.hilbert: the FFT with negative frequencies removed and
+     positive ones doubled, transformed back. Its size (|re + i·im|) is the amplitude of the
+     swing at each moment, and its angle advances one turn per cycle. Returns {re, im}. */
+  function hilbert(A) {
+    const n = A.length, X = fft(A);
+    for (let k = 1; k < n; k++) {
+      const g = 2 * k < n ? 2 : 2 * k === n ? 1 : 0;
+      X.re[k] *= g; X.im[k] *= g;
+    }
+    return ifft(X.re, X.im);
+  }
+
   // The walking band: 0.5 to 3.5 Hz holds both stride (about 1 Hz) and step (about 2 Hz) rates.
   const GAIT_BAND = [0.5, 3.5];
   /* The spectrum of a prepared channel: Welch over segments of p.specSeg seconds (default
@@ -1657,6 +1669,18 @@
       midName: 'Moving mean',
     },
     {
+      id: 'hilbert', name: 'Hilbert envelope',
+      tagline: 'The amplitude of the swing at each moment, from the analytic signal (a frequency-domain method): a smooth band that follows every swing. It rings at the ends of the recording.',
+      // on an even grid, around the signal's mean; uneven recordings are read back at their own timestamps
+      compute: (A, t) => {
+        const g = evenGrid(A, t), mu = mean(g.A), z = hilbert(g.A.map(v => v - mu));
+        let amp = z.re.map((v, i) => Math.hypot(v, z.im[i]));
+        if (g.resampled) amp = interpAt(g.t, amp, t);
+        return { upper: amp.map(a => mu + a), lower: amp.map(a => mu - a) };
+      },
+      label: () => 'Envelope, Hilbert amplitude around the mean',
+    },
+    {
       id: 'percentile', name: 'Percentile band',
       tagline: 'The 10th and 90th percentile (a setting) within a window around each moment: like the sliding max and min, but one spike can\u2019t stretch it.',
       compute: (A, t, p) => movingPercentiles(A, halfWindow(p.envWindow, p.fs), p.envPct),
@@ -1688,7 +1712,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, welch, spectrum, dominantFrequency, GAIT_BAND, filterGain, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, welch, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

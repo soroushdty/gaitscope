@@ -366,6 +366,18 @@ test('the FFT matches numpy.fft for powers of two and other lengths, and inverts
   }
 });
 
+test('the Hilbert envelope matches scipy.signal.hilbert and follows a changing amplitude', () => {
+  for (const c of SPEC.hilbert) {
+    const x = filterInput(c.fs), mu = C.mean(x), z = C.hilbert(x.map(v => v - mu));
+    c.re.forEach((v, k) => assert.ok(Math.abs(z.re[k] - v) < 1e-12 && Math.abs(z.im[k] - c.im[k]) < 1e-12, c.fs + ' Hz, sample ' + k));
+  }
+  // a 2 Hz swing whose amplitude grows from 1 to 3, on a 9.81 offset: the band is 9.81 ± the amplitude
+  const t = Float64Array.from({ length: 1000 }, (_, i) => i / 100), amp = v => 1 + v / 5;
+  const A = t.map(v => 9.81 + amp(v) * Math.sin(2 * Math.PI * 2 * v));
+  const e = C.ENVELOPES.find(x => x.id === 'hilbert').compute(A, t, {});
+  for (let i = 200; i < 800; i += 10) assert.ok(Math.abs(e.upper[i] - (C.mean(A) + amp(t[i]))) < 0.05, 'upper at ' + t[i] + ' s');
+});
+
 test('Welch spectrum matches scipy.signal.welch', () => {
   for (const c of SPEC.welch) {
     const x = Float64Array.from({ length: Math.round(c.fs * 10) }, (_, i) => { const t = i / c.fs; return 1 + Math.sin(2 * Math.PI * 1.8 * t) + 0.3 * Math.sin(2 * Math.PI * 17 * t + 0.4) + 0.1 * Math.sin(2 * Math.PI * 0.2 * t); });

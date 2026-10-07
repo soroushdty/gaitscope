@@ -376,7 +376,7 @@ test('envelopes are drawn around the signal and never change steps, metrics or e
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
   const sel = $('envSel');
-  assert.deepEqual([...sel.options].map(o => o.textContent), ['None', 'Sliding window', 'Peak-trough', 'Dynamic threshold', 'Mean ± k·SD', 'Percentile band']);
+  assert.deepEqual([...sel.options].map(o => o.textContent), ['None', 'Sliding window', 'Peak-trough', 'Dynamic threshold', 'Mean ± k·SD', 'Hilbert envelope', 'Percentile band']);
   assert.equal(sel.value, 'none');
   assert.ok(sel.closest('.plot-tools'), 'a view option, in the plot toolbar');
   let last = pg.plots.at(-1);
@@ -387,7 +387,7 @@ test('envelopes are drawn around the signal and never change steps, metrics or e
     metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await exportText() });
   const before = await snapshot();
   const n = before.steps.split(',').length;
-  for (const id of ['sliding', 'peaktrough', 'meansd', 'percentile', 'dynamic']) { // dynamic last: the checks below continue from it
+  for (const id of ['sliding', 'peaktrough', 'meansd', 'hilbert', 'percentile', 'dynamic']) { // dynamic last: the checks below continue from it
     sel.value = id; sel.dispatchEvent(new pg.w.Event('change'));
     await sleep(40);
     last = pg.plots.at(-1);

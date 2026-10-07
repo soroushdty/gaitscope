@@ -137,6 +137,11 @@ def spectral_fixtures():
     for n in (1, 2, 8, 100, 114, 920, 1000, 1024):
         X = np.fft.fft(fft_input(n))
         out["fft"].append({"n": n, "re": X.real.tolist(), "im": X.imag.tolist()})
+    out["hilbert"] = []
+    for fs in (57, 100, 460):
+        x = filter_input(fs)
+        z = signal.hilbert(x - x.mean())
+        out["hilbert"].append({"fs": fs, "re": z.real.tolist(), "im": z.imag.tolist()})
     out["welch"] = []
     for fs in (57, 100, 460):
         x = filter_input(fs, dur=10.0)
