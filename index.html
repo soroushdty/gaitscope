@@ -68,7 +68,7 @@
     <section id="advSec">
       <details class="adv" id="advDetails">
         <summary><h2>Advanced</h2></summary>
-      <div class="env-opts" data-env="sliding dynamic meansd" hidden>
+      <div class="env-opts" data-env="sliding dynamic meansd percentile" hidden>
       <h3>Envelope</h3>
       <div class="ctl">
         <div class="ctl-head"><label for="envWinIn">Window</label><output id="envWinOut" for="envWinIn" data-unit="s" data-dec="1">1.0 s</output></div>
@@ -81,6 +81,12 @@
         <input type="range" id="envKIn" data-param="envK" min="0.25" max="3" value="1" step="0.25">
       </div>
       <p class="hint">k = 1: activity (RMS around the mean). k = 0.5: Threshold peaks’ cut-off, following the signal.</p>
+      </div>
+      <div class="env-opts" data-env="percentile" hidden>
+      <div class="ctl">
+        <div class="ctl-head"><label for="envPctIn">Lower percentile (upper is 100 minus it)</label><output id="envPctOut" for="envPctIn" data-unit="ordinal">10th</output></div>
+        <input type="range" id="envPctIn" data-param="envPct" min="1" max="25" value="10" step="1">
+      </div>
       </div>
       <div class="env-opts" data-env="peaktrough" hidden>
       <h3>Envelope</h3>

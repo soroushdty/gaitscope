@@ -1421,6 +1421,20 @@
     }
     return { mean: m, sd };
   }
+  // Moving percentiles q and 100 − q (numpy's default linear interpolation between ranks)
+  // over A[i-half .. i+half], shortened at the ends; a sorted copy of the window slides along.
+  function movingPercentiles(A, half, q) {
+    const n = A.length, win = [], lower = new Float64Array(n), upper = new Float64Array(n);
+    const find = v => { let lo = 0, hi = win.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (win[mid] < v) lo = mid + 1; else hi = mid; } return lo; };
+    const at = pct => { const r = pct / 100 * (win.length - 1), k = Math.floor(r); return k + 1 < win.length ? win[k] + (r - k) * (win[k + 1] - win[k]) : win[k]; };
+    for (let j = 0; j <= Math.min(half, n - 1); j++) win.splice(find(A[j]), 0, A[j]);
+    for (let i = 0; i < n; i++) {
+      lower[i] = at(q); upper[i] = at(100 - q);
+      if (i - half >= 0) win.splice(find(A[i - half]), 1);
+      if (i + 1 + half < n) win.splice(find(A[i + 1 + half]), 0, A[i + 1 + half]);
+    }
+    return { lower, upper };
+  }
   const ENVELOPES = [
     { id: 'none', name: 'None' },
     {
@@ -1459,6 +1473,12 @@
       label: p => 'Envelope, mean \u00b1 ' + fmt(p.envK, 2) + '\u00b7SD, ' + fmt(p.envWindow, 1) + ' s',
       midName: 'Moving mean',
     },
+    {
+      id: 'percentile', name: 'Percentile band',
+      tagline: 'The 10th and 90th percentile (a setting) within a window around each moment: like the sliding max and min, but one spike can\u2019t stretch it.',
+      compute: (A, t, p) => movingPercentiles(A, halfWindow(p.envWindow, p.fs), p.envPct),
+      label: p => 'Envelope, ' + ORDINAL(p.envPct) + '\u2013' + ORDINAL(100 - p.envPct) + ' percentile, ' + fmt(p.envWindow, 1) + ' s',
+    },
   ];
 
   /* Synthetic demo walk: 5 columns like the lab file (t, x, y, z, |a|). */
@@ -1485,7 +1505,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd,
+    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

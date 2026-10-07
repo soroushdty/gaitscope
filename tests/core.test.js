@@ -387,6 +387,19 @@ test('mean ± k·SD envelope: moving mean and population SD, shortened at the en
   assert.equal(env('meansd').midName, 'Moving mean');
 });
 
+test('percentile band: q-th and (100 − q)-th percentile with linear interpolation, shortened at the ends', () => {
+  const t = Float64Array.from({ length: 400 }, (_, i) => i / 100);
+  const A = t.map((v, i) => Math.sin(5 * v) + (i % 37 === 0 ? 4 : 0)); // spikes
+  const pct = (arr, q) => { const s = arr.slice().sort((a, b) => a - b), r = q / 100 * (s.length - 1), k = Math.floor(r); return k + 1 < s.length ? s[k] + (r - k) * (s[k + 1] - s[k]) : s[k]; };
+  const e = env('percentile').compute(A, t, Object.assign({}, ENV_P, { envPct: 10 }));
+  for (let i = 0; i < A.length; i++) {
+    const w = Array.from(A.slice(Math.max(0, i - 50), Math.min(A.length, i + 51)));
+    assert.ok(Math.abs(e.lower[i] - pct(w, 10)) < 1e-12 && Math.abs(e.upper[i] - pct(w, 90)) < 1e-12, 'at ' + i);
+  }
+  const slide = env('sliding').compute(A, t, ENV_P);
+  assert.ok(Math.max(...e.upper) < 1.5 && Math.max(...slide.upper) > 4, 'spikes stretch the max/min band, not the percentile band');
+});
+
 test('peak-trough envelope joins peaks and troughs by straight lines', () => {
   const t = Float64Array.from({ length: 1000 }, (_, i) => i / 100);
   const amp = v => 1 + v / 5, A = t.map(v => amp(v) * Math.sin(2 * Math.PI * v));

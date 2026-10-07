@@ -251,14 +251,14 @@
   }
   // Each algorithm's sliders under Advanced carry data-param (their key in params()). An
   // <output for=…> with data-unit shows the value with data-dec decimals.
-  // data-zero: text shown for 0 (e.g. "off"); data-unit="order": "4th order".
+  // data-zero: text shown for 0 (e.g. "off"); data-unit="order": "4th order"; "ordinal": "10th".
   const optionInputs = () => document.querySelectorAll('#advSec input[data-param]');
   const ordinal = n => n + ([, 'st', 'nd', 'rd'][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10] || 'th');
   function updateOptionOut(el) {
     const out = document.querySelector('output[for="' + el.id + '"][data-unit]');
     if (!out) return;
     const v = Number(el.value), u = out.dataset.unit;
-    out.textContent = v === 0 && out.dataset.zero ? out.dataset.zero : u === 'order' ? ordinal(v) + ' order'
+    out.textContent = v === 0 && out.dataset.zero ? out.dataset.zero : u === 'order' ? ordinal(v) + ' order' : u === 'ordinal' ? ordinal(v)
       : fmt(v, Number(out.dataset.dec || 0)) + (u === '%' ? '%' : u ? ' ' + u : '');
   }
   function resetParams(run) {
