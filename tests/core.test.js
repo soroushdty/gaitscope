@@ -351,6 +351,21 @@ test('a filter that cannot be built leaves the signal alone and says what to cha
   assert.equal(C.filterLabel({ filter: 'none' }), 'none');
 });
 
+/* ------------------------------------------------ frequency domain (#36) */
+const SPEC = JSON.parse(fs.readFileSync(path.join(FIX, 'spectral.json'), 'utf8'));
+// Same as fft_input() in scripts/make_fixtures.py.
+const fftInput = n => Float64Array.from({ length: n }, (_, k) => Math.sin(0.37 * k) + 0.5 * Math.cos(1.9 * k + 0.3) + 0.01 * k);
+
+test('the FFT matches numpy.fft for powers of two and other lengths, and inverts', () => {
+  for (const c of SPEC.fft) {
+    const x = fftInput(c.n), X = C.fft(x);
+    const scale = Math.max(1, ...c.re.map(Math.abs), ...c.im.map(Math.abs));
+    for (let k = 0; k < c.n; k++) assert.ok(Math.abs(X.re[k] - c.re[k]) < 1e-12 * scale && Math.abs(X.im[k] - c.im[k]) < 1e-12 * scale, 'n = ' + c.n + ', bin ' + k);
+    const back = C.ifft(X.re, X.im);
+    for (let k = 0; k < c.n; k++) assert.ok(Math.abs(back.re[k] - x[k]) < 1e-12 * scale && Math.abs(back.im[k]) < 1e-12 * scale, 'inverse, n = ' + c.n);
+  }
+});
+
 /* ------------------------------------------------------- envelopes */
 const ENV_P = { fs: 100, envWindow: 1, envPeakWindow: 0.3 };
 const env = id => C.ENVELOPES.find(e => e.id === id);
