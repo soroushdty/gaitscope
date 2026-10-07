@@ -16,6 +16,11 @@ below was checked on those dates and will drift.
 - **Quality decides, not speed.** Each model got six tutor questions with the right trace and card in the
   prompt (3.6). Five of eight models, from 0.35B to 1.2B, got almost everything wrong (0.5–1 of 12).
   Qwen3.5-0.8B scored 6, Qwen3.5-2B 7.5 and Qwen3.5-4B 11. Every model under 4B endorsed or half-endorsed a student's wrong explanation.
+- **Not a runtime or precision problem** (11, added after review). The same 0.8B model in WebLLM and llama.cpp,
+  and at fp16 and 8-bit, scored 3–6 of 12, like the 4-bit original. Those runtimes did make follow-up questions
+  5–10× cheaper, and llama.cpp's CPU path is 5–10× faster than ONNX Runtime's. The route to a phone tier is a
+  small model fine-tuned on gaitscope questions (11.5), trained on code-generated answers: Anthropic's terms
+  forbid Claude-written training targets.
 - **Where the cost goes** (3.1):
   - **Laptops with WebGPU**: after a one-off download, a question costs 1–4 s with a sub-1B model and
     5–15 s with the 4B model on this laptop's integrated GPU.
@@ -287,9 +292,10 @@ Speed, with the one model that runs (Qwen3-0.6B `q4f16`, Chrome for Testing 151,
 - The RAG pass measured the same pattern with SmolLM2-360M `q4` (fp32 activations): 31 → 82 tok/s prefill and
   2.0 → 4.3 tok/s decode, 1 → 4 threads [M by the RAG pass].
 - Memory: the single-file Qwen3-0.6B export took 3.9 GB in the renderer on WASM.
-- **Verdict**: on a 2026 laptop CPU, a sub-1B model writes 1.4–4 tokens per second. Phones are slower. There is
-  no useful CPU tier for generation; the CPU path gets Tier 0 (section 7.2), and `coi-serviceworker` isn't
-  worth adding for it.
+- **Verdict**: with ONNX Runtime, a sub-1B model writes 1.4–4 tokens per second on a 2026 laptop CPU, and phones
+  are slower. The CPU path gets Tier 0 (section 7.2), and `coi-serviceworker` isn't worth adding for it.
+  llama.cpp's CPU path is 5–10× faster at decoding (11.3), which changes the speed argument but not the
+  quality one.
 - Under COEP `require-corp`, Transformers.js and its wasm from jsDelivr and the model files loaded without
   changes [M], as the header check predicted [V: curl].
 
@@ -398,9 +404,9 @@ time, B = battery and heat. **Verdict**: adopt, try (worth a prototype), or reje
 | 4 | **Choose models by measured criteria** (owner's idea) | D, Mem, TTFW, T, and whether the answers are right | Two findings [M]. The quality cut-off on this task sits at about 4B: 0.35–1.2B models scored 0.5–1 of 12, Qwen3.5-0.8B 6, 2B 7.5, 4B 11 (3.6), and model-card scores didn't predict it. And the export matters as much as the size: LFM2.5-350M prefills 3× faster than Qwen3-0.6B and peaks at 1.2 GB instead of 8.8 GB at 2k tokens, because exports without `num_logits_to_keep` build full-vocabulary logits for every prompt token (3.3) | Medium: a golden-question test per model (7.6) | Benchmarks on cards don't measure faithfulness to a trace | **Adopt**, with the criteria in 5.1 |
 | 5 | **RAG over distilled knowledge** (owner's idea) | Makes a small model usable; costs TTFW | Each card is 150–170 tokens [M by the RAG pass]: about 0.1 s on this laptop, 1–5 s on a phone. Choosing the card by rule from what's on screen costs nothing; hand-written BM25 over 202 doc chunks takes 26 µs per query; an embedding model (23 MB, 10 ms per query) found no more than BM25 on 10 test questions [M by the RAG pass]. More passages first help and then hurt ([Jin et al.](https://arxiv.org/abs/2410.05983)) | Medium (the cards are row 2's work) | Wrong card → confident wrong answer; rules first reduces that | **Adopt, small**: one card by rule, BM25 plus aliases for free text, two cards at most. **Reject embeddings** for now |
 | 6 | **Number guard**: every number in a generated answer must appear in the trace or a card, else show the template | — (protects quality) | Small models mis-copy and invent: Qwen3.5-0.8B invented "h = 1.5 g"; Qwen3.5-4B quoted "110–120 steps per minute" from general knowledge; Gemma 3 1B used a real number for the wrong quantity, which no guard catches (3.6) [M] | Low (a regex and a lookup) | Rounding variants need a tolerance (0.5%) | **Adopt.** It is how "the tutor never computes" is enforced |
-| 7 | **Reuse the KV cache for follow-ups** (`DynamicCache`, Transformers.js ≥ 4.1) | TTFW for follow-ups | Depends on the model [M, section 3.5]: LFM2.5-350M and -1.2B answer a follow-up 5–14× sooner (57–333 ms instead of 0.56–4.3 s, prefilling 27 new tokens instead of 852). Qwen3.5-0.8B gains nothing, and its chat template re-renders the history differently (806 of 873 cached tokens matched), so reuse would also corrupt its context. Granite-4.0-H-350M crashes (`If` node in a Mamba layer) | Low–medium | Transformers.js doesn't check that the cached tokens match the new prompt; keep the token IDs and append, instead of re-rendering the template | **Adopt for models that pass a test** (LFM2.5 here), appending token IDs |
+| 7 | **Reuse the KV cache for follow-ups** (`DynamicCache`, Transformers.js ≥ 4.1) | TTFW for follow-ups | Depends on the model [M, section 3.5]: LFM2.5-350M and -1.2B answer a follow-up 5–14× sooner (57–333 ms instead of 0.56–4.3 s, prefilling 27 new tokens instead of 852). Qwen3.5-0.8B gains nothing, and its chat template re-renders the history differently (806 of 873 cached tokens matched), so reuse would also corrupt its context. Granite-4.0-H-350M crashes (`If` node in a Mamba layer). WebLLM and llama.cpp reuse Qwen3.5's cache correctly: ~10× and ~4.7× faster follow-ups (11.2) | Low–medium | Transformers.js doesn't check that the cached tokens match the new prompt; keep the token IDs and append, instead of re-rendering the template | **Adopt for models that pass a test** (LFM2.5 here), appending token IDs |
 | 8 | **Prefill the system prompt and trace while the student types** | TTFW of the first question (hidden, not removed) | On WASM a shared prefix halved per-question time with identical output [M by the RAG pass]. On WebGPU, `DynamicCache.update()` disposes the GPU tensors it replaces, so one prefix can't serve several independent questions without a cache that pins it [V: source] | Medium | Wasted work if no question comes | **Try** for the first question only |
-| 9 | **Multithreaded WebAssembly** via `coi-serviceworker` (Pages can't send COOP/COEP) | T on the CPU path | 4 threads are 2.4–2.7× faster than 1, and 8 threads add 15–30% [M, 3.4]. Even so, a 64-token answer takes 25–28 s, and most current exports don't run on WebAssembly at all | Low–medium; one extra reload on the first visit, twice in Safari; Safari needs `require-corp` | Breaks nothing here: every external resource the page loads sends CORS and `CORP: cross-origin` [V: curl] | **Reject** for now: it speeds up a path that stays too slow to use |
+| 9 | **Multithreaded WebAssembly** via `coi-serviceworker` (Pages can't send COOP/COEP) | T on the CPU path | 4 threads are 2.4–2.7× faster than 1, and 8 threads add 15–30% [M, 3.4]. Even so, a 64-token answer takes 25–28 s, and most current exports don't run on WebAssembly at all. With llama.cpp's CPU path, threads are worth 3.5–4.6× (11.3) | Low–medium; one extra reload on the first visit, twice in Safari; Safari needs `require-corp` | Breaks nothing here: every external resource the page loads sends CORS and `CORP: cross-origin` [V: curl] | **Reject** for now; **adopt** if a llama.cpp CPU tier is ever built (11.3) |
 | 10 | **Detect `shader-f16`; fall back to `q4`** | Avoids a hard failure | ONNX Runtime throws "requires f16 but the device does not support it" for `q4f16` on such GPUs; Transformers.js checks only for `fp16` [V: source]. Firefox exposes no `shader-f16` at all. The `q4` fallback on this GPU: LFM2.5-350M 863 / 55 tok/s instead of 1,553 / 91; Qwen3.5-0.8B 340 / 27 instead of 655 / 40 (prefill / decode) [M] | Low | `q4` files are 15–60% larger | **Adopt** |
 | 11 | **Decide the tier before downloading**, and remember a crash | Avoids wasted D and crashed tabs | Pages can't read free RAM or VRAM; iOS kills the tab instead of throwing [V: section 4.3 sources]. WebLLM uses vendor + binding-size heuristics; Chrome's own Gemini Nano runs a native micro-benchmark | Low | False negatives keep capable laptops on Tier 0 | **Adopt** (7.3) |
 | 12 | **Perceived speed**: show the template first, stream tokens, run the model in a worker, warm up after load, download in the background after consent | TTFW as felt; UI stays responsive | The first question after a load pays 160–480 ms of warm-up (shader compilation) on this laptop [M]; on Safari the first forward pass costs "~1-5 seconds" [V: LlamaWeb §3]. `TextStreamer` and `InterruptableStoppingCriteria` exist [V] | Low | — | **Adopt** all five |
@@ -415,7 +421,7 @@ time, B = battery and heat. **Verdict**: adopt, try (worth a prototype), or reje
 | 21 | **A 4B model on capable laptops** (Qwen3.5-4B "-OPT", 2.8 GB), opt-in | Quality: the only model here that answered reliably | 11 of 12 (3.6); 6.8 s to the first token at 573 tokens, 14 tok/s, 10 s cached load, 8.5 GB renderer peak while loading, on this iGPU [M]; faster on discrete GPUs and Apple silicon [E] | Low | A 2.8 GB download; laptops under ~16 GB can't hold it | **Adopt** as the opt-in Tier L (7.2), never as a default |
 | 22 | **Lower-bit weights** (q2/q1), speculative decoding, graph capture | — | q2/q1 dtypes exist (since Transformers.js 4.1) but LlamaWeb measured q2_k 17% *slower* than q4_k_m on GPUs; Transformers.js 4.3.1 has no speculative decoding and doesn't use graph capture [V] | — | Quality loss at q2 | **Reject** for now |
 | 23 | **Prompt compression** (LLMLingua-2) | TTFW | Needs an XLM-RoBERTa-large classifier, bigger than the generator [V]; the trace is generated by code and can simply be written compactly (row 14) | — | — | **Reject** |
-| 24 | **Fine-tune a tiny gaitscope model** (Kaggle GPU, published on Hugging Face) | Quality per byte | Not tested | High: data, training, re-training when the code changes | Drift from the code | **Reject** for now; templates and cards cover the foreseen questions |
+| 24 | **Fine-tune a tiny gaitscope model** (Kaggle GPU, published on Hugging Face) | Quality per byte | Not tested; plan and costs in 11.5. Claude-written answers can't be the training targets (Anthropic's terms) [V] | High: data, training, re-training when the code changes | Drift from the code | **Try** after Tier 0 exists, since its templates are the training data (11.5) |
 | 25 | **Hand the prompt to the student's own assistant** (clipboard + open the assistant) | D, Mem, T, B on the device: no model at all | Frontier-size models at no cost to the owner; ASU's ChatGPT Edu, Gemini and Copilot are FERPA-approved and don't train on prompts [V: ai.asu.edu]. No assistant documents a prefill URL, and servers reject URLs above 8–16 KB [V: probes, section 6] | Low | The student leaves the page; personal accounts have other data terms | **Adopt**: the main generation path on phones and the default "explain more" everywhere |
 | 26 | **A notebook next to the analysis** (Colab / Kaggle, the student's account) | Everything on the device | 4–9B models on a free T4; about 3–8 min from click to first answer [E, section 6.3] | Medium (owner writes one notebook) | Account and phone verification (Kaggle) | **Adopt** as the "go deeper" path |
 
@@ -654,7 +660,11 @@ Why no model on phones, in one line each:
   the same trace and card the local model would get.
 
 Revisit when a sub-1B model passes the golden questions, or when Chrome's Prompt API ships on Android
-(section 10).
+(section 10). Section 11 checked whether another runtime or precision changes this; it doesn't.
+
+**Runtime for Tier L**: Transformers.js, which ran the 4B that scored 11. WebLLM is the candidate to replace
+it, because it reuses Qwen3.5's cache for follow-ups (~10× faster) and loads less code, once it has been
+measured with the 4B on more than this laptop (11.4).
 
 Without `shader-f16` (Firefox's WebGPU, some GPUs), `q4f16` fails outright (section 4.1, row 10). The 4B
 `q4` export is 3.1 GB and about 45% slower (3.5), so such machines get Tier 0 by default and the `q4` model
@@ -912,6 +922,8 @@ Models come from huggingface.co over your Wi-Fi (`source=hf`), as they would for
 | 7 | Open `bench.html?preset=qwen35-08b&device=webgpu&source=hf&prompts=rag&max=256&reps=10` (no `auto`), then unplug and press **Run** | battery % before and after (shown at the end of the log), decode tok/s of the 1st vs the 10th answer (throttling), how warm the phone gets. Unplugged, the result can't reach the laptop, so read it off the page |
 | 8 (optional, 570 MB) | `bench.html?preset=qwen3-06b&device=wasm&source=hf&prompts=q_only,short&max=64&reps=1&auto=1` | the CPU path on a phone (the only model here that runs on WebAssembly, 3.4) |
 | 9 (optional, 3 GB, Wi-Fi only) | `bench.html?preset=qwen35-4b&device=webgpu&source=hf&prompts=short&max=64&reps=1&auto=1` | does the Tier L model load at all on an 8 GB phone, or does the tab die? |
+| 10 | `rt.html?preset=lfm25-350m-q4km&source=hf&clearCache=1&prompts=q_only,short,rag&max=64,256&reps=1&auto=1` | the same model in llama.cpp (section 11): speed, and memory via `phone_watch.sh` |
+| 11 | `rt.html?preset=qwen35-08b-mlc&source=hf&clearCache=1&prompts=short,rag&max=64,256&reps=1&auto=1` | Qwen3.5-0.8B in WebLLM: compare with step 4 |
 
 Optional, during steps 2–6 with the cable in: `bash scripts/phone_watch.sh > results/phone-watch.tsv` logs
 battery temperature, thermal status and Chrome's memory every 2 s.
@@ -931,19 +943,21 @@ battery temperature, thermal status and Chrome's memory every 2 s.
 
 ## 9. The benchmark harness
 
-It lives outside the repo, in **`~/gaitscope-llm-lab/`** on the owner's laptop, because it downloads 8.1 GB
-of models and writes browser profiles. Its `README.md` repeats this section.
+It lives outside the repo, in **`~/gaitscope-llm-lab/`** on the owner's laptop (a local git repository with no
+remote), because it downloads 12.7 GB of models and writes browser profiles. Its `README.md` repeats this
+section.
 
 | Path | What |
 |---|---|
 | `server.py` | Local server, standard library only. Serves the pages; a model mirror at `/hf/<repo>/resolve/<rev>/<file>` shaped like the Hub, so Transformers.js can use it as `env.remoteHost`; the same pages with COOP/COEP under `/coi/` (`require-corp`) and `/coic/` (`credentialless`); and `POST /result`, which appends to `results/results.jsonl`. |
 | `probe.html` | What a page can learn before a download: WebGPU adapter, limits, `shader-f16`, `deviceMemory`, cores, storage quota, connection, battery, Prompt API, WebNN, Memory64, JSPI. Works on a phone; **Send to laptop** posts the result. |
 | `bench.html`, `bench.js`, `prompts.js` | Loads a model with Transformers.js 4.3.1 and times import, tokenizer, model load (download vs session creation), first token, prefill and decode for four prompt sizes and two answer lengths. `mode=followup` measures KV-cache reuse; `quality=1` asks the six questions of section 3.6 and keeps the answers. Parameters are listed at the top of `bench.js`; the form sets the same ones by hand. |
+| `rt.html`, `rt.js` | The same measurements with WebLLM 0.2.85 or wllama 3.8.1 (llama.cpp), for section 11; also `mode=followup`, `quality=1`, and `gpuLayers=0` for llama.cpp's CPU path. |
 | `bench.mjs` | Playwright driver. Runs `bench.html` in Chromium and samples memory every 250 ms: RSS of the browser's process tree and the amdgpu GTT/VRAM counters. Appends to `results/driver.jsonl`. |
 | `probe.mjs`, `scripts/flags_probe.mjs` | Which Chromium builds and flags expose WebGPU here (section 2). |
-| `scripts/download_models.sh`, `download_more.sh` | Anonymous downloads (no token) into `models/hf/`. |
-| `scripts/run_all.sh` | Every batch in this report: A (WebGPU matrix), A2 (two models added later), B (q4 on WebGPU, follow-ups, quality), C (WebAssembly threads), D (a real download from huggingface.co), E (Chromium 154 cross-check). |
-| `scripts/summ.py` | One block per page load from `results/driver.jsonl`. |
+| `scripts/download_models.sh`, `download_more.sh`, `download_runtimes.sh` | Anonymous downloads (no token) into `models/hf/`: 7.1 + 1.0 + 4.6 GB. |
+| `scripts/run_all.sh` | Every batch in this report: A (WebGPU matrix), A2 (two models added later), B (q4 on WebGPU, follow-ups, quality), C (WebAssembly threads), D (a real download from huggingface.co), E (Chromium 154 cross-check), F (other runtimes and precisions), G (llama.cpp's CPU path). |
+| `scripts/summ.py`, `tables.py`, `answers.py` | One block per page load; the tables of section 3; the quality answers by model and batch. `results/quality-scores.md` holds the rubric and every score. |
 | `scripts/onnx_io.py` | Graph inputs of an ONNX file, e.g. whether it takes `num_logits_to_keep` (section 3.3). Run with `uvx --from onnx python -I`. |
 | `scripts/phone_watch.sh` | Battery %, battery temperature, Chrome memory and thermal status of an Android phone over adb, every 2 s. |
 
@@ -954,8 +968,9 @@ cd ~/gaitscope-llm-lab
 npm install                          # playwright-core only; reuses the Chromium in ~/.cache/ms-playwright
 bash scripts/download_models.sh      # ~7 GB, anonymous
 bash scripts/download_more.sh        # ~1 GB
+bash scripts/download_runtimes.sh    # ~4.6 GB, for section 11
 python3 server.py --port 8790 &      # 8765 was already taken by another http.server on this laptop
-bash scripts/run_all.sh A A2 B C D E # the WebGPU batches open a visible Chromium window
+bash scripts/run_all.sh A A2 B C D E F G   # the WebGPU batches open a visible Chromium window
 python3 scripts/summ.py              # summary of every page load
 ```
 
@@ -988,6 +1003,10 @@ Caveats:
    the instructor) should read the answers and the rubric in `~/gaitscope-llm-lab/results/quality-scores.md`.
 8. **The instructor's view** (already open in CLAUDE.md): is a tutor acceptable for the course at all, as a
    checker rather than a writer, and should the hand-off point at ASU's accounts by default?
+9. **WebLLM with the 4B** (11.4): is it stable on other laptops, and as good as Transformers.js's 4B on the
+   golden questions? If so, it makes Tier L's follow-ups ~10× cheaper.
+10. **Can fine-tuning lift a 0.8B model** from 3–6 to ~10 of 12 on held-out questions (11.5)? This is the one
+    result that would re-open the phone tier.
 
 ### Risks
 
@@ -1001,3 +1020,195 @@ Caveats:
 | Hugging Face rate-limits a class behind one campus IP | Low (the download is opt-in and laptop-only) | Stagger downloads; mirroring isn't possible for 2.8 GB on Pages |
 | The tutor becomes the thing that writes students' explanations | Depends on the course | The design checks rather than writes; keep it that way |
 | Chrome ships the Prompt API on Android, or a sub-1B model passes the golden test | Unknown | Re-open the phone tier |
+
+## 11. Beyond Transformers.js: other runtimes, precision, and routes to a phone tier
+
+Added after review. Sections 3–5 measured one runtime (Transformers.js) at one precision (4-bit), so "no model
+on phones" might have been a property of that setup rather than of model size. This section tests that with
+two other in-browser runtimes, two other precisions (8-bit, fp16) and two other 4-bit formats on the same model
+and the same prompts, then plans the two routes that could still give phones a model. Same laptop, browser, flags, prompts and rubric as
+before; harness batches F and G (section 9).
+
+Runtimes: **WebLLM** 0.2.85 (MLC; models compiled to WebGPU ahead of time) and **wllama** 3.8.1 (llama.cpp
+compiled to WebAssembly, with llama.cpp's WebGPU backend, the one the LlamaWeb paper describes).
+
+### 11.1 Same model, three runtimes, three precisions
+
+Qwen3.5-0.8B everywhere, plus LFM2.5-350M (the fastest small model) and Qwen3.5-2B where they add something.
+Prefill and decode are medians over the speed matrix, as in 3.2 [M]:
+
+| Model · runtime · format | Download | Prefill tok/s | Decode tok/s | First token at ~560 / ~800 / ~2,100 tokens (s) | Peak renderer / GPU (GB) | Cached load (s) | Quality /12 |
+|---|---:|---:|---:|---|---|---:|---:|
+| Qwen3.5-0.8B · Transformers.js · q4f16 | 470 MB | 655 | 40 | 0.9 / 1.2 / 3.4 | 1.8 / 1.5 | 1.6 | 6 |
+| Qwen3.5-0.8B · Transformers.js · **fp16** | 1,539 MB | 853 | 21 | 0.6 / 0.9 / 2.8 | 5.1 / 2.8 | — | 3 |
+| Qwen3.5-0.8B · **WebLLM** · q4f16_1 | 447 MB | 648 | 45 | 0.8 / 1.2 / 3.7 | 0.7 / 2.5 | 1.4 | 3 |
+| Qwen3.5-0.8B · **llama.cpp** · Q4_K_M | 533 MB | 255 | 33 | 2.2 / 3.1 / 8.9 | 1.6 / 1.5 | 2.3 | 4.5 |
+| Qwen3.5-0.8B · **llama.cpp** · **Q8_0** | 812 MB | 236 | 37 | 2.4 / 3.4 / 9.4 | 1.9 / 1.1 | 2.3 | 5.5 |
+| LFM2.5-350M · Transformers.js · q4f16 | 255 MB | 1,553 | 91 | 0.3 / 0.5 / 1.3 | 1.2 / 0.8 | 0.9 | 1 |
+| LFM2.5-350M · **llama.cpp** · Q4_K_M | 229 MB | 463 | 65 | 1.2 / 1.5 / 4.2 | **0.7 / 0.5** | 2.4 | 2 |
+| Qwen3.5-2B · **WebLLM** · q4f16_1 | 1,083 MB | 256 | 27 | 2.2 / **GPU device lost** / — | 0.9 / 2.4 | 3.3 | — (device lost) |
+
+What it shows:
+
+- **Neither precision nor runtime fixes the quality.** Five variants of the same 0.8B model scored 3–6 of
+  12; the unquantized fp16 version scored lowest. All five endorsed the student's wrong explanation (inventing
+  "h = 1.2 g" or "1.5 g") and all five gave shoe advice. One greedy sample per question moves a score by a
+  point or two, so these are equal within noise. **Model size is what limits quality here** (3.6: 4B scored
+  11), so the conclusion of section 7 stands.
+- **WebLLM ≈ Transformers.js in speed** on this GPU (decode 14% faster), with less renderer memory and more GPU
+  memory, about the same in total. Its 2B model lost the GPU device at an ~800-token prompt, twice
+  (GPU memory had risen only 2.4 GB of 16), so this configuration is unstable here. Transformers.js's 2B
+  export also failed on this machine (3.3). Both are on the flag-only AMD/Linux WebGPU path, so this may not
+  generalise [E].
+- **llama.cpp is slower here** (prefill 2.6×, decode ~15% slower than Transformers.js for Qwen3.5-0.8B), the
+  opposite of the LlamaWeb paper's averages over four GPUs from different vendors (+69% decode against
+  Transformers.js). Its memory advantage did show for LFM2.5-350M: 0.7 + 0.5 GB against 1.2 + 0.8 GB (40%
+  less), which is what phones lack.
+- **8-bit decodes faster than 4-bit in llama.cpp** (37 vs 33 tok/s), as the LlamaWeb paper also found. A likely reason is that decoding
+  isn't purely bandwidth-bound at this size, so 4-bit dequantization costs show [E]. fp16 in Transformers.js
+  shows the other side: faster prefill (no dequantization) but half the decode speed (4× the bytes per token).
+- **Download sizes are close** for current exports: 447 (MLC), 470 (ONNX) and 533 MB (GGUF Q4_K_M) for
+  Qwen3.5-0.8B; 229 vs 255 MB for LFM2.5-350M. The 1.5–1.7× gap reported for older exports (Qwen3-0.6B: 335 MB
+  MLC vs 570 MB ONNX) has mostly closed.
+- **Runtime code**: Transformers.js 168 KB + 5.5 MB (brotli); WebLLM 1.9 MB + a 0.7 MB model library per model
+  (via jsDelivr's GitHub mirror, `cdn.jsdelivr.net/gh/mlc-ai/binary-mlc-llm-libs@<commit>/…`, which keeps
+  CLAUDE.md's "pinned on jsDelivr" rule); wllama 156 KB + 2.0 MB [M: `curl` with brotli].
+
+### 11.2 Follow-up questions: where the other runtimes win
+
+The follow-up test of 3.5, for Qwen3.5-0.8B [M]:
+
+| Runtime | Turn 2 with the cache | Turn 2 from scratch | Speed-up |
+|---|---|---|---:|
+| Transformers.js | 27 new tokens, but 1.39 s: no gain, and only 806 of 873 cached tokens matched the re-rendered history | 1.39 s | none |
+| **WebLLM** | **28 tokens prefilled, 0.15–0.18 s** | 1.63–1.71 s | **~10×** |
+| **llama.cpp** | **94 tokens prefilled, 0.76 s** | 3.46–3.70 s | **~4.7×** |
+
+- WebLLM keeps its own conversation state, so the template mismatch that broke Transformers.js doesn't arise.
+- llama.cpp compares tokens and reuses the longest common prefix (`cache_prompt`). It even reused the shared
+  system prompt and trace **across independent questions**: the second "turn 1", a new conversation, prefilled
+  426 of 810 tokens. That is row 8 of 4.1 ("prefill the system prompt and trace once") built in.
+- For Tier L, whose follow-ups would otherwise cost a full prefill (about 5 s for 400 tokens with the 4B on this
+  iGPU), this is the strongest reason to consider WebLLM.
+
+### 11.3 The CPU path in llama.cpp
+
+Section 3.4 found the CPU path unusable, but with ONNX Runtime. llama.cpp's own CPU kernels (wllama with no GPU
+layers, same laptop) [M]:
+
+| CPU, no GPU | Prefill tok/s | Decode tok/s | First token at ~550 tokens |
+|---|---:|---:|---:|
+| ONNX Runtime · Qwen3-0.6B · 1 thread (3.4) | 27 | 1.4 | 21 s |
+| llama.cpp · LFM2.5-350M · 1 thread | 28 | 16–20 | 18.6 s |
+| llama.cpp · LFM2.5-350M · 8 threads (isolated) | 97–114 | 50–58 | 4.6 s |
+| llama.cpp · Qwen3.5-0.8B · 1 thread | 11 | 6.4–7.5 | 52 s |
+| llama.cpp · Qwen3.5-0.8B · 8 threads (isolated) | 46–48 | 18–25 | 12 s |
+
+- **Decoding on the CPU is 5–10× faster in llama.cpp** than in ONNX Runtime at comparable sizes, and
+  multithreading is worth 3.5–4.6× there, against nothing on the WebGPU path (threads made llama.cpp's WebGPU run
+  no faster: 210–231 vs 255–295 tok/s prefill).
+- **Prefill on one thread stays slow** (11–28 tok/s), and phones' CPUs are slower than this laptop's [E].
+- So a CPU tier is no longer ruled out by speed, only by quality: if a small model ever passes the golden test
+  (11.5), llama.cpp is its runtime on devices without WebGPU, and cross-origin isolation through
+  `coi-serviceworker` becomes worth its reload (4.1, row 9).
+
+### 11.4 Verdicts on the runtimes
+
+| Runtime | Strengths measured here | Weaknesses measured here | Verdict |
+|---|---|---|---|
+| **Transformers.js 4.3** | Fastest small-model prefill; widest model choice | Largest runtime download (5.7 MB); follow-up reuse fails for Qwen3.5; CPU path 5–10× slower than llama.cpp; many exports lack `num_logits_to_keep` or don't run on WASM | **Keep as the default for Tier L for now**: it ran the 4B that scored 11 |
+| **WebLLM 0.2.85** | Same speed, 14% faster decode; correct 10× follow-ups; less renderer memory; ~2.6 MB of runtime code | GPU device lost with the 2B model on this iGPU; WebGPU only (no CPU path); models limited to MLC's list unless the owner converts weights | **Try for Tier L**: measure Qwen3.5-4B (2.4 GB MLC) on the owner's and other laptops; switch if it's stable, since follow-ups get 10× cheaper |
+| **wllama 3.8.1 (llama.cpp)** | 40% less memory for LFM2.5; automatic prefix caching across questions; a CPU path 5–10× faster than ONNX Runtime's; ~2.2 MB of code | 2.6× slower prefill on this GPU | **The runtime for any future phone or CPU tier** (memory, CPU speed); not for Tier L on this hardware |
+| LiteRT-LM JS, MediaPipe | — | Early preview / maintenance-only [V] | **Watch** |
+
+### 11.5 Fine-tuning a small model on gaitscope questions (a plan)
+
+The quality cut-off in 3.6 is about general small models answering questions about *this* code. A model
+trained on this narrow task could do better at 0.8B, which would make a phone tier possible again. Nothing here
+was trained; this is a plan with its costs [U unless marked].
+
+1. **Training data, generated by code.** Run `core.js` over synthetic recordings that vary the things the
+   tutor explains: algorithm, filter, sampling rate, tied peaks, stop bumps, strides vs steps, uneven timing.
+   Each run gives a trace (7.5). For each trace and each question type, the **target answer is the template
+   answer** (4.1, row 2), which is correct by construction, plus paraphrases for variety. About 2,000–5,000
+   examples [E].
+2. **Who may write the targets.** Anthropic's terms forbid "Using Outputs as training targets for models"
+   without written permission [V: [Claude Help Center](https://support.claude.com/en/articles/12326764-can-i-use-my-outputs-to-train-an-ai-model),
+   2026-03-16]. So Claude (including this session) must not write the target answers or the paraphrases.
+   The templates should be written or rewritten by the owner, and paraphrases generated by an open-weight
+   model whose licence puts no limit on its outputs (Qwen3.5 is Apache-2.0), run in the owner's own free
+   Kaggle or Colab session. The owner's prompts are fine there: no student data is involved.
+3. **Training.** LoRA on Qwen3.5-0.8B, on a free Kaggle T4 (30 GPU h/week). About 5M training tokens is
+   roughly one to a few hours per epoch on a T4 [E]. Whether the usual LoRA tooling handles Qwen3.5's hybrid
+   Gated DeltaNet layers needs checking first [U].
+4. **Export for the page.** Easiest through the runtimes measured in 11.1–11.4: `mlc_llm convert_weight` makes WebLLM
+   weights for a fine-tune of an architecture WebLLM already supports, and the existing model library is
+   reused [V: [MLC docs](https://llm.mlc.ai/docs/compilation/convert_weights.html)]; llama.cpp's
+   `convert_hf_to_gguf.py` + `llama-quantize` make a GGUF. A Transformers.js export with
+   `num_logits_to_keep` is harder to reproduce.
+5. **Publish** on the owner's Hugging Face account (free; static files the owner publishes are allowed), with a
+   pinned revision.
+6. **Gate**: the golden-question test (7.6) on held-out traces and questions, not the training templates.
+
+**Cost**: owner time, mostly writing templates (which Tier 0 needs anyway) and the evaluation; no money. **Risk**:
+a fine-tune learns the templates' phrasing and still fails on unforeseen questions, which are the only ones the
+templates don't already answer. **Verdict: try**, after Tier 0 exists, because Tier 0's templates are its
+training data.
+
+### 11.6 Trimming the vocabulary (a plan)
+
+Qwen3.5 uses a 248,320-token vocabulary for 201 languages. In the small models that table is a large share of
+the weights [V: the models' `config.json`]:
+
+| Model | Hidden size | Embedding parameters | Share of the model | Compute per output token spent on the vocabulary |
+|---|---:|---:|---:|---:|
+| Qwen3.5-0.8B | 1,024 | 254M (tied with the output layer) | about 30% | about 30% [E] |
+| Qwen3.5-4B | 2,560 | 636M (tied) | about 16% | about 15% [E] |
+
+- **The method**: keep only the tokens an English-language tutor needs (English text, digits, units, the
+  chat template's special tokens, and the 256 byte tokens so anything can still be encoded), and drop the
+  matching rows of the embedding and the output layer. On multilingual models, keeping about half the
+  vocabulary for one language kept the original quality
+  ([Ushio et al., EMNLP Findings 2023](https://arxiv.org/abs/2305.15020); tool:
+  [lm-vocab-trimmer](https://github.com/asahi417/lm-vocab-trimmer)).
+- **What it would save**, keeping ~32k tokens [E]: about 110–120 MB of the 0.8B's 470 MB `q4f16` download and
+  roughly a quarter of its per-token compute; for the 4B about 300 MB per copy of the table (the ONNX export
+  stores it twice: `embed_tokens` and the output layer). Logits shrink by the same factor, which also helps the
+  exports that lack `num_logits_to_keep` (3.3).
+- **Cost and risk**: a re-export (tokenizer remap, then the same export steps as 11.5), published on the
+  owner's Hugging Face account; non-English names and symbols get split into more tokens; every model
+  update means doing it again.
+- **Verdict: try together with 11.5**, since a fine-tune needs a re-export anyway. On its own it trims cost but
+  doesn't fix the quality problem that rules out small models.
+
+### 11.7 Other routes, briefly
+
+| Technique | Saves | Evidence | Verdict |
+|---|---|---|---|
+| **Ask on the laptop, record on the phone** | Everything on the phone | The phone records (#51) and exports (#53); the laptop opens the export and runs Tier L. Works today, no new code [V: the merged features] | **Adopt**: say it in the phone UI ("for a longer explanation, open this recording on your laptop") |
+| **Pair the phone with the student's own laptop** (WebRTC, offer/answer exchanged by QR codes, no signalling server) | The phone uses the laptop's Tier L model | Possible without any owner-run server on one network [E]; a lot of code for what the previous row already gives | **Reject** for now |
+| **Prompt-lookup / speculative decoding** | Decode time when answers copy from the trace | Not in Transformers.js 4.3.1 [V: source]; harder for Qwen3.5 and Granite-H, whose recurrent layers can't be rolled back after a rejected guess without saving their state [E] | **Reject** for now; revisit if a runtime ships it for hybrid models |
+| **Cache answers** per (trace hash, question, model) in IndexedDB | Repeat questions cost nothing | Trivial | **Adopt** with Tier L |
+| **Score fixed choices with one prefill** instead of generating (e.g. "which card answers this?") | Decode | On phones the prefill is the expensive part (3.1), and small models judged badly (3.6); rules and BM25 pick cards for free | **Reject** |
+| **8-bit KV cache** (ONNX Runtime 1.30) | Memory at long contexts | Prompts here are 400–1,000 tokens, and the hybrid models' KV caches are tens of MB [E] | **Reject** |
+| **Background Fetch** | A large download survives closing the tab | Experimental, Chromium only, needs a service worker [V: [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Background_Fetch_API)] | **Reject** while phones get no model; reconsider with a phone tier |
+| **Cross-Origin Storage** | One download shared by every site using the same model | A proposal; Transformers.js has experimental support behind `env.experimental_useCrossOriginStorage`, needing an extension today [V: runtime notes] | **Watch** |
+| **WebNN on NPUs** | Battery on laptops with NPUs | Chrome origin trial from 147, desktop only; not exposed on this Linux laptop despite its NPU [V, M] | **Watch** |
+
+### 11.8 What changes in the recommendation
+
+- **Phones: no change.** The limit is answer quality, which follows model size, not the runtime or the
+  precision (11.1). The two routes that could still give phones a model are a fine-tuned small model (11.5),
+  ideally with a trimmed vocabulary (11.6), run in llama.cpp for its smaller memory footprint, and tested on the
+  Pixel 9a with the golden questions. Until then, phones get Tier 0, the hand-off, and "open this recording on
+  your laptop" (11.7).
+- **Tier L: same model, a second runtime to try.** Qwen3.5-4B stays the model. Transformers.js stays the default,
+  because it ran the 4B that scored 11. WebLLM should be measured with the 4B (2.4 GB) on the owner's and other
+  laptops: if it's stable, it makes follow-up questions ~10× cheaper (11.2) and loads less runtime code.
+- **CPU-only devices: still Tier 0**, but no longer for speed reasons. If a small model passes the golden test,
+  llama.cpp (wllama) plus cross-origin isolation through `coi-serviceworker` is the CPU path (11.3).
+- **CLAUDE.md (7.8)**: whichever runtime is adopted takes Transformers.js's place in the proposed rule. WebLLM's
+  per-model libraries can come from jsDelivr's GitHub mirror pinned to a commit, so "pinned on jsDelivr" still
+  holds; its model files come from Hugging Face like the others.
+- **Phone test plan**: steps 10 and 11 of 8.2 run the same models in llama.cpp and WebLLM on the Pixel, next to
+  Transformers.js's steps 2 and 4.
