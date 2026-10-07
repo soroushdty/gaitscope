@@ -15,7 +15,7 @@
     ch: null,          // prepared channel
     res: null,         // detection results
     notes: [],         // [{plot, kind, x, y, text}] pinned by the user (C.noteOf, #80); never change the steps
-    noteT: null,       // time of the note being written
+    noteDraft: null,   // the note being written: {plot, kind, x, y}
     plotReady: false,
   };
 
@@ -362,7 +362,7 @@
     for (const b of document.querySelectorAll('[data-preset]')) b.disabled = !on;
     for (const b of document.querySelectorAll('[data-rs-rate]')) b.disabled = !on;
     // the indicator lists stay usable without a recording, so a set can be prepared first
-    for (const id of ['rsSel', 'rsRate', 'rsMethod', 'rsAA', 'filterSel', 'posSel', 'showIntervals', 'noteMode', 'resetParams', 'plainBtn']) $(id).disabled = !on;
+    for (const id of ['rsSel', 'rsRate', 'rsMethod', 'rsAA', 'filterSel', 'posSel', 'showIntervals', 'noteMode', 'specNoteMode', 'resetParams', 'plainBtn']) $(id).disabled = !on;
     for (const el of optionInputs()) el.disabled = !on;
     updateExportButtons();
   }
@@ -805,14 +805,11 @@
       yaxis: { domain: iv ? [0.3, 1] : [0, 1], title: { text: chLabel + (unit ? ' (' + unit + ')' : '') }, gridcolor: colors.line, zerolinecolor: colors.line, automargin: true },
       yaxis2: { visible: iv, domain: [0, 0.22], title: { text: 'Interval (s)' }, gridcolor: colors.line, zeroline: false, rangemode: 'tozero', automargin: true },
       // each threshold-based detector's h, dashed in its colour
-      shapes: dets.filter(usesH).map(d => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: d.p.h, y1: d.p.h, line: { color: colorOf(d.ind), width: 1.2, dash: 'dash' } }))
-        .concat(S.notes.map(n => ({ type: 'line', xref: 'x', x0: n.x, x1: n.x, yref: 'paper', y0: 0, y1: 1, line: { color: colors.note, width: 1.3, dash: 'dot' } }))),
-      // labels in the right quarter extend leftwards so they don't run off the plot or under the toolbar
-      annotations: S.notes.map(n => ({ x: n.x, xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', showarrow: false,
-        xanchor: n.x > t[0] + 0.75 * (tMax - t[0]) ? 'right' : 'left',
-        text: esc(n.text), font: { color: colors.note, size: 12 }, bgcolor: colors.surface })),
+      shapes: dets.filter(usesH).map(d => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: d.p.h, y1: d.p.h, line: { color: colorOf(d.ind), width: 1.2, dash: 'dash' } })),
+      annotations: [],
     };
-    if (S.notes.length) layout.margin.t = 26; // room for the note labels
+    const drawn = drawNotes('signal', layout, [t[0], tMax], v => v, colors);
+    if (drawn.times) layout.margin.t = 26; // room for the labels of time notes
     // Toolbar only while the pointer is over the plot (always shown on touch screens, which can't hover).
     // Drag zooms and reset (or double-click) zooms out, so the +/- buttons go.
     const config = { responsive: true, displaylogo: false, scrollZoom: false, displayModeBar: 'hover',
@@ -820,7 +817,7 @@
     const el = $('plot');
     el.setAttribute('aria-label', 'Signal with detected steps' + (iv ? ' and the time between steps' : ''));
     Plotly.react(el, traces, layout, config);
-    if (!el.__bound) { el.on('plotly_click', onPlotClick); el.__bound = true; }
+    if (!el.__bound) { el.on('plotly_click', ev => onNoteClick('signal', ev)); el.__bound = true; }
     const name = S.file.demo ? 'Synthetic walk' : (S.varName ? S.varName : S.file.name);
     $('plotTitle').textContent = name + ', ' + chLabel;
   }
@@ -837,11 +834,11 @@
     const gain = C.filterGain(p, spec.fs, sp.f);
     const unit = chanInfo().unit;
     const traces = [
-      { x: raw ? raw.f : [], y: raw ? raw.psd : [], type: 'scatter', mode: 'lines', name: 'Recorded', visible: !!raw, opacity: 0.35, line: { color: colors.signal, width: 1.2 },
+      { x: raw ? raw.f : [], y: raw ? raw.psd : [], type: 'scatter', mode: 'lines', name: 'Recorded', visible: !!raw, opacity: 0.35, line: { color: colors.signal, width: 1.2 }, meta: { role: 'specRecorded' },
         hovertemplate: 'Recorded<br>%{x:.2f} Hz<br>%{y:.3g}<extra></extra>' },
-      { x: sp.f, y: sp.psd, type: 'scatter', mode: 'lines', name: raw ? 'Filtered' : 'Signal', line: { color: colors.signal, width: 1.6 },
+      { x: sp.f, y: sp.psd, type: 'scatter', mode: 'lines', name: raw ? 'Filtered' : 'Signal', line: { color: colors.signal, width: 1.6 }, meta: { role: 'spectrum' },
         hovertemplate: '%{x:.2f} Hz (%{customdata:.0f}/min)<br>%{y:.3g}<extra></extra>', customdata: sp.f.map(v => v * 60) },
-      { x: gain ? sp.f : [], y: gain || [], type: 'scatter', mode: 'lines', name: 'Filter gain', visible: !!gain, yaxis: 'y2', line: { color: colors.algo, width: 1.3, dash: 'dash' },
+      { x: gain ? sp.f : [], y: gain || [], type: 'scatter', mode: 'lines', name: 'Filter gain', visible: !!gain, yaxis: 'y2', line: { color: colors.algo, width: 1.3, dash: 'dash' }, meta: { role: 'gain' },
         hovertemplate: 'Filter keeps %{y:.2f} of the swing at %{x:.2f} Hz<extra></extra>' },
     ];
     const pk = spec.peak, fsUnit = unit ? ' (' + unit + ')²/Hz' : '';
@@ -857,52 +854,137 @@
         text: fmt(pk.freq, 2) + ' Hz = ' + fmt(pk.freq * 60, 0) + '/min', font: { color: colors.algo, size: 12 } }] : [],
     };
     const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
-    Plotly.react($('specPlot'), traces, layout, config);
+    const drawn = drawNotes('spectrum', layout, [0, top], v => (log ? (v > 0 ? Math.log10(v) : null) : v), { note: cssVar('--note'), surface: cssVar('--surface') });
+    if (drawn.times) layout.margin.t = 26;
+    const sel = $('specPlot');
+    Plotly.react(sel, traces, layout, config);
+    if (!sel.__bound) { sel.on('plotly_click', ev => onNoteClick('spectrum', ev)); sel.__bound = true; }
     $('specNote').textContent = (pk.clear ? 'The strongest rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz is ' + fmt(pk.freq, 2) + ' Hz: ' + fmt(pk.freq * 60, 0) + ' per minute' + (p.stride ? ', counted as strides (One leg), so ' + fmt(pk.freq * 120, 0) + ' steps/min. ' : '. ') : 'No clear walking rhythm between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz. ') +
       'Welch\u2019s method, ' + fmt(spec.segment, 1) + ' s segments' + (spec.resampled ? ', on an even ' + fmt(spec.fs, 1) + ' Hz grid' : '') + '. ' +
       (gain ? 'The dashed line is the filter\u2019s gain: the share of each frequency\u2019s swing it keeps.' : p.filter === 'median' ? 'The median filter isn\u2019t linear, so it has no fixed gain to draw.' : '');
   }
 
   /* ------------------------------------------------------------- notes */
-  function onPlotClick(ev) {
-    if (!$('noteMode').checked || !S.ch || !ev.points || !ev.points.length) return;
-    openNoteForm(ev.points[0].x);
+  /* Notes (#80) on the signal and on the spectrum, each with its own tools: Add notes, the
+     kind (a time or frequency, a level, or a point) and Snap to the curve (a level or point
+     takes the curve's value at the clicked time or frequency, instead of exactly where the
+     click was). Notes are a view only: they never change the steps. */
+  const NOTE_UI = {
+    signal: { plot: 'plot', card: 'plotCard', mode: 'noteMode', opts: 'noteOpts', kind: 'noteKind', snap: 'noteSnap', form: 'noteForm', at: 'noteAt', text: 'noteText', cancel: 'noteCancel', hint: 'noteHint', list: 'noteList',
+      roles: ['signal', 'filtered'], hint0: 'Click the plot where the note belongs.' },
+    spectrum: { plot: 'specPlot', card: 'specCard', mode: 'specNoteMode', opts: 'specNoteOpts', kind: 'specNoteKind', snap: 'specNoteSnap', form: 'specNoteForm', at: 'specNoteAt', text: 'specNoteText', cancel: 'specNoteCancel', hint: 'specNoteHint', list: 'specNoteList',
+      roles: ['spectrum'], hint0: 'Click the spectrum where the note belongs.' },
+  };
+  const NOTE_HINT = { level: 'Click at the height the note marks.', point: 'Click the point the note marks.' };
+  // where the pointer was, in data units (for Snap off), from Plotly's axes; null if unknown
+  function cursorAt(gd, e) {
+    const fl = gd && gd._fullLayout, drag = gd && gd.querySelector && (gd.querySelector('.nsewdrag[data-subplot="xy"]') || gd.querySelector('.nsewdrag'));
+    if (!fl || !fl.xaxis || !fl.yaxis || !e || !drag) return null;
+    const r = drag.getBoundingClientRect(), lin = (ax, px) => { const l = ax.p2l(px); return ax.type === 'log' ? Math.pow(10, l) : l; };
+    return { x: lin(fl.xaxis, e.clientX - r.left), y: lin(fl.yaxis, e.clientY - r.top) };
   }
-  function openNoteForm(t) {
-    S.noteT = t;
-    $('noteAt').textContent = 'Note at ' + fmt(t, 2) + ' s';
-    $('noteText').value = '';
-    $('noteForm').hidden = false; $('noteHint').hidden = true;
-    $('noteText').focus();
+  function onNoteClick(plot, ev) {
+    const u = NOTE_UI[plot];
+    if (!$(u.mode).checked || !S.ch || !ev.points || !ev.points.length) return;
+    const kind = $(u.kind).value;
+    // Plotly's clicked point of the main curve (nearest to the click on the plot); a click on a
+    // marker or the gain line has none, and takes the curve's value at that time instead
+    const pt = ev.points.find(p => p.data && p.data.meta && u.roles.includes(p.data.meta.role)) || (ev.points[0].data ? null : ev.points[0]);
+    const at = pt || ev.points[0], cur = cursorAt($(u.plot), ev.event), snap = $(u.snap).checked;
+    let x, y = NaN;
+    if (kind === 'time') x = cur ? (snap ? curve(plot).xs[nearest(plot, cur.x)] : cur.x) : at.x; // the clicked time, not the nearest point's
+    else if (snap || !cur) { x = at.x; y = pt ? pt.y : curve(plot).ys[nearest(plot, at.x)]; }
+    else { x = cur.x; y = cur.y; }
+    if (!Number.isFinite(x) && kind !== 'level') return;
+    if (kind !== 'time' && !Number.isFinite(y)) return;
+    openNoteForm(plot, { kind, x, y });
   }
-  function closeNoteForm() {
-    S.noteT = null;
-    $('noteForm').hidden = true;
+  // the drawn curve (the filtered signal when there is one, or the spectrum) and its sample nearest to x
+  const curve = plot => (plot === 'signal' ? { xs: S.ch.t, ys: S.res.filt.applied ? S.res.filt.A : S.ch.A } : { xs: S.res.spec.f, ys: S.res.spec.psd });
+  function nearest(plot, x) {
+    const xs = curve(plot).xs;
+    let lo = 0, hi = xs.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (xs[mid] < x) lo = mid; else hi = mid; }
+    return Math.abs(xs[hi] - x) < Math.abs(xs[lo] - x) ? hi : lo;
+  }
+  function noteWhere(n) {
+    const xu = n.plot === 'signal' ? ' s' : ' Hz', yv = v => (n.plot === 'signal' ? fmt(v, 2) + (chanInfo().unit ? ' ' + chanInfo().unit : '') : 'power ' + String(+v.toPrecision(3)));
+    return n.kind === 'time' ? fmt(n.x, 2) + xu : n.kind === 'level' ? 'level ' + yv(n.y) : fmt(n.x, 2) + xu + ', ' + yv(n.y);
+  }
+  function openNoteForm(plot, draft) {
+    closeNoteForm();
+    const u = NOTE_UI[plot];
+    S.noteDraft = Object.assign({ plot }, draft);
+    const where = noteWhere(C.noteOf(S.noteDraft));
+    $(u.at).textContent = 'Note at ' + where;
+    $(u.text).value = '';
+    $(u.form).hidden = false; $(u.hint).hidden = true;
+    $(u.text).focus();
+  }
+  function closeNoteForm(plot) {
+    if (!plot || (S.noteDraft && S.noteDraft.plot === plot)) S.noteDraft = null;
+    for (const p of plot ? [plot] : Object.keys(NOTE_UI)) $(NOTE_UI[p].form).hidden = true;
     updateNoteUi();
   }
-  function addNote(e) {
+  function addNote(e, plot) {
     e.preventDefault();
-    const text = $('noteText').value.trim();
-    if (!text || S.noteT === null) { $('noteText').focus(); return; }
-    S.notes.push(C.noteOf({ plot: 'signal', kind: 'time', x: S.noteT, text }));
-    S.notes.sort((a, b) => a.x - b.x);
-    closeNoteForm();
-    renderNotes(); renderPlot();
+    const u = NOTE_UI[plot], text = $(u.text).value.trim();
+    if (!text || !S.noteDraft || S.noteDraft.plot !== plot) { $(u.text).focus(); return; }
+    S.notes.push(C.noteOf(Object.assign({}, S.noteDraft, { text })));
+    S.notes.sort((a, b) => (a.plot === b.plot ? (Number.isFinite(a.x) ? a.x : -Infinity) - (Number.isFinite(b.x) ? b.x : -Infinity) : a.plot < b.plot ? 1 : -1));
+    closeNoteForm(plot);
+    renderNotes(); redrawNotes(plot);
   }
   function deleteNote(i) {
-    S.notes.splice(i, 1);
-    renderNotes(); renderPlot();
+    const n = S.notes.splice(i, 1)[0];
+    renderNotes(); if (n) redrawNotes(n.plot);
   }
+  function redrawNotes(plot) { if (!S.ch || !S.res) return; if (plot === 'spectrum') renderSpectrum(); else renderPlot(); }
   function renderNotes() {
-    $('noteList').innerHTML = S.notes.map((n, i) => '<li><b>' + fmt(n.x, 2) + ' s</b>' + esc(n.text) +
-      '<button type="button" data-i="' + i + '" aria-label="Delete note at ' + fmt(n.x, 2) + ' s" title="Delete note">×</button></li>').join('');
-    $('noteList').hidden = !S.notes.length;
-    $('legNotes').hidden = !S.notes.length;
+    for (const plot of Object.keys(NOTE_UI)) {
+      const u = NOTE_UI[plot], list = S.notes.map((n, i) => [n, i]).filter(([n]) => n.plot === plot);
+      $(u.list).innerHTML = list.map(([n, i]) => '<li><b>' + esc(noteWhere(n)) + '</b>' + esc(n.text) +
+        '<button type="button" data-i="' + i + '" aria-label="Delete note at ' + esc(noteWhere(n)) + '" title="Delete note">×</button></li>').join('');
+      $(u.list).hidden = !list.length;
+    }
+    $('legNotes').hidden = !S.notes.some(n => n.plot === 'signal');
   }
   function updateNoteUi() {
-    const on = $('noteMode').checked && !!S.ch;
-    $('noteHint').hidden = !on || !$('noteForm').hidden;
-    $('plotCard').classList.toggle('noting', on);
+    for (const plot of Object.keys(NOTE_UI)) {
+      const u = NOTE_UI[plot], on = $(u.mode).checked && !!S.ch;
+      $(u.opts).hidden = !on;
+      $(u.hint).textContent = NOTE_HINT[$(u.kind).value] || u.hint0;
+      $(u.hint).hidden = !on || !$(u.form).hidden;
+      $(u.card).classList.toggle('noting', on);
+    }
+  }
+  /* A plot's notes as Plotly shapes and annotations: a time as a dotted vertical line labelled
+     at the top, a level as a dotted horizontal line labelled at the right, a point as a dot
+     with its label above. ymap turns a value into the axis' units (log10 on a log axis; null
+     when it can't be drawn there). */
+  function drawNotes(plot, layout, xr, ymap, colors) {
+    let times = 0;
+    const line = { color: colors.note, width: 1.3, dash: 'dot' }, font = { color: colors.note, size: 12 };
+    for (const n of S.notes.filter(nt => nt.plot === plot)) {
+      if (n.kind === 'time') {
+        times++;
+        layout.shapes.push({ type: 'line', xref: 'x', x0: n.x, x1: n.x, yref: 'paper', y0: 0, y1: 1, line });
+        // labels in the right quarter extend leftwards so they don't run off the plot or under the toolbar
+        layout.annotations.push({ x: n.x, xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', showarrow: false, xanchor: n.x > xr[0] + 0.75 * (xr[1] - xr[0]) ? 'right' : 'left',
+          text: esc(n.text), font, bgcolor: colors.surface });
+        continue;
+      }
+      const y = ymap(n.y);
+      if (y === null || !Number.isFinite(y)) continue;
+      if (n.kind === 'level') {
+        layout.shapes.push({ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: y, y1: y, line });
+        layout.annotations.push({ x: 1, xref: 'paper', xanchor: 'right', y, yref: 'y', yanchor: 'bottom', showarrow: false, text: esc(n.text), font, bgcolor: colors.surface });
+      } else {
+        layout.annotations.push({ x: n.x, xref: 'x', y, yref: 'y', showarrow: true, arrowhead: 6, arrowsize: 1, arrowcolor: colors.note, ax: 0, ay: -26,
+          text: esc(n.text), font, bgcolor: colors.surface });
+      }
+    }
+    return { times };
   }
 
   /* ------------------------------------------------------------ tables */
@@ -1072,7 +1154,10 @@
     $('filterSel').value = 'none'; showFilter();
     $('rsSel').value = 'off'; $('rsRate').value = ''; $('rsMethod').value = 'linear'; $('rsAA').checked = false; showRs();
     resetParams(false);
-    for (const id of ['showIntervals', 'noteMode', 'specLog']) $(id).checked = false;
+    for (const id of ['showIntervals', 'noteMode', 'specNoteMode', 'specLog']) $(id).checked = false;
+    for (const id of ['noteSnap', 'specNoteSnap']) $(id).checked = true;
+    for (const id of ['noteKind', 'specNoteKind']) $(id).value = 'time';
+    renderNotes(); updateNoteUi();
     $('fsIn').value = '100'; $('expMenu').open = false;
     valOpenedByUser = null;
     $('fileChip').hidden = true; $('fileChip').innerHTML = ''; $('subtitle').hidden = false; $('homeBtn').hidden = true;
@@ -1149,11 +1234,15 @@
   for (const ev of ['input', 'change']) aside.addEventListener(ev, dropPlainUndo, true);
   aside.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.act !== 'open') dropPlainUndo(); }, true);
   $('specLog').addEventListener('change', () => { if (S.ch && S.res) renderSpectrum(); });
-  $('noteMode').addEventListener('change', () => { if (!$('noteMode').checked) closeNoteForm(); else updateNoteUi(); });
-  $('noteForm').addEventListener('submit', addNote);
-  $('noteCancel').addEventListener('click', closeNoteForm);
-  $('noteText').addEventListener('keydown', e => { if (e.key === 'Escape') closeNoteForm(); });
-  $('noteList').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) deleteNote(Number(b.dataset.i)); });
+  for (const plot of Object.keys(NOTE_UI)) {
+    const u = NOTE_UI[plot];
+    $(u.mode).addEventListener('change', () => { if (!$(u.mode).checked) closeNoteForm(plot); else updateNoteUi(); });
+    $(u.kind).addEventListener('change', updateNoteUi);
+    $(u.form).addEventListener('submit', e => addNote(e, plot));
+    $(u.cancel).addEventListener('click', () => closeNoteForm(plot));
+    $(u.text).addEventListener('keydown', e => { if (e.key === 'Escape') closeNoteForm(plot); });
+    $(u.list).addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) deleteNote(Number(b.dataset.i)); });
+  }
   $('resetParams').addEventListener('click', () => resetParams(true));
   $('expSteps').addEventListener('click', exportSteps);
   $('expFmt').addEventListener('change', showExport);

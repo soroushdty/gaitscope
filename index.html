@@ -206,7 +206,11 @@
           </div>
           <div class="plot-tools">
             <label class="toggle iv" title="Show the time between consecutive steps under the signal, and the period of the spectrum’s main rhythm over time"><input type="checkbox" id="showIntervals"><span>Step intervals</span></label>
-            <label class="toggle" title="Click the plot to pin a note at that time"><input type="checkbox" id="noteMode"><span>Add notes</span></label>
+            <label class="toggle" title="Click the plot to pin a note"><input type="checkbox" id="noteMode"><span>Add notes</span></label>
+            <span class="note-opts" id="noteOpts" hidden>
+              <label><span class="sr">Note at</span><select id="noteKind"><option value="time">At a time</option><option value="level">At a level</option><option value="point">At a point</option></select></label>
+              <label class="toggle snap" title="A level or point takes the signal's value at the clicked time, instead of exactly where you click"><input type="checkbox" id="noteSnap" checked><span>Snap to the curve</span></label>
+            </span>
             <button class="btn" id="plainBtn" type="button" title="Take away every step detector and envelope, the filter, resampling and the step intervals, to see just the signal. Notes stay.">Signal only</button>
             <button class="link" id="plainUndo" type="button" hidden>Undo</button>
             <form class="note-form" id="noteForm" hidden>
@@ -226,7 +230,22 @@
             <h2>Spectrum</h2>
             <label class="toggle" title="Show power on a logarithmic scale, to see the noise and what a filter removes"><input type="checkbox" id="specLog"><span>Log scale</span></label>
           </div>
+          <div class="plot-tools">
+            <label class="toggle" title="Click the spectrum to pin a note"><input type="checkbox" id="specNoteMode"><span>Add notes</span></label>
+            <span class="note-opts" id="specNoteOpts" hidden>
+              <label><span class="sr">Note at</span><select id="specNoteKind"><option value="time">At a frequency</option><option value="level">At a level</option><option value="point">At a point</option></select></label>
+              <label class="toggle snap" title="A level or point takes the spectrum's power at the clicked frequency, instead of exactly where you click"><input type="checkbox" id="specNoteSnap" checked><span>Snap to the curve</span></label>
+            </span>
+            <form class="note-form" id="specNoteForm" hidden>
+              <label for="specNoteText" id="specNoteAt">Note at 0.00 Hz</label>
+              <input type="text" id="specNoteText" maxlength="80" placeholder="e.g. walking rhythm" autocomplete="off">
+              <button class="btn" type="submit">Add</button>
+              <button class="btn" type="button" id="specNoteCancel">Cancel</button>
+            </form>
+            <span class="note-hint" id="specNoteHint" hidden>Click the spectrum where the note belongs.</span>
+          </div>
           <div id="specPlot" role="img" aria-label="Spectrum of the signal the algorithm sees"></div>
+          <ul class="note-list" id="specNoteList" hidden></ul>
           <p class="note" id="specNote"></p>
         </section>
 
