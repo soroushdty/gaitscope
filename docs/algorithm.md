@@ -412,7 +412,10 @@ method is shown. Walking repeats, so its rhythm shows as a tall peak.
 * **Hilbert–Huang transform** (Over time → *Hilbert–Huang (HHT)*, #101): the walk split into
   modes that each carry one rhythm, found from the signal itself (empirical mode
   decomposition, EMD), then each mode's frequency read moment by moment from its analytic
-  signal.
+  signal. The method is Huang et al.'s (1998): modes sifted with cubic-spline envelopes
+  until they are intrinsic mode functions, and the Hilbert spectrum of the modes, the
+  residue left out. The page uses their "Hilbert energy spectrum" (power) and differs from
+  the paper in a fixed number of sifts and in how the ends are handled (credits table).
   - `emd` follows PyEMD's `EMD(FIXE=sifts, extrema_detection='simple', spline_kind='cubic',
     nbsym=2)` line by line: simple extrema (flat runs included), two extrema mirrored past
     each end with all of PyEMD's edge rules, scipy's not-a-knot `CubicSpline` envelopes (or
@@ -617,6 +620,7 @@ trunk accelerations during human walking"). Don't use it.
 | The Lomb–Scargle periodogram (#101) | Scargle, 1982 (read: §IIb, eqs. 10–11, §III, appendices A–C): the modified periodogram, its equivalence with least-squares fitting and its statistics | [10.1086/160554](https://doi.org/10.1086/160554) |
 | Generalised Lomb–Scargle periodogram (floating mean, normalised power), as scipy computes it (#101) | Zechmeister & Kürster, 2009 (read: sections 1–3, eqs. 4–20): it also fits an offset at each frequency, which Lomb's and Scargle's fits to mean-removed data don't; this is what the page computes | [10.1051/0004-6361:200811296](https://doi.org/10.1051/0004-6361:200811296) |
 | Autocorrelation: the unbiased form, step and stride from its first two peaks, their regularity and symmetry (#101) | Moe-Nilssen & Helbostad, 2004 (read in full): unbiased autocorrelation of trunk acceleration (eq. 3), one step and one stride from the first two dominant peaks, their heights as step and stride regularity and their ratio as step symmetry. They used trunk (L3) acceleration in its vertical and forward directions; the page uses whichever signal is chosen, and places peaks between samples by a parabola, which is its own addition | [10.1016/S0021-9290(03)00233-1](https://doi.org/10.1016/S0021-9290(03)00233-1) |
-| Empirical mode decomposition (the HHT's first half), which the page follows exactly | PyEMD (Laszuk; its EMD code read: simple extrema, end mirroring, cubic splines, fixed sifts, end condition). Huang et al. 1998, the method's origin (DOI 10.1098/rspa.1998.0193 checked), is not credited until read: the publisher's page is not open | [github.com/laszukdawid/PyEMD](https://github.com/laszukdawid/PyEMD) |
+| Empirical mode decomposition and the Hilbert spectrum (#101) | Huang et al., 1998 (read: §4–5 and §7, pp. 915–921 and 928–929, and §10, pp. 989–990): intrinsic mode functions sifted with cubic-spline envelopes of the maxima and minima, and their analytic signals mapped onto the time–frequency plane, the residue left out. The page departs in three ways the paper allows or discusses: a fixed number of sifts instead of its SD criterion (0.2–0.3), which it calls based on "somewhat limited experience" (p. 989); extrema mirrored at the ends (PyEMD) instead of its added characteristic waves, and no padding before the Hilbert transform; and power, its "Hilbert energy spectrum" (p. 928), smoothed into 0.5 s × 0.05 Hz cells, as its smoothing allows (p. 929) | [10.1098/rspa.1998.0193](https://doi.org/10.1098/rspa.1998.0193) |
+| The EMD code the page follows exactly (#101) | PyEMD (Laszuk; its EMD code read: simple extrema, end mirroring, cubic splines, fixed sifts, end condition) | [github.com/laszukdawid/PyEMD](https://github.com/laszukdawid/PyEMD) |
 | Harmonic ratio | Smidt et al., 1971 (the origin; PubMed 5141651, no DOI); Menz et al., 2003 | [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5) |
 | Vertical acceleration from gravity (`gravitySplit`) | Mizell, 2003 | [10.1109/ISWC.2003.1241424](https://doi.org/10.1109/ISWC.2003.1241424) |
