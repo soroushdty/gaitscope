@@ -748,7 +748,7 @@ test('Frequency domain: closed by default with a summary, its own settings, a me
   assert.match(text(pg, 'freqSum'), /^Main rhythm 0\.9\d Hz \(5\d\/min\) · about 15 steps from the rhythm$/);
   assert.ok(metric(pg, 'Steps').at(-1).startsWith('≈ 15'), 'the numbers stay in the time view');
   assert.deepEqual([...$('wholeSel').options].map(o => o.value), ['welch']);
-  assert.deepEqual([...$('timeSel').options].map(o => o.value), ['stft']);
+  assert.deepEqual([...$('timeSel').options].map(o => o.value), ['stft', 'cwt', 'dwt']);
   assert.match(text(pg, 'wholeTag'), /average power at each frequency.*Credit: Welch, 1967; Cooley & Tukey, 1965 \(FFT\); Bluestein, 1970/);
   assert.equal($('wholeTag').querySelector('a').href, 'https://doi.org/10.1109/TAU.1967.1161901');
   assert.match(text(pg, 'timeTag'), /window that slides along the recording/);
@@ -769,6 +769,46 @@ test('Frequency domain: closed by default with a summary, its own settings, a me
   $('homeBtn').click(); await sleep(20);
   if (!$('homeDialog').hidden) $('homeDiscard').click();
   assert.equal($('freqSec').open, false);
+});
+
+test('Over time: the CWT with its cone of influence and width, the DWT bands, kept in an export (#101)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('demoBtn').click(); await sleep(40);
+  await openFreq(pg);
+  const choose = async v => { $('timeSel').value = v; $('timeSel').dispatchEvent(new pg.w.Event('change')); await sleep(40); };
+  assert.equal($('m_cwtB').closest('.method-params').hidden, true, 'the CWT\u2019s setting shows only with the CWT');
+  await choose('cwt');
+  assert.equal($('m_cwtB').closest('.method-params').hidden, false);
+  let sg = pg.spectros.at(-1);
+  assert.match(sg.layout.images[0].source, /^data:image\/png;base64,/);
+  const coi = [...sg.traces].filter(t => t.meta && t.meta.role === 'coi');
+  assert.equal(coi.length, 2, 'both ends');
+  const t = traces(pg, 'signal')[0].x;
+  assert.ok(coi[0].x.every(x => x > t[0]) && coi[1].x.every(x => x < t.at(-1)), 'inside the recording');
+  assert.ok(Math.abs(coi[0].x.at(-1) - t[0] - Math.SQRT2 / coi[0].y.at(-1)) < 0.05, 'sqrt(2)/f from the start with width 2');
+  const ridge = [...sg.traces].find(tr => tr.meta && tr.meta.role === 'rhythmLine').y.filter(v => v !== null);
+  assert.ok(ridge.length > 10 && Core.median(ridge) > 0.85 && Core.median(ridge) < 1.0, 'the walk\u2019s rhythm, about 0.9 Hz');
+  assert.match(text(pg, 'timeTag'), /Credit: Torrence & Compo, 1998.*Lee et al\., 2019/);
+  assert.match(text(pg, 'spectroNote'), /divided by the scale.*Outside the dashed lines/);
+  const before = sg.layout.images[0].source;
+  $('m_cwtB').value = '6'; $('m_cwtB').dispatchEvent(new pg.w.Event('input', { bubbles: true })); await sleep(80);
+  assert.equal(pg.d.querySelector('output[for="m_cwtB"]').textContent, '6.0');
+  assert.notEqual(pg.spectros.at(-1).layout.images[0].source, before, 'a wider wavelet, a new picture');
+  await choose('dwt');
+  sg = pg.spectros.at(-1);
+  assert.equal($('m_cwtB').closest('.method-params').hidden, true);
+  assert.ok(sg.layout.shapes.length >= 4 && sg.layout.annotations.some(a => /^level \d: [\d.]+–[\d.]+ Hz$/.test(a.text)), 'band edges and labels');
+  assert.equal([...sg.traces].length, 0, 'no rhythm line on the coarse bands');
+  assert.match(text(pg, 'spectroNote'), /Where they fall depends on the sampling rate: here 2\d Hz, after the signal is reduced to its walking band/);
+  // the method and its setting travel with a JSON export, and come back
+  $('expFmt').value = 'json'; $('expFmt').dispatchEvent(new pg.w.Event('change')); $('expGo').click(); await sleep(20);
+  const json = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.equal(JSON.parse(json).params.freqTime, 'dwt'); assert.equal(JSON.parse(json).params.cwtB, 6);
+  const tmp = path.join(require('os').tmpdir(), 'gaitscope_dwt.json'); fs.writeFileSync(tmp, json);
+  await choose('stft'); $('m_cwtB').value = '2';
+  await upload(pg, tmp); fs.unlinkSync(tmp);
+  assert.equal($('timeSel').value, 'dwt'); assert.equal($('m_cwtB').value, '6');
 });
 
 test('the spectrogram (#98): a picture on Plotly\u2019s axes, with the main rhythm drawn over it', async () => {

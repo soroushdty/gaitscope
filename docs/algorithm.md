@@ -361,6 +361,33 @@ method is shown. Walking repeats, so its rhythm shows as a tall peak.
   first and last steps are faint, under half size. It is an estimate: best on a steady walk,
   rougher when the phone is handled at the ends.
 
+* **Continuous wavelet transform** (Over time → *Continuous wavelet (CWT, Morlet)*, #101): a
+  wavelet that stretches for slow rhythms and shrinks for fast ones, so the picture is sharp
+  in time for fast changes and sharp in frequency for the slow stride at once.
+  - `cwtMorlet` follows PyWavelets' `pywt.cwt(x, scales, 'cmorB-1.0', method='fft')` step
+    by step: the complex Morlet wavelet on 4096 points over [−8, 8], integrated, conjugated,
+    resampled at each scale, convolved by FFT and differenced. It matches PyWavelets within
+    5e-15 (relative) at every scale tested (`tests/fixtures/wavelets.json`), including scales
+    whose wavelet is longer than the signal. One detail mattered: PyWavelets takes the
+    wavelet grid's spacing as `x[1] − x[0]`, which differs from 16/4095 in the last digits
+    and moves some resampling indices by one at large scales.
+  - `cwtGrid` runs it on the walking band (`walkingGrid`, as for the STFT) at each row's
+    frequency from 0.3 Hz up. The power |W|² is divided by the scale: Torrence & Compo's
+    energy density (1998, eq. 14), so equally strong swings look alike at any frequency.
+    The line is each column's strongest walking frequency when it stands out.
+  - The width B (a setting, 0.5–8) trades time for frequency sharpness; B = 2 is Torrence &
+    Compo's Morlet (ω0 about 6). The dashed lines are their cone of influence: within the
+    wavelet's e-folding time √B / f of either end, the picture is weaker than it should be.
+* **Wavelet bands** (Over time → *Wavelet bands (DWT)*, #101): `mra` splits the walking band
+  into octave bands with the db4 wavelet of the wavelet filter: `wavedec`, then each detail
+  level rebuilt alone, as PyWavelets (within 1e-12; the bands add back up to the signal).
+  `dwtGrid` fills each band's rows with its mean square over 0.5 s columns, with enough
+  levels to reach about 0.25 Hz. The band edges depend on the walking band's rate: at about
+  29 Hz (a phone at 57 Hz) a 1.6 Hz step falls in 0.9–1.8 Hz and a 0.8 Hz stride in
+  0.45–0.9 Hz, so the two show as separate blocks.
+* On 10 minutes at 460 Hz the CWT takes about 0.35 s, the bands 0.06 s and the STFT 0.16 s;
+  each view's result is kept until the signal, the filter, the method or its setting changes.
+
 * **Spectrogram** (`spectrogramImage`, #98): the same short-time spectra as a picture, in
   its own card under the spectrum. Time runs across, lined up with the signal plot;
   frequency goes up to 5 Hz in rows of 0.05 Hz; the colour's strength is the power, from
@@ -534,5 +561,7 @@ trunk accelerations during human walking"). Don't use it.
 |---|---|---|
 | Welch's method | Welch, 1967 | [10.1109/TAU.1967.1161901](https://doi.org/10.1109/TAU.1967.1161901) |
 | FFT | Cooley & Tukey, 1965; Bluestein, 1970 (any length) | [10.1090/S0025-5718-1965-0178586-1](https://doi.org/10.1090/S0025-5718-1965-0178586-1); [10.1109/TAU.1970.1162132](https://doi.org/10.1109/TAU.1970.1162132) |
+| Continuous wavelet transform (Morlet), its power per scale and cone of influence (#101) | Torrence & Compo, 1998 (read: sections 3b–3h, the Morlet wavelet, normalisation, eq. 14, the cone of influence) | [10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2](https://doi.org/10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2) |
+| The CWT's discretisation and the DWT bands' wavedec/waverec, which the page follows exactly | Lee et al., 2019 (PyWavelets) | [10.21105/joss.01237](https://doi.org/10.21105/joss.01237) |
 | Harmonic ratio | Smidt et al., 1971 (the origin; PubMed 5141651, no DOI); Menz et al., 2003 | [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5) |
 | Vertical acceleration from gravity (`gravitySplit`) | Mizell, 2003 | [10.1109/ISWC.2003.1241424](https://doi.org/10.1109/ISWC.2003.1241424) |

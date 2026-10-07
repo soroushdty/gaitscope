@@ -1350,3 +1350,33 @@ test('Frequency domain methods (#101): one registry, both kinds, each explained 
   assert.equal(v.grid.P.length, rhythm.S.length); assert.equal(v.line.f, rhythm.freq);
   assert.deepEqual(C.gridImage(v.grid, [1, 2, 3]), C.spectrogramImage(rhythm, [1, 2, 3]));
 });
+
+const WAVE = JSON.parse(fs.readFileSync(path.join(FIX, 'wavelets.json'), 'utf8'));
+test('the complex Morlet CWT matches PyWavelets’ pywt.cwt (cmorB-1, method fft) (#101)', () => {
+  let worst = 0;
+  for (const c of WAVE.cwt) {
+    const W = C.cwtMorlet(Float64Array.from(c.x), c.scales, c.B, 1);
+    c.scales.forEach((s, k) => {
+      const top = Math.max(...c.re[k].map(Math.abs), ...c.im[k].map(Math.abs));
+      c.idx.forEach((i, m) => {
+        const e = Math.max(Math.abs(W[k].re[i] - c.re[k][m]), Math.abs(W[k].im[i] - c.im[k][m])) / top;
+        worst = Math.max(worst, e);
+        assert.ok(e < 1e-10, `fs ${c.fs}, B ${c.B}, scale ${s.toFixed(2)}, sample ${i}: ${e}`);
+      });
+    });
+  }
+  console.log('# cwt worst relative error', worst.toExponential(1));
+});
+test('the db4 multiresolution analysis matches PyWavelets’ wavedec + waverec (#101)', () => {
+  let worst = 0;
+  for (const c of WAVE.mra) {
+    const x = Float64Array.from({ length: c.n }, (_, i) => fftInput(c.n)[i]);
+    const r = C.mra(x, c.level);
+    assert.equal(r.details.length, c.level);
+    r.details.forEach((d, j) => d.forEach((v, i) => { worst = Math.max(worst, Math.abs(v - c.details[j][i])); }));
+    r.approx.forEach((v, i) => { worst = Math.max(worst, Math.abs(v - c.approx[i])); });
+    // the parts add back up to the signal
+    for (let i = 0; i < c.n; i++) assert.ok(Math.abs(r.details.reduce((s, d) => s + d[i], r.approx[i]) - x[i]) < 1e-12);
+  }
+  assert.ok(worst < 1e-12, String(worst));
+});

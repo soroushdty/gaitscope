@@ -74,9 +74,10 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
   - *Whole recording:* Welch's spectrum (like scipy). Walking shows as a peak, which gives a
     cadence with no step detection at all, to cross-check the detectors. With a filter on,
     it also shows what the filter removes.
-  - *Over time:* the short-time Fourier spectrogram, with the main rhythm drawn on top. A
-    steady walk is one bright band; swinging the phone brings out a second band at half the
-    height (the stride).
+  - *Over time:* the short-time Fourier spectrogram, a Morlet wavelet scalogram (CWT, with
+    its cone of influence) or octave wavelet bands (DWT), with the main rhythm drawn on top.
+    A steady walk is one bright band; swinging the phone brings out a second band at half
+    the height (the stride). The wavelets match PyWavelets.
   The views never change the steps or metrics.
 - **Step intervals** under the plot: the time between steps for each detector, next to the
   spectrum's main rhythm over time.

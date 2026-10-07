@@ -890,16 +890,25 @@
      two views (whole recording, over time) are drawn with the chosen methods. The views never
      change steps or metrics. */
   const methodOf = sel => C.TRANSFORMS.find(d => d.id === $(sel).value) || C.TRANSFORMS.find(d => d.kind === (sel === 'wholeSel' ? 'whole' : 'time'));
+  // each method's settings, as range controls with data-param (so params() reads them and the
+  // Frequency domain Reset resets them); called before the option listeners are attached
   function fillMethods() {
-    for (const [sel, kind] of [['wholeSel', 'whole'], ['timeSel', 'time']]) {
-      $(sel).innerHTML = C.TRANSFORMS.filter(d => d.kind === kind).map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
+    for (const [sel, kind, box] of [['wholeSel', 'whole', 'wholeParams'], ['timeSel', 'time', 'timeParams']]) {
+      const defs = C.TRANSFORMS.filter(d => d.kind === kind);
+      $(sel).innerHTML = defs.map(d => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
+      $(box).innerHTML = defs.filter(d => d.params.length).map(d => '<div class="method-params" data-method="' + d.id + '">' + d.params.map(q => {
+        const id = 'm_' + q.key;
+        return '<div class="ctl"><div class="ctl-head"><label for="' + id + '">' + esc(q.label) + '</label><output for="' + id + '" data-unit="' + esc(q.unit || '') + '" data-dec="' + (q.dec || 0) + '">' + fmt(q.default, q.dec || 0) + (q.unit ? ' ' + esc(q.unit) : '') + '</output></div>' +
+          '<input type="range" id="' + id + '" data-param="' + q.key + '" min="' + q.min + '" max="' + q.max + '" step="' + q.step + '" value="' + q.default + '">' + (q.hint ? '<p class="hint">' + esc(q.hint) + '</p>' : '') + '</div>';
+      }).join('') + '</div>').join('');
     }
     showMethodTags();
   }
   function showMethodTags() {
-    for (const [sel, tag] of [['wholeSel', 'wholeTag'], ['timeSel', 'timeTag']]) {
+    for (const [sel, tag, box] of [['wholeSel', 'wholeTag', 'wholeParams'], ['timeSel', 'timeTag', 'timeParams']]) {
       const d = methodOf(sel);
       $(tag).innerHTML = esc(d.tagline) + (d.credit.length ? ' <span class="credit">' + creditHtml(d.credit) + '</span>' : '');
+      for (const el of $(box).querySelectorAll('.method-params')) el.hidden = el.dataset.method !== d.id;
     }
   }
   function renderFreq() {
@@ -963,13 +972,28 @@
     if (typeof Plotly === 'undefined') return;
     const el = $('spectroPlot'), { t } = S.ch, def = methodOf('timeSel');
     const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') };
-    const res = def.compute(S.res.filt.A, t, S.res.g, { rhythm: S.res.rhythm }), im = res && C.gridImage(res.grid, hexRgb(colors.signal));
+    // the CWT and DWT are slower than the rest, so a result is kept until the signal, the
+    // filter (S.cache is new then), the method or its settings change
+    const key = JSON.stringify([def.id, S.res.g.specWin, def.params.map(q => S.res.g[q.key])]);
+    S.cache.views = S.cache.views || new Map();
+    if (!S.cache.views.has(key)) S.cache.views.set(key, def.compute(S.res.filt.A, t, S.res.g, { rhythm: S.res.rhythm }));
+    const res = S.cache.views.get(key), im = res && C.gridImage(res.grid, hexRgb(colors.signal));
     el.hidden = !im;
-    if (!im) { $('spectroNote').textContent = 'The recording is shorter than one ' + fmt(S.res.rhythm.window, 0) + ' s window (Rhythm-over-time window, above), so there is no picture.'; return; }
-    const ln = res.line;
+    if (!im) { $('spectroNote').textContent = def.id === 'stft' ? 'The recording is shorter than one ' + fmt(S.res.rhythm.window, 0) + ' s window (Rhythm-over-time window, above), so there is no picture.' : 'The recording is too short for this method (it needs a few seconds).'; return; }
+    const ln = res.line, fMax = im.fMax;
     const traces = ln ? [{ x: Array.from(ln.t), y: Array.from(ln.f, f => (Number.isFinite(f) ? f : null)), type: 'scatter', mode: 'lines', name: 'Main rhythm', connectgaps: false,
       line: { color: colors.algo, width: 1.6 }, meta: { role: 'rhythmLine' }, customdata: Array.from(ln.f, f => f * 60),
       hovertemplate: '%{x:.1f} s: main rhythm %{y:.2f} Hz (%{customdata:.0f}/min)<extra></extra>' }] : [];
+    if (res.coi) { // the cone of influence: within the wavelet's e-folding time of either end
+      const fs = []; for (let f = C.GAIT_BAND[0] / 2; f <= fMax; f += 0.05) fs.push(f);
+      for (const [side, edge] of [['start', f => res.coi.from + res.coi.efold(f)], ['end', f => res.coi.to - res.coi.efold(f)]]) {
+        traces.push({ x: fs.map(edge), y: fs, type: 'scatter', mode: 'lines', name: 'Edge effects (' + side + ')', hoverinfo: 'skip', meta: { role: 'coi' },
+          line: { color: colors.muted, width: 1, dash: 'dash' } });
+      }
+    }
+    const bandShapes = (res.bands || []).filter(b => b.lo < fMax).map(b => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: Math.min(b.hi, fMax), y1: Math.min(b.hi, fMax), line: { color: colors.muted, width: 1, dash: 'dot' } }));
+    const bandNotes = (res.bands || []).filter(b => b.lo < fMax && Math.min(b.hi, fMax) - b.lo >= 0.4).map(b => ({ // room for a label xref: 'paper', x: 1, xanchor: 'right', yref: 'y', y: (b.lo + Math.min(b.hi, fMax)) / 2, showarrow: false,
+      text: 'level ' + b.level + ': ' + fmt(b.lo, 2) + '\u2013' + fmt(b.hi, 2) + ' Hz', font: { color: colors.muted, size: 11 } }));
     const layout = {
       uirevision: S.file.name + '|' + S.chanKey, margin: { l: 58, r: 14, t: 8, b: 44 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: cssVar('--font') || 'sans-serif', color: colors.muted, size: 12 }, showlegend: false, hovermode: 'closest',
@@ -977,10 +1001,14 @@
       yaxis: { title: { text: 'Frequency (Hz)' }, range: [0, im.fMax], gridcolor: colors.line, zeroline: false },
       images: [{ source: 'data:image/png;base64,' + C.base64(C.pngBytes(im.width, im.height, im.rgba)), xref: 'x', yref: 'y', x: im.x0, y: im.fMax,
         sizex: im.x1 - im.x0, sizey: im.fMax, sizing: 'stretch', xanchor: 'left', yanchor: 'top', layer: 'below' }],
+      shapes: bandShapes, annotations: bandNotes,
     };
     const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     Plotly.react(el, traces, layout, config);
-    $('spectroNote').textContent = 'How strongly each rhythm shows along the recording, in ' + fmt(res.window, 0) + ' s windows every ' + fmt(res.hop, 1) + ' s (Rhythm-over-time window, above): blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, full colour at it. The line is the main walking rhythm, as in the Step intervals strip. A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
+    const scale = 'blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, full colour at it.', stride = ' A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
+    $('spectroNote').textContent = def.id === 'cwt' ? 'Wavelet power at each frequency along the recording, divided by the scale so equally strong swings look alike at any frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The line is the strongest walking rhythm at each moment. Outside the dashed lines the wavelet runs past the ends of the recording, so the picture there is weaker than it should be.' + stride
+      : def.id === 'dwt' ? 'Each band\u2019s power along the recording, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The bands halve in frequency going down (dotted lines). Where they fall depends on the sampling rate: here ' + fmt(res.bands[0].hi * 2, 0) + ' Hz, after the signal is reduced to its walking band. When the step and the stride land in neighbouring bands, they show as separate blocks.'
+      : 'How strongly each rhythm shows along the recording, in ' + fmt(res.window, 0) + ' s windows every ' + fmt(res.hop, 1) + ' s (Rhythm-over-time window, above): ' + scale + ' The line is the main walking rhythm, as in the Step intervals strip.' + stride;
   }
 
   /* ------------------------------------------------------------- notes */
@@ -1226,7 +1254,8 @@
     const inds = dets.map(d => d.ind).concat(envs.map(e => e.ind)), ids = C.indicatorIds(inds);
     const idOf = new Map(inds.map((ind, k) => [ind.uid, ids[k]]));
     const settingsOf = ind => { const d = dets.find(x => x.ind === ind); return d && d.def.settings ? Object.fromEntries(d.def.settings(d.p, d.fx)) : {}; };
-    const params = Object.assign({}, g, { phone_position: $('posSel').value });
+    // the methods shown now: changing one only redraws its view, so S.res.g can be behind
+    const params = Object.assign({}, g, { phone_position: $('posSel').value, freqWhole: $('wholeSel').value, freqTime: $('timeSel').value });
     delete params.fs; delete params.stride; // derived from the signal and from phone_position
     return C.buildExport({
       about: { file: S.file.name, variable: S.varName || '', signal: info.label, signal_name: COMPUTED[S.chanKey] ? '' : S.ds.columns[Number(S.chanKey)].name, unit: info.unit },
@@ -1337,6 +1366,7 @@
   $('rsRate').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyResample(); } });
   for (const b of document.querySelectorAll('[data-rs-rate]')) b.addEventListener('click', () => { $('rsRate').value = b.dataset.rsRate; applyResample(); });
   showRs();
+  fillMethods(); // the methods' own settings exist before the listeners below are attached
   for (const el of optionInputs()) el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => { updateOptionOut(el); schedule(); });
   $('posSel').addEventListener('change', () => { updatePosHint(); schedule(); });
   // indicators: one listener per list, for every item's controls
@@ -1383,7 +1413,6 @@
   $('posSel').addEventListener('change', renderNotes);
   $('resetParams').addEventListener('click', () => resetParams(true, 'adv'));
   // the Frequency domain section (#101): views only, so a method change redraws just its view
-  fillMethods();
   $('freqSec').addEventListener('toggle', () => { if (!S.ch || !S.res) return; renderFreq(); if ($('showIntervals').checked) renderPlot(); });
   $('wholeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && $('freqSec').open) renderSpectrum(); });
   $('timeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && $('freqSec').open) renderSpectrogram(); });

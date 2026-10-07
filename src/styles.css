@@ -175,6 +175,8 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .card-head .field.method { display: inline-flex; align-items: baseline; gap: 6px; margin: 0; }
 .card-head .field.method select { display: inline-block; width: auto; margin: 0; padding: 4px 8px; font-size: 13px; }
 .method-tag { margin: 0 0 6px; }
+.method-box { max-width: 560px; }
+.method-box .ctl { margin-top: 4px; }
 #specPlot { height: 280px; }
 #spectroPlot { height: 240px; }
 #spectroPlot image { image-rendering: pixelated; } /* one block per window and row, not smeared between them */
