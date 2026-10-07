@@ -375,7 +375,7 @@ test('envelopes are drawn around the signal and never change steps, metrics or e
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
   const sel = $('envSel');
-  assert.deepEqual([...sel.options].map(o => o.textContent), ['None', 'Sliding window', 'Peak-trough', 'Dynamic threshold']);
+  assert.deepEqual([...sel.options].map(o => o.textContent), ['None', 'Sliding window', 'Peak-trough', 'Dynamic threshold', 'Mean ± k·SD']);
   assert.equal(sel.value, 'none');
   assert.ok(sel.closest('.plot-tools'), 'a view option, in the plot toolbar');
   let last = pg.plots.at(-1);
@@ -386,21 +386,23 @@ test('envelopes are drawn around the signal and never change steps, metrics or e
     metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await exportText() });
   const before = await snapshot();
   const n = before.steps.split(',').length;
-  for (const id of ['sliding', 'peaktrough', 'dynamic']) {
+  for (const id of ['sliding', 'peaktrough', 'meansd', 'dynamic']) { // dynamic last: the checks below continue from it
     sel.value = id; sel.dispatchEvent(new pg.w.Event('change'));
     await sleep(40);
     last = pg.plots.at(-1);
     const { y: lo } = last.traces[TR.envLower], { y: hi, fill } = last.traces[TR.envUpper], sig = last.traces[TR.signal].y;
     assert.equal(fill, 'tonexty', id + ': shaded band');
     assert.ok(Array.from(sig).every((v, i) => hi[i] >= lo[i]), id + ': upper above lower');
-    if (id !== 'peaktrough') assert.ok(Array.from(sig).every((v, i) => lo[i] <= v && v <= hi[i]), id + ': the signal stays inside');
-    assert.equal(last.traces[TR.envMid].visible, id === 'dynamic', id + ': midline only for the dynamic threshold');
-    assert.equal($('legEnv').hidden, false); assert.equal($('legEnvMid').hidden, id !== 'dynamic');
+    if (id === 'sliding' || id === 'dynamic') assert.ok(Array.from(sig).every((v, i) => lo[i] <= v && v <= hi[i]), id + ': the signal stays inside');
+    const mid = { dynamic: 'Dynamic threshold (envelope)', meansd: 'Moving mean' }[id];
+    assert.equal(last.traces[TR.envMid].visible, !!mid, id + ': midline only where the envelope has one');
+    assert.equal($('legEnv').hidden, false); assert.equal($('legEnvMid').hidden, !mid);
+    if (mid) { assert.equal(text(pg, 'legEnvMidText'), mid); assert.equal(last.traces[TR.envMid].name, mid); }
     assert.deepEqual(await snapshot(), before, id + ': a view only');
     assert.equal(last.layout.shapes.length, 1, id + ': the fixed h line stays for comparison');
   }
   assert.equal(text(pg, 'legEnvText'), 'Envelope, sliding 1.0 s');
-  assert.equal(pg.d.querySelector('.env-opts[data-env="sliding dynamic"]').hidden, false);
+  assert.equal(pg.d.querySelector('#envWinIn').closest('.env-opts').hidden, false);
   assert.equal(pg.d.querySelector('.env-opts[data-env="peaktrough"]').hidden, true);
   const win = $('envWinIn');
   win.value = '2'; win.dispatchEvent(new pg.w.Event('input'));

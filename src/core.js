@@ -1391,7 +1391,8 @@
 
   /* Envelopes: curves drawn around the signal the algorithm sees, to show how the size of
      each swing changes. A view only: they never change the detected steps or metrics.
-     compute(A, t, p) -> {upper?, lower?, mid?}, arrays with one value per sample.
+     compute(A, t, p) -> {upper?, lower?, mid?}, arrays with one value per sample; midName
+     names the midline in the legend.
      p: {fs, envWindow (s, sliding and dynamic), envPeakWindow (s, peak-trough)} */
   // Samples that are the highest (isMax) or lowest within ±half samples, a run of equal values
   // counted once at its first sample (Coza's tie rule); the first and last samples are skipped.
@@ -1404,6 +1405,21 @@
   function joinPoints(idx, A, t) {
     if (!idx.length) return null;
     return interpAt(Float64Array.from(idx, i => t[i]), Float64Array.from(idx, i => A[i]), t);
+  }
+  // Moving mean and SD (population, N in the denominator: the RMS around the mean) over
+  // A[i-half .. i+half], shortened at the ends. The running sums are of A minus its overall
+  // mean, so a large offset (gravity) doesn't swamp the variance.
+  function movingMeanSd(A, half) {
+    const n = A.length, mu = mean(A), s1 = new Float64Array(n + 1), s2 = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) { const d = A[i] - mu; s1[i + 1] = s1[i] + d; s2[i + 1] = s2[i] + d * d; }
+    const m = new Float64Array(n), sd = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const lo = Math.max(0, i - half), hi = Math.min(n - 1, i + half), c = hi - lo + 1;
+      const m1 = (s1[hi + 1] - s1[lo]) / c;
+      m[i] = mu + m1;
+      sd[i] = Math.sqrt(Math.max(0, (s2[hi + 1] - s2[lo]) / c - m1 * m1));
+    }
+    return { mean: m, sd };
   }
   const ENVELOPES = [
     { id: 'none', name: 'None' },
@@ -1431,6 +1447,17 @@
       // the same dynamicThreshold that Peak-to-valley counts steps with
       compute: (A, t, p) => dynamicThreshold(A, halfWindow(p.envWindow, p.fs)),
       label: p => 'Envelope, sliding ' + fmt(p.envWindow, 1) + ' s',
+      midName: 'Dynamic threshold (envelope)',
+    },
+    {
+      id: 'meansd', name: 'Mean \u00b1 k\u00b7SD',
+      tagline: 'The moving mean \u00b1 k standard deviations. With k = 1 it shows how hard the person moves at each moment (the RMS around the mean); with k = 0.5 its upper line is where Threshold peaks\u2019 cut-off would sit if it followed the signal.',
+      compute: (A, t, p) => {
+        const { mean: m, sd } = movingMeanSd(A, halfWindow(p.envWindow, p.fs));
+        return { mid: m, upper: m.map((v, i) => v + p.envK * sd[i]), lower: m.map((v, i) => v - p.envK * sd[i]) };
+      },
+      label: p => 'Envelope, mean \u00b1 ' + fmt(p.envK, 2) + '\u00b7SD, ' + fmt(p.envWindow, 1) + ' s',
+      midName: 'Moving mean',
     },
   ];
 
@@ -1458,7 +1485,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
+    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

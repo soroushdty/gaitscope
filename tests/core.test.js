@@ -373,6 +373,20 @@ test('dynamic-threshold envelope is (max + min) / 2, the same threshold Peak-to-
   assert.deepEqual(env('dynamic').compute(pv.smooth, w.t, Object.assign({}, ENV_P, { fs: 460 })).mid, pv.threshold);
 });
 
+test('mean ± k·SD envelope: moving mean and population SD, shortened at the ends, exact with a gravity offset', () => {
+  const t = Float64Array.from({ length: 600 }, (_, i) => i / 100);
+  const wiggle = t.map(v => Math.sin(7 * v) * 0.02 + ((v * 100) % 3) / 1000);
+  const A = wiggle.map(v => 9.81 + v);
+  const e = env('meansd').compute(A, t, Object.assign({}, ENV_P, { envK: 0.5 }));
+  for (let i = 0; i < A.length; i += 7) {
+    const w = Array.from(wiggle.slice(Math.max(0, i - 50), Math.min(A.length, i + 51))), m = w.reduce((a, b) => a + b) / w.length;
+    const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) ** 2, 0) / w.length); // brute force on the offset-free values
+    assert.ok(Math.abs(e.mid[i] - (9.81 + m)) < 1e-12, 'mean at ' + i);
+    assert.ok(Math.abs((e.upper[i] - e.mid[i]) - 0.5 * sd) < 1e-12 && Math.abs((e.mid[i] - e.lower[i]) - 0.5 * sd) < 1e-12, 'k·SD at ' + i);
+  }
+  assert.equal(env('meansd').midName, 'Moving mean');
+});
+
 test('peak-trough envelope joins peaks and troughs by straight lines', () => {
   const t = Float64Array.from({ length: 1000 }, (_, i) => i / 100);
   const amp = v => 1 + v / 5, A = t.map(v => amp(v) * Math.sin(2 * Math.PI * v));
