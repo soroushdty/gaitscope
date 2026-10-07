@@ -165,6 +165,26 @@ def sampling_rate(t):
     return 1 / np.median(dt[dt > 0])
 
 
+def rate_warning(data, w=30):
+    """Warning text when the data reaching the lab code is not at about 100 Hz, else None.
+
+    The lab code divides sample counts by 100 to get seconds and counts its window w in
+    samples, so both are only right at 100 Hz. The rate is measured from column 1 when it
+    is a strictly increasing time column (Walking.mat layout, CSV exports, resampled data);
+    a single vector with no time column (e.g. Lab1Data) gives no warning, since its rate
+    is unknown.
+    """
+    if data.ndim != 2 or data.shape[1] < 2 or len(data) < 3 or not np.all(np.diff(data[:, 0]) > 0):
+        return None
+    fs = sampling_rate(data[:, 0])
+    if abs(fs - 100) <= 0.05 * 100:
+        return None
+    return (f"Warning: the data reaching the lab code is at about {fs:.0f} Hz, but the lab code "
+            f"assumes 100 Hz. It divides by 100 to get seconds, so its durations are off by "
+            f"{abs(100 / fs - 1):.0%}, and its window w = {w} samples covers +/-{w / fs:.3g} s "
+            f"instead of +/-{w / 100:.3g} s. Add --resample 100 to put the data on a 100 Hz grid first.")
+
+
 def resample(W, fs):
     """Put every column of W (column 0 = time in s) on a uniform grid
     t = 0, 1/fs, 2/fs, ... by linear interpolation.
@@ -201,10 +221,6 @@ def main():
         print(f"CSV columns:         time = {names[0]!r}, x = {names[1]!r}, "
               f"y = {names[2]!r}, z = {names[3]!r} (--col 2/3/4)")
         print(f"Sampling rate:       about {fs:.0f} Hz")
-        if abs(fs - 100) > 5 and not args.resample:
-            print(f"  Warning: the lab code assumes 100 Hz (it divides by 100), so its "
-                  f"durations are off by {abs(100 / fs - 1):.0%}. Record at 100 Hz, "
-                  f"or add --resample 100.")
         if names[1].lower().startswith("ax"):
             print("  Note: Linear Accelerometer data is in m/s^2 without gravity; "
                   "h = 1 was chosen for G-Force Meter data (g, gravity included).")
@@ -217,6 +233,10 @@ def main():
         data = resample(data, args.resample)
         print(f"Resampled:           about {before:.0f} Hz -> {args.resample:g} Hz "
               f"(linear interpolation, like MATLAB interp1), {len(data)} samples")
+    # checked on what the lab code actually gets: after resampling, and for .mat files too
+    warning = rate_warning(data, args.w)
+    if warning:
+        print("  " + warning)
     # MATLAB column c -> Python column c-1. If the variable is a single
     # vector (e.g. Lab1Data), use it directly.
     A = data[:, args.col - 1] if data.ndim == 2 and data.shape[1] > 1 else data.ravel()

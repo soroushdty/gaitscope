@@ -9,7 +9,8 @@ from scipy.io import loadmat
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
-from lab_step_det import detect_steps, gait_metrics, load_csv, resample, sampling_rate  # noqa: E402
+import lab_step_det  # noqa: E402
+from lab_step_det import detect_steps, gait_metrics, load_csv, rate_warning, resample, sampling_rate  # noqa: E402
 
 FIX = os.path.join(ROOT, "tests", "fixtures")
 WALKING = os.path.join(ROOT, "data", "Walking.mat")
@@ -137,3 +138,40 @@ def test_resample_refuses_backwards_time():
     W = np.array([[0.0, 1], [0.01, 2], [0.005, 3]])
     with pytest.raises(ValueError, match="goes backwards.*single recording"):
         resample(W, 100)
+
+
+# --- the 100 Hz check runs on whatever reaches the lab code (#47)
+def walk_at(fs, seconds=12):
+    """Walking.mat layout (time, x, y, z) at fs Hz, one peak per second."""
+    t = np.arange(0, seconds, 1 / fs)
+    x = 1.5 * np.cos(2 * np.pi * t) ** 8 * (np.cos(2 * np.pi * t) > 0)
+    return np.column_stack([t, x, x, x])
+
+
+def run_cli(monkeypatch, capsys, *args):
+    monkeypatch.setattr(sys, "argv", ["lab_step_det.py", *args, "--no-plot"])
+    lab_step_det.main()
+    return capsys.readouterr().out
+
+
+def test_rate_warning_says_how_far_off_and_how_to_fix():
+    msg = rate_warning(walk_at(200))
+    assert "about 200 Hz" in msg and "off by 50%" in msg and "+/-0.15 s instead of +/-0.3 s" in msg and "--resample 100" in msg
+    assert rate_warning(walk_at(100)) is None
+    assert rate_warning(walk_at(103)) is None, "within 5%"
+    assert rate_warning(walk_at(200)[:, 1]) is None, "a single vector has no known rate"
+
+
+@pytest.mark.parametrize("fs, extra, warned, duration", [
+    (200, [], True, 2.0),                     # .mat at 200 Hz: was silent
+    (100, [], False, 1.0),
+    (200, ["--resample", "100"], False, 1.0),
+    (200, ["--resample", "50"], True, 0.5),   # resampled to the wrong rate: was silent
+])
+def test_cli_warns_for_mat_files_and_any_resample_rate(tmp_path, monkeypatch, capsys, fs, extra, warned, duration):
+    from scipy.io import savemat
+    f = tmp_path / "walk.mat"
+    savemat(f, {"Walking": walk_at(fs)})
+    out = run_cli(monkeypatch, capsys, "--file", str(f), *extra)
+    assert ("lab code assumes 100 Hz" in out) == warned, out
+    assert f"AverageStepDuration: {duration:.4f} s" in out, out
