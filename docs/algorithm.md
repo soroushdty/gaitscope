@@ -312,6 +312,27 @@ Linear Accelerometer at ~57 Hz, 7.6 s). None of these files is committed.
 | Linear Accelerometer, ay | 4 (1.78 s) | 6 (1.07 s) | 7 (0.81 s) | 6 (0.98 s) | 6 (1.17 s) |
 | Linear Accelerometer, aT (magnitude) | 5 (1.53 s) | 7 (0.88 s) | 7 (0.88 s) | 8 (0.87 s) | 4 (1.44 s) |
 
+Cadence per minute from each algorithm's steps (peaks or crossings, not adjusted for
+strides) and from the spectrum alone (`Cadence (spectrum)`, 8 s segments; the phone
+recordings are shorter, so their whole length is one segment):
+
+| Signal | Spectrum | Coza | Threshold peaks | Peak-to-valley | Zero-crossing |
+|---|---:|---:|---:|---:|---:|
+| `Walking.mat` x (column 2) | 53 | 52 | 52 | 52 | 52 |
+| `Walking.mat` y (column 3) | 53 | 53 | 61 | 53 | 53 |
+| `Walking.mat` z (column 4) | 103 | 74 | 69 | 84 | 66 |
+| `Walking.mat` magnitude (column 5) | 105 | 104 | 105 | 104 | 91 |
+| G-Force, gFz | 40 | 48 | 80 | 75 | 53 |
+| G-Force, TgF (magnitude) | — (no clear peak) | 64 | 65 | 108 | 74 |
+| Linear Accelerometer, ay | 42 | 56 | 74 | 61 | 51 |
+| Linear Accelerometer, aT (magnitude) | 51 | 68 | 68 | 69 | 42 |
+
+On `Walking.mat`, wherever the algorithms agree, the spectrum agrees with them within
+1/min, without detecting a single step. On column 4 the spectrum picks the faster
+rhythm that the step detectors split differently. The phone recordings are under 8 s, so
+the spectrum's resolution there is about 9/min and its main peak shifts with a single
+step; it says little on recordings that short.
+
 What this shows, and what it doesn't:
 
 * **On the lab's own channel (column 2) all four algorithms agree:** 12 steps,
