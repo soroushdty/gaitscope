@@ -1,5 +1,5 @@
 """
-Python port of LabStepDet_2025.m (Wearable Devices Lab 1 - step detection).
+Python port of LabStepDet_2025.m, the step detector from BME 598/494 (Dr. Aurel Coza).
 
 Faithful 1:1 translation of the MATLAB script: same algorithm, same
 parameters, same outputs. Verified against the original run in Octave on
@@ -431,7 +431,7 @@ EXPORT_FORMAT_VERSION = 2
 TEXT_COLUMNS = {"metric", "unit", "text", "id", "kind", "type", "name", "source", "color", "params", "settings"}
 TABLES = ("indicators", "signals", "recorded", "steps", "metrics", "notes")
 # Coza's credit as the dashboard writes it in the indicators table (creditText in src/core.js, #63)
-COZA_CREDIT = "Dr. Aurel Coza (Lab 1 of Wearable Devices for Sport, Health, and Wellness, ASU; LabStepDet_2025.m)"
+COZA_CREDIT = "Dr. Aurel Coza (BME 598/494; LabStepDet_2025.m)"
 RECORDS = ("about", "settings", "params", "spectrum")
 
 

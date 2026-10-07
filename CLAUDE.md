@@ -5,9 +5,9 @@ Context for Claude Code sessions on this repository.
 ## What this is
 
 **GaitScope**, live at https://soroushdianaty.com/gaitscope/ (GitHub Pages from `main`, so
-a merge deploys it). It began as a class project for *Wearable Devices for Sport, Health,
-and Wellness* (ASU, Fall 2026, instructor Dr. Aurel Coza). Lab 1 provides a MATLAB step-detection script
-(`LabStepDet_2025.m`) and a sample recording (`Walking.mat`). The instructor allows
+a merge deploys it). It began as a class project for BME 598/494 (Dr. Aurel Coza), Fall 2026, which
+provides a MATLAB step-detection script (`LabStepDet_2025.m`) and a sample recording
+(`Walking.mat`). The instructor allows
 students to skip MATLAB and use an AI tool to run the code instead. This repo holds:
 
 1. `python/lab_step_det.py`: a faithful Python port of the MATLAB script.
@@ -15,7 +15,7 @@ students to skip MATLAB and use an AI tool to run the code instead. This repo ho
    `.mat`, Physics Toolbox `.csv` or phyphox `.zip` file (or records a walk on a phone) and
    runs step detectors on it. Detectors and envelopes are chart indicators: any number on
    the plot at once, each with its own settings, colour and source signal. The page opens
-   with **Coza** (Dr. Coza's Lab 1 detector, as written) and **Coza (modified)** (fixed by
+   with **Coza** (the detector from BME 598/494 (Dr. Aurel Coza), as written) and **Coza (modified)** (fixed by
    the owner, Dr. Soroush Dianaty). Also: filters, resampling, notes pinned to the plot,
    and export as CSV, zipped CSV, MATLAB .mat, NumPy .npz or JSON (which reopens an
    analysis).
@@ -23,6 +23,9 @@ students to skip MATLAB and use an AI tool to run the code instead. This repo ho
 The project's name is GaitScope (page title, heading, README, packages); "step detector"
 names a feature, not the project. Export files keep the lowercase ids `gaitscope-export`
 and `gaitscope dashboard` so older exports reopen.
+
+The course is named "BME 598/494 (Dr. Aurel Coza)" everywhere, except the README, which uses
+"BME 598/494 *Wearable Devices for Sport, Health, and Wellness* (ASU, Dr. Aurel Coza)". Never "Lab 1" (#78).
 
 No "lab code" wording anywhere: Coza is a step detector like any other, credited to
 Dr. Coza (names only on the page, no emails). `Walking.mat` is his sample signal; it

@@ -92,8 +92,8 @@ unchanged.
 (`LICENSE`), the same terms the code is used under ("inbound = outbound"). No separate
 agreement or sign-off is needed.
 
-**Students taking the course.** This repository started from a lab of *Wearable Devices for
-Sport, Health, and Wellness* (ASU). If you are taking that course, check its rules on
+**Students taking the course.** This repository started from a lab of BME 598/494 (Dr. Aurel Coza).
+If you are taking that course, check its rules on
 collaboration and outside code before contributing; a contribution may count as shared
 work on an assignment.
 

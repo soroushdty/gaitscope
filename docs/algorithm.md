@@ -7,8 +7,8 @@ same way. The page opens with Coza and Coza (modified) side by side.
 
 ## Coza (`coza_original`)
 
-Dr. Aurel Coza's step detector from Lab 1 of *Wearable Devices for Sport, Health, and
-Wellness* (ASU), `LabStepDet_2025.m`. It marks sample `i` as a step when
+The step detector from BME 598/494 (Dr. Aurel Coza), `LabStepDet_2025.m`. It marks sample `i` as a
+step when
 
 ```
 A(i) == max(A(i-w : i+w))   and   max(A(i-w : i+w)) > h
@@ -440,7 +440,7 @@ trunk accelerations during human walking"). Don't use it.
 
 | Detector | Credit | DOI or link |
 |---|---|---|
-| Coza | Dr. Aurel Coza: Lab 1 of *Wearable Devices for Sport, Health, and Wellness*, ASU (`LabStepDet_2025.m`) | none |
+| Coza | Dr. Aurel Coza: BME 598/494 (`LabStepDet_2025.m`) | none |
 | Coza (modified) | Coza's detector, modified by Dr. Soroush Dianaty. Changes: tied peaks counted once, weak start/stop peaks dropped, window in seconds, real timestamps, cadence in steps/min, strides with Phone position *One leg* | none |
 | Threshold peaks | Brajdic & Harle, 2013: windowed peak detection | [10.1145/2493432.2493449](https://doi.org/10.1145/2493432.2493449) |
 | Peak-to-valley | Zhao, 2010, *Analog Dialogue* 44-06: the dynamic threshold | [analog.com](https://www.analog.com/en/resources/analog-dialogue/articles/pedometer-design-3-axis-digital-acceler.html) |

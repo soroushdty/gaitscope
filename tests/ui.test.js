@@ -108,6 +108,7 @@ test('loads a MAT file and compares Coza with Coza (modified), side by side', as
   assert.equal(indRow(pg, 'Coza').querySelector('.ind-sum').textContent, 'w 30 · h 1');
   assert.equal(indRow(pg, 'Coza (modified)').querySelector('.ind-sum').textContent, 'h 1 · window 0.30 s · weak peaks dropped');
   assert.ok(!/lab code/i.test(pg.d.body.textContent), 'no "lab code" anywhere on the page');
+  assert.ok(!/Lab 1/.test(pg.d.body.innerHTML) && pg.d.body.innerHTML.includes('BME 598/494 (Dr. Aurel Coza)'), 'the course by code and instructor, never "Lab 1" (#78)');
   const lab = markers(pg, 'Coza').x.length, fixed = markers(pg, 'Coza (modified)').x.length;
   assert.equal(lab - fixed, 1, 'Coza counts the tied peak twice');
   assert.notEqual(markers(pg, 'Coza').marker.symbol, markers(pg, 'Coza (modified)').marker.symbol);
@@ -899,7 +900,7 @@ test('credits show under each indicator\'s settings and under the filter, with n
   for (const a of C.ALGORITHMS.slice(2)) await addInd(pg, 'detector', a.id);
   for (const e of C.ENVELOPES) await addInd(pg, 'envelope', e.id);
   const credit = name => indRow(pg, name).querySelector('.credit');
-  assert.match(credit('Coza').textContent, /^Credit: Dr\. Aurel Coza \(Lab 1 of Wearable Devices for Sport, Health, and Wellness, ASU; LabStepDet_2025\.m\)$/);
+  assert.equal(credit('Coza').textContent, 'Credit: Dr. Aurel Coza (BME 598/494; LabStepDet_2025.m)');
   assert.match(credit('Coza (modified)').textContent, /modified by Dr\. Soroush Dianaty \(tied peaks counted once/);
   const link = credit('Threshold peaks').querySelector('a');
   assert.equal(link.textContent, 'Brajdic & Harle, 2013'); assert.equal(link.href, 'https://doi.org/10.1145/2493432.2493449');
