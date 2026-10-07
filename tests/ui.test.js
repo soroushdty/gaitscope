@@ -855,7 +855,7 @@ test('records a walk from motion events, loads it like a file, and downloads wha
   const tmp = path.join(require('os').tmpdir(), 'gaitscope_iphone_recording.csv');
   fs.writeFileSync(tmp, iphone);
   await upload(pg, tmp); fs.unlinkSync(tmp);
-  assert.match(text(pg, 'valList'), /iPhone axis signs not yet checked.*don’t depend on the sign/);
+  assert.match(text(pg, 'valList'), /Acceleration signs reversed \(iPhone or iPad\).*lying screen up reads −1 g on z instead of \+1.*The total, vertical and horizontal don’t depend on the sign\..*Use the total or the vertical, or record again with the current page/);
   await upload(pg, path.join(FIX, 'recorder.csv')); // a saved recording, uploaded again
   assert.match(text(pg, 'valList'), /Recorded in the browser.*Recorded with: 12 steps counted by hand, phone in the hand\..*You counted 12 steps ?Coza finds \d+.*; Coza \(modified\) finds \d+/);
 });
@@ -926,6 +926,29 @@ test('recorder: a hold that stops cuts the touch out; a touch let go early cuts 
   assert.doesNotMatch(text(pg, 'valList'), /left out/);
   p = await saved();
   assert.equal(p.meta.samples, String(five.length)); assert.equal(p.meta.trimmed_end_s, undefined);
+});
+
+test('recorder: on an iPhone or iPad the acceleration is flipped to Android’s directions, rotation kept (#96)', async () => {
+  // only Apple's browsers ask for motion permission; that is what marks them
+  const pg = makePage({ coarse: true, motion: true, permission: 'granted' }), $ = id => pg.d.getElementById(id);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  await startRecording(pg);
+  const samples = motionSamples(8); // starts still: acceleration exactly 0 on x
+  sendMotion(pg, samples);
+  $('recStop').dispatchEvent(new pg.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await submitRecording(pg);
+  assert.match(text(pg, 'valList'), /Acceleration flipped to Android’s directions ?Recorded on an iPhone or iPad.*The recorder flipped x, y and z, with and without gravity, so lying screen up reads \+1 g on z here too\./);
+  assert.doesNotMatch(text(pg, 'valList'), /signs reversed/);
+  $('saveRec').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  const p = Core.parseCsv(csv);
+  assert.equal(p.meta.acceleration_sign, "flipped to Android's directions (this browser gives it reversed)");
+  samples.forEach((s, i) => {
+    assert.equal(p.cols[2][i], -s.g[1] / Core.STANDARD_GRAVITY, 'gFy flipped');
+    assert.equal(p.cols[5][i], s.a[0] === 0 ? 0 : -s.a[0], 'ax flipped');
+    assert.equal(p.cols[9][i], s.r[0] * Math.PI / 180, 'wx as given');
+  });
+  assert.doesNotMatch(csv, /,-0(,|\n)/, 'a still axis stays 0, not -0');
 });
 
 test('recorder: iPhone permission refused, and a computer without a sensor', async () => {

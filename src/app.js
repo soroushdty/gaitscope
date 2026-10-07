@@ -295,8 +295,11 @@
     }
     S.counted = /^\d+$/.test(m.steps_counted || '') && Number(m.steps_counted) > 0 ? Number(m.steps_counted) : null;
     S.countedBy = S.counted ? 'hand' : null;
-    if (/^gaitscope/.test(m.recorder || '') && /iPhone|iPad/.test(m.device || '')) {
-      pre.push({ level: 'info', title: 'iPhone axis signs not yet checked', detail: 'Safari on iPhone has been reported to give acceleration with the opposite sign from Android and Physics Toolbox: a phone lying face up reads \u22121 g on z instead of +1. The magnitude, vertical and horizontal signals don\u2019t depend on the sign. For a single axis, compare with a Physics Toolbox recording before trusting h.' });
+    // iPhone and iPad give acceleration reversed; the recorder flips it since #96 and says so
+    if (/^gaitscope/.test(m.recorder || '') && /^flipped/.test(m.acceleration_sign || '')) {
+      pre.push({ level: 'info', title: 'Acceleration flipped to Android\u2019s directions', detail: 'Recorded on an iPhone or iPad, whose browsers give acceleration with the opposite sign from Android and Physics Toolbox (an iPad lying screen up read \u22120.98 g on z, 2026-10-07). The recorder flipped x, y and z, with and without gravity, so lying screen up reads +1 g on z here too. The rotation rate is as the browser gave it.' });
+    } else if (/^gaitscope/.test(m.recorder || '') && /iPhone|iPad|iPod/.test(m.device || '')) {
+      pre.push({ level: 'warn', title: 'Acceleration signs reversed (iPhone or iPad)', detail: 'Recorded on an iPhone or iPad before the recorder flipped the signs: Apple\u2019s browsers give acceleration with the opposite sign from Android and Physics Toolbox, so lying screen up reads \u22121 g on z instead of +1, and x and y are reversed too. The total, vertical and horizontal don\u2019t depend on the sign.', fix: 'Use the total or the vertical, or record again with the current page. On a single axis, h needs the opposite sign.' });
     }
     if (m.phone_position === 'front pocket') $('posSel').value = 'leg';
     else if (m.phone_position === 'hand') $('posSel').value = 'hand';
