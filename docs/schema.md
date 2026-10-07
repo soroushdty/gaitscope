@@ -32,6 +32,7 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`,
 | Text file named `.mat` | warn / error | Read as CSV if it parses; otherwise told to rename it. |
 | Random or corrupted bytes, truncated blocks | error | Detected from the header and element sizes. |
 | CSV lines starting with `#` | skipped | Newer Physics Toolbox exports start with metadata lines (`# sensor:g_force`, `# Requested Sample Rate: …`). |
+| phyphox `meta/time.csv` or `meta/device.csv` uploaded on its own | error | They hold start/pause times or the phone's details, not samples; `time.csv` would otherwise be read as a two-row recording. Fix: upload `Raw Data.csv`. |
 
 ## 2. Variables (MAT)
 
@@ -58,8 +59,8 @@ automatically, with a warning, because that is almost always a transposed record
 | Role | How it is found |
 |---|---|
 | **Time** | CSV: a header named `time`, `t`, `elapsed`, `timestamp`. MAT or headerless CSV: the first column, if it increases in more than 95% of steps and never decreases. Shifted to start at 0. Values that look like milliseconds are converted to seconds. Physics Toolbox clock times (`13:05:10:006`) are converted to elapsed seconds. |
-| **x, y, z** | CSV: Physics Toolbox names (`gFx`, `ax`, `wx`, …) or `x`, `acc_x`, …, optionally followed by a unit in brackets (`ax (m/s^2)`); MAT: the three columns after time. |
-| **Magnitude** | CSV: `TgF`, `aT`, `total`, `magnitude`, …; MAT: a column that equals √(x²+y²+z²) within rounding. |
+| **x, y, z** | CSV: Physics Toolbox names (`gFx`, `ax`, `wx`, …), phyphox names (`Acceleration x`, `Linear Acceleration x`) or `x`, `acc_x`, …, optionally followed by a unit in brackets (`ax (m/s^2)`); MAT: the three columns after time. |
+| **Magnitude** | CSV: `TgF`, `aT`, `Absolute acceleration`, `total`, `magnitude`, …; MAT: a column that equals √(x²+y²+z²) within rounding. |
 | **Other** | Kept with generic names and still selectable. |
 
 If x, y and z are known but no magnitude column exists, a computed magnitude is offered.
@@ -75,6 +76,11 @@ without any error.
 * **Physics Toolbox CSV:** read from the column names. `gF*` → g, including gravity;
   `a*` → m/s², gravity removed; `w*` → rad/s (gyroscope, warned as "not an acceleration
   signal"); `B*`/`m*` → µT (magnetometer).
+* **phyphox CSV:** also from the column names, all in m/s². `Acceleration x/y/z`
+  ("Acceleration with g") includes gravity, so a still phone reads about 9.8 and `h = 1`
+  is far below the resting level of the axis pointing up; `Linear Acceleration x/y/z`
+  ("Acceleration without g") has gravity removed. `Absolute acceleration` takes the
+  sensor of the x, y, z columns beside it.
 * **Everything else:** inferred from the quietest one-second stretch of the magnitude.
   If its mean is much larger than its noise, gravity is present: about 1 means g,
   about 9.8 means m/s², anything else is flagged as unclear. If the mean is about the

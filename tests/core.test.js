@@ -783,6 +783,36 @@ test('newer export with # metadata lines and units in the headers', () => {
   const ref = loadMatDataset(path.join(FIX, 'walk.mat')).ds;
   assert.deepEqual(C.detectOriginal(C.prepareChannel(ds, 1).A, 30, 1), C.detectOriginal(C.prepareChannel(ref, 1).A, 30, 1));
 });
+test('phyphox export with gravity: quoted headers, scientific notation, m/s²', () => {
+  const { p, ds } = loadCsvDataset(path.join(FIX, 'phyphox_accel.csv'));
+  assert.equal(p.delim, ','); assert.equal(p.hasHeader, true);
+  assert.equal(ds.t[0], 0);
+  assert.equal(ds.x.name, 'Acceleration x (m/s^2)'); assert.equal(ds.z.name, 'Acceleration z (m/s^2)');
+  assert.equal(ds.mag.name, 'Absolute acceleration (m/s^2)');
+  assert.equal(ds.x.label, 'x (Acceleration x)'); assert.equal(ds.mag.label, 'magnitude (Absolute acceleration)');
+  const units = ds.checks.find(c => c.title === 'Units: m/s²');
+  assert.match(units.detail, /^Accelerometer data .*Includes gravity.*9\.8 m\/s²/);
+  assert.equal(ds.mag.sensor.key, 'acc', 'the magnitude takes its sensor from x');
+  assert.equal(C.gravitySplit(ds).ok, true);
+  const ref = loadMatDataset(path.join(FIX, 'walk.mat')).ds;
+  assert.deepEqual(C.detectOriginal(C.prepareChannel(ds, 1).A, 30, 1), C.detectOriginal(C.prepareChannel(ref, 1).A, 30, 1));
+});
+test('phyphox export without gravity: tab-separated, decimal commas', () => {
+  const { p, ds } = loadCsvDataset(path.join(FIX, 'phyphox_linear_tab.csv'));
+  assert.equal(p.delim, '\t'); assert.equal(p.decimalComma, true);
+  assert.equal(ds.x.name, 'Linear Acceleration x (m/s^2)'); assert.equal(ds.mag.name, 'Absolute acceleration (m/s^2)');
+  assert.equal(ds.mag.sensor.key, 'linacc');
+  assert.match(ds.checks.find(c => c.title === 'Units: m/s²').detail, /Gravity is removed/);
+  assert.equal(C.gravitySplit(ds).ok, false);
+  const ref = loadMatDataset(path.join(FIX, 'walk.mat')).ds;
+  for (const k of [1, 2, 3]) assert.deepEqual(C.prepareChannel(ds, k).A, C.prepareChannel(ref, k).A);
+});
+test('phyphox metadata files on their own say which file to upload instead', () => {
+  assert.throws(() => loadCsvDataset(path.join(FIX, 'phyphox_time.csv')),
+    e => /meta\/time\.csv/.test(e.message) && /Raw Data\.csv/.test(e.fix));
+  assert.throws(() => C.parseCsv('"property","value"\n"version","1.2.1"\n"deviceModel","Pixel 9a"\n'),
+    e => /meta\/device\.csv/.test(e.message) && /Raw Data\.csv/.test(e.fix));
+});
 test('clipping: rounding plateaus at high rates are ignored, long plateaus are flagged', () => {
   const n = 4600, fs = 460;
   const t = Array.from({ length: n }, (_, i) => i / fs);

@@ -80,6 +80,7 @@ def _walk():
     ("ptb_linacc_semicolon.csv", 1e-4),  # ';' delimiter, decimal comma
     ("ptb_clock_time.csv", 1e-3),        # 13:05:10:010 clock times
     ("plain_noheader.csv", 1e-5),        # no header: time, x, y, z like Walking.mat
+    ("phyphox_linear_tab.csv", 1e-8),    # phyphox: quoted headers, tabs, decimal comma, 1.2E-2
 ])
 def test_csv_gives_walking_layout(name, time_tol):
     D, _ = load_csv(os.path.join(FIX, name))
@@ -107,6 +108,14 @@ def test_csv_gforce_columns_and_rate():
     assert sampling_rate(D[:, 0]) == pytest.approx(100, rel=0.1)
 
 
+def test_csv_phyphox_with_gravity():
+    D, names = load_csv(os.path.join(FIX, "phyphox_accel.csv"))
+    assert names == ["Time (s)", "Acceleration x (m/s^2)", "Acceleration y (m/s^2)", "Acceleration z (m/s^2)"]
+    W = _walk()
+    assert np.array_equal(D[:, [1, 3]], W[:, [1, 3]])
+    assert np.allclose(D[:, 2], W[:, 2] + 9.81, atol=1e-8)  # gravity on y
+
+
 def test_csv_multi_sensor_rows_keep_only_accelerometer_rows():
     D, names = load_csv(os.path.join(FIX, "ptb_multi_record.csv"))
     single, _ = load_csv(os.path.join(FIX, "ptb_gforce.csv"))
@@ -117,6 +126,7 @@ def test_csv_multi_sensor_rows_keep_only_accelerometer_rows():
 @pytest.mark.parametrize("name, what, fix", [
     ("bad_empty.csv", "fewer than 2 lines", "Record for longer"),
     ("bad_backwards_time.csv", "no y, z column", "Export the G-Force Meter"),
+    ("phyphox_time.csv", "phyphox's meta/time.csv", "Raw Data.csv"),
 ])
 def test_csv_errors_say_what_and_how_to_fix(name, what, fix):
     with pytest.raises(ValueError, match=what) as e:

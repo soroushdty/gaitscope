@@ -259,6 +259,37 @@ def v73_fixtures(W):
     save_v73(os.path.join(OUT, "walk_v73_mixed.mat"), mixed)
 
 
+def phyphox_number(v):
+    """phyphox's number format: 10 significant digits, exponent without padding (2.506474800E-2)."""
+    mant, exp = f"{v:.9E}".split("E")
+    return f"{mant}E{int(exp)}"
+
+
+def phyphox_rows(W, gravity=False):
+    """t, x, y, z, |a| in m/s^2 from the synthetic walk; gravity=True adds 9.81 to y (phone upright)."""
+    t, x, y, z = W[:, :4].T
+    if gravity:
+        y = y + 9.81
+    return np.column_stack([t, x, y, z, np.sqrt(x ** 2 + y ** 2 + z ** 2)])
+
+
+def phyphox_csv(rows, axis_name, delim, decimal_comma=False):
+    """A phyphox Raw Data.csv: 'Acceleration' (with g) or 'Linear Acceleration' (without)."""
+    heads = ["Time (s)"] + [f"{axis_name} {a} (m/s^2)" for a in "xyz"] + ["Absolute acceleration (m/s^2)"]
+    num = (lambda v: phyphox_number(v).replace(".", ",")) if decimal_comma else phyphox_number
+    return "\n".join([delim.join(f'"{h}"' for h in heads)] + [delim.join(num(v) for v in r) for r in rows]) + "\n"
+
+
+def write_phyphox(path, rows, axis_name, delim, decimal_comma=False):
+    with open(path, "w") as f:
+        f.write(phyphox_csv(rows, axis_name, delim, decimal_comma))
+
+
+PHYPHOX_TIME = ('"event","experiment time","system time","system time text"\n'
+                '"START",0.000000000E0,1790000000.000,"2026-09-21 07:13:20.000 UTC-07:00"\n'
+                '"PAUSE",1.800000000E1,1790000018.000,"2026-09-21 07:13:38.000 UTC-07:00"\n')
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     W = synthetic_walk()
@@ -321,6 +352,12 @@ def main():
                 "time,ax (m/s^2),ay (m/s^2),az (m/s^2),aT (m/s^2)\n")
         for r in W:
             f.write(f"{r[0]:.6f}," + ",".join(f"{v:.4f}" for v in r[1:]) + "\n")
+    # --- phyphox CSVs (from the "Raw Data.csv" in its export zip): quoted headers with units,
+    # scientific notation with a bare exponent (2.506474800E-2)
+    write_phyphox(p("phyphox_accel.csv"), phyphox_rows(W, gravity=True), "Acceleration", ",")
+    write_phyphox(p("phyphox_linear_tab.csv"), phyphox_rows(W), "Linear Acceleration", "\t", decimal_comma=True)
+    with open(p("phyphox_time.csv"), "w") as f:  # meta/time.csv on its own: not sensor data
+        f.write(PHYPHOX_TIME)
     np.savetxt(p("plain_noheader.csv"), W, delimiter=",", fmt="%.5f")
     with open(p("bad_backwards_time.csv"), "w") as f:
         f.write("time,ax\n")

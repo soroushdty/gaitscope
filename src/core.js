@@ -363,11 +363,21 @@
     return Number(s);
   }
 
+  /* phyphox puts its metadata next to the data, in meta/time.csv and meta/device.csv. */
+  function phyphoxMetaFile(headerLine) {
+    const h = headerLine.split(/[,;\t]/).map(v => v.trim().replace(/^"|"$/g, '').toLowerCase()).join('|');
+    if (h.startsWith('event|experiment time|system time')) return 'meta/time.csv, which holds only the times the recording started and paused';
+    if (h === 'property|value') return 'meta/device.csv, which describes the phone and its sensors';
+    return null;
+  }
+
   function parseCsv(text) {
     text = text.replace(/^\uFEFF/, '');
     // Physics Toolbox (newer versions) starts with '# key: value' metadata lines; skip them.
     const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '' && !l.trimStart().startsWith('#'));
     if (lines.length < 2) throw new InputError('The CSV file has fewer than 2 lines of data.', 'Record for longer, or check that the export completed.');
+    const meta = phyphoxMetaFile(lines[0]);
+    if (meta) throw new InputError('This is phyphox\'s ' + meta + ', not the sensor data.', 'Upload "Raw Data.csv" from the zip that phyphox exported.');
     const sample = lines.slice(0, Math.min(lines.length, 12));
     // Prefer a delimiter that splits every sampled line (header included) into the same number of fields.
     let delim = null, bestFields = 1;
@@ -422,16 +432,21 @@
   /* -------------------------------------------------------- column roles */
   const RX = {
     time: /^(time|t|elapsed|timestamp|seconds|sec)\b/i,
-    x: /^(gfx|ax|wx|bx|mx|x|acc_?x|accel_?x|acceleration_?x|lin_?acc_?x)\b/i,
-    y: /^(gfy|ay|wy|by|my|y|acc_?y|accel_?y|acceleration_?y|lin_?acc_?y)\b/i,
-    z: /^(gfz|az|wz|bz|mz|z|acc_?z|accel_?z|acceleration_?z|lin_?acc_?z)\b/i,
-    mag: /^(tgf|at|wt|bt|total|magnitude|mag|norm|a_?total|resultant)\b/i,
+    x: /^(gfx|ax|wx|bx|mx|x|acc_?x|accel_?x|acceleration_?x|lin_?acc_?x|(linear )?acceleration x)\b/i,
+    y: /^(gfy|ay|wy|by|my|y|acc_?y|accel_?y|acceleration_?y|lin_?acc_?y|(linear )?acceleration y)\b/i,
+    z: /^(gfz|az|wz|bz|mz|z|acc_?z|accel_?z|acceleration_?z|lin_?acc_?z|(linear )?acceleration z)\b/i,
+    mag: /^(tgf|at|wt|bt|total|magnitude|mag|norm|a_?total|resultant|absolute( linear)? acceleration)\b/i,
   };
+  const LINACC = { key: 'linacc', label: 'Linear accelerometer', unit: 'm/s²', gravity: false, accel: true };
 
   function sensorFromName(name) {
     name = name.replace(/\s*\(.*\)\s*$/, ''); // 'ax (m/s^2)' -> 'ax'
     if (/^(gf[xyz]|tgf)$/i.test(name)) return { key: 'gforce', label: 'G-Force Meter', unit: 'g', gravity: true, accel: true };
-    if (/^(a[xyzt])$/i.test(name)) return { key: 'linacc', label: 'Linear accelerometer', unit: 'm/s²', gravity: false, accel: true };
+    if (/^(a[xyzt])$/i.test(name)) return LINACC;
+    // phyphox: 'Acceleration x' keeps gravity, 'Linear Acceleration x' doesn't. Both call the
+    // magnitude 'Absolute acceleration', so that one takes its sensor from x in buildDataset.
+    if (/^linear acceleration [xyz]$/i.test(name)) return LINACC;
+    if (/^acceleration [xyz]$/i.test(name)) return { key: 'acc', label: 'Accelerometer', unit: 'm/s²', gravity: true, accel: true };
     if (/^(w[xyzt])$/i.test(name)) return { key: 'gyro', label: 'Gyroscope', unit: 'rad/s', gravity: false, accel: false };
     if (/^(b[xyzt]|m[xyz])$/i.test(name)) return { key: 'mag', label: 'Magnetometer', unit: 'µT', gravity: false, accel: false };
     return null;
@@ -545,6 +560,7 @@
     }
     if (x && y && z) { x.role = 'x'; y.role = 'y'; z.role = 'z'; }
     if (mag) mag.role = 'mag';
+    if (mag && !mag.sensor && x && x.sensor) mag.sensor = x.sensor;
 
     for (const c of columns) c.label = labelFor(c, source);
 
@@ -585,7 +601,9 @@
     if (sensor) {
       const lvl = sensor.accel ? 'info' : 'warn';
       const extra = sensor.accel
-        ? (sensor.gravity ? ' Includes gravity: an upright phone reads about 1 g on one axis, so the lab threshold h = 1 sits right at the resting level.' : ' Gravity is removed, so a still phone reads near 0.')
+        ? (!sensor.gravity ? ' Gravity is removed, so a still phone reads near 0.'
+          : sensor.unit === 'g' ? ' Includes gravity: an upright phone reads about 1 g on one axis, so the lab threshold h = 1 sits right at the resting level.'
+            : ' Includes gravity: a still phone reads about 9.8 m/s² in total, so the lab threshold h = 1, chosen for data in g, sits far below the resting level of whichever axis points up. Dividing by 9.81 gives g.')
         : ' This sensor does not measure acceleration. Steps may still show up as peaks, but the lab threshold h = 1 has no physical meaning here.';
       return { level: lvl, title: 'Units: ' + sensor.unit, detail: sensor.label + ' data (from the column names).' + extra };
     }
