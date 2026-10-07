@@ -67,7 +67,27 @@ test('original algorithm matches MATLAB/Octave on the course Walking.mat', { ski
   }
 });
 
+test('Coza (modified) keeps Walking.mat\'s counts with the rhythm check (#81)', { skip: !fs.existsSync(path.join(DATA, 'Walking.mat')) && 'data/Walking.mat not present' }, () => {
+  const { ds } = loadMatDataset(path.join(DATA, 'Walking.mat'));
+  const def = C.ALGORITHMS.find(a => a.id === 'coza');
+  const counts = [2, 3, 4, 5].map(col => { const ch = C.prepareChannel(ds, col - 1); return def.detect(ch.A, ch.t, Object.assign({ fs: ch.fs }, C.defaultParams(def))).idx.length; });
+  assert.deepEqual(counts, [12, 12, 18, 23], 'the same as with height alone; the stop bump on column 2 is still dropped');
+});
+
 /* ------------------------------------------------------- fixed version */
+// #81: a weak peak is dropped only when it is also out of rhythm
+test('a weak peak on the rhythm is kept; one out of rhythm is dropped', () => {
+  const fs = 100, t = Array.from({ length: 1200 }, (_, i) => i / fs), A = new Array(1200).fill(0);
+  const bump = (at, height) => { for (let i = -10; i <= 10; i++) A[at + i] = Math.max(A[at + i], height * Math.cos(i / 10 * Math.PI / 2)); };
+  for (const at of [100, 200, 300, 400, 500, 600, 700, 800, 900]) bump(at, 10);  // a step every 1 s
+  bump(1000, 2);  // a faint last step, on the rhythm
+  bump(140, 2);   // a faint bump 0.4 s after a step: out of rhythm
+  const on = C.detectCoza(A, 30, 1, { ties: true, weak: true, weakRatio: C.WEAK_RATIO, rhythmRatio: C.RHYTHM_RATIO, t });
+  assert.deepEqual(on.weakDropped, [140]); assert.ok(on.idx.includes(1000), 'the faint step on the rhythm stays');
+  const heightOnly = C.detectCoza(A, 30, 1, { ties: true, weak: true, weakRatio: C.WEAK_RATIO, t });
+  assert.deepEqual(heightOnly.weakDropped, [140, 1000], 'without the rhythm check, both go (the old rule)');
+});
+
 test('fixed version removes tied duplicates and the stop artefact', () => {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
   const ch = C.prepareChannel(ds, 1);

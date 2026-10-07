@@ -589,20 +589,20 @@ test('moving a detector setting reuses the filter and spectra; their own setting
   assert.equal(calls.applyFilter, 1); assert.equal(calls.spectrum, 3, 'filtered and recorded spectra'); assert.equal(calls.rhythmOverTime, 1);
 });
 
-test('the demo walk: Coza (modified) drops the start and stop bumps as weak peaks', async () => {
+test('the demo walk: its 17 steps, faint first and last ones included (#81)', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
-  assert.match(text(pg, 'valList'), /Coza \(modified\) drops 2 weak peaks.*less than 40% as far above h/);
-  assert.equal(markers(pg, 'Coza').x.length - markers(pg, 'Coza (modified)').x.length, 2);
+  assert.equal(markers(pg, 'Coza').x.length, 17); assert.equal(markers(pg, 'Coza (modified)').x.length, 17, 'faint steps on the rhythm are kept');
+  assert.doesNotMatch(text(pg, 'valList'), /drops \d+ weak peak/);
 
   // Phone position: on one leg, each peak is a stride (2 steps)
   const pos = pg.d.getElementById('posSel');
   assert.equal(pos.value, 'hand');
-  assert.equal(metric(pg, 'Steps')[1], '15');
+  assert.equal(metric(pg, 'Steps')[1], '17');
   pos.value = 'leg'; pos.dispatchEvent(new pg.w.Event('change'));
   await sleep(40);
-  assert.match(metric(pg, 'Steps')[1], /^30\s*15 strides × 2$/);
+  assert.match(metric(pg, 'Steps')[1], /^34\s*17 strides × 2$/);
   assert.match(text(pg, 'posHint'), /stride/);
   pg.d.getElementById('demoBtn').click();
   await sleep(40);

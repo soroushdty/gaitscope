@@ -182,7 +182,7 @@ signal.
 | A detector with `h` finds no steps | warn, per detector: suggests checking units or lowering its `h`. |
 | A detector without `h` finds no steps | warn, per detector: points to its settings. |
 | Coza counts tied peaks twice | warn, per Coza on the plot: explains the effect on variability and asymmetry, and that Coza (modified) counts each once. |
-| Weak peaks dropped by Coza (modified) | info: lists their times. |
+| Weak peaks dropped by Coza (modified) | info: lists their times. They are under 40% of a typical peak's strength and out of rhythm (a gap to a neighbouring peak under 75% of the usual one, #81). |
 | Steps 0.85–1.6 s apart | info: suggests they may be strides rather than steps, and to set Phone position to *One leg*. |
 | The file says how many steps were counted by hand (`# steps_counted:` from the recorder) | info: each shown detector's step count against it, as a difference and a percentage; with Phone position *One leg*, each peak counts as 2 steps. The count is also in the metrics export (`steps_counted_by_hand`). |
 | No clear walking peak in the spectrum (nothing in 0.5–3.5 Hz at least 5× the band's median) | info: there is no spectral cadence to compare with; short or irregular walks, or mostly standing, do this. |

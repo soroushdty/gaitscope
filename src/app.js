@@ -604,7 +604,7 @@
         out.push({ level: 'warn', needs: 'coza_original', title: d.label + ' counts ' + n + ' peak' + (n > 1 ? 's' : '') + ' twice', detail: 'Two nearby samples share the same peak value (the data is rounded), so Coza’s rule marks both. This adds intervals of a sample or two that inflate its variability and shift its asymmetry. ' + (dets.some(x => x.ind.type === 'coza') ? 'Coza (modified) counts each once.' : 'Add Coza (modified) under Step detectors to see each counted once.') });
       }
       if (d.weak.length) {
-        out.push({ level: 'info', title: d.label + ' drops ' + d.weak.length + ' weak peak' + (d.weak.length > 1 ? 's' : ''), detail: 'At ' + d.weak.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(C.WEAK_RATIO * 100) + '% as far above h as a typical peak, which usually means starting or stopping rather than a step.' });
+        out.push({ level: 'info', title: d.label + ' drops ' + d.weak.length + ' weak peak' + (d.weak.length > 1 ? 's' : ''), detail: 'At ' + d.weak.map(i => fmt(S.ch.t[i], 2) + ' s').join(', ') + '. These rise less than ' + Math.round(C.WEAK_RATIO * 100) + '% as far above h as a typical peak and come out of rhythm (closer than ' + Math.round(C.RHYTHM_RATIO * 100) + '% of the usual gap to a neighbouring peak), which usually means starting or stopping rather than a step.' });
       }
     }
     if (!spec.peak.clear) {
