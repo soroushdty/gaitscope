@@ -1279,6 +1279,10 @@
   // the real first step in Walking.mat (0.83) and drops the stop bump (0.13), with a wide
   // margin on both sides, so it is fixed rather than a setting.
   const WEAK_RATIO = 0.4;
+  // ...and a weak peak is dropped only when it is also out of rhythm: a gap to a neighbouring
+  // peak under this share of the median gap (#81). A faint first or last step that falls on
+  // the rhythm is kept; a bump that comes early, like the stop bump in Walking.mat, is not.
+  const RHYTHM_RATIO = 0.75;
 
   // Coza (modified): Coza's detector with its bugs fixed. opts: {ties, weak, weakRatio}
   function detectCoza(A, w, h, opts) {
@@ -1295,8 +1299,12 @@
     const medAmp = median(amp);
     const weakDropped = [];
     if (opts.weak && idx.length >= 3) {
+      // with opts.rhythmRatio, a weak peak on the rhythm stays (gaps from opts.t, else samples)
+      const at = i => (opts.t ? opts.t[i] : i);
+      const gaps = idx.slice(1).map((i, k) => at(i) - at(idx[k])), medGap = median(gaps);
+      const offRhythm = k => [k > 0 ? gaps[k - 1] : Infinity, k < gaps.length ? gaps[k] : Infinity].some(g => g < opts.rhythmRatio * medGap);
       const kept = [];
-      idx.forEach((i, k) => { if (amp[k] >= opts.weakRatio * medAmp) kept.push(i); else weakDropped.push(i); });
+      idx.forEach((i, k) => { if (amp[k] >= opts.weakRatio * medAmp || (opts.rhythmRatio && !offRhythm(k))) kept.push(i); else weakDropped.push(i); });
       idx = kept;
     }
     return { idx, weakDropped, medAmp };
@@ -1481,17 +1489,17 @@
       name: 'Coza (modified)',
       tagline: 'Coza\u2019s detector with its bugs fixed.',
       credit: [{ text: 'Coza\u2019s detector, modified by Dr. Soroush Dianaty', note: 'tied peaks counted once, weak start/stop peaks dropped, window in seconds, real timestamps, cadence in steps/min, strides with Phone position One leg' }],
-      summary: 'Coza (modified) fixes Coza\u2019s bugs: tied peaks are counted once, weak start and stop bumps are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
+      summary: 'Coza (modified) fixes Coza\u2019s bugs: tied peaks are counted once, weak bumps out of rhythm (such as the stop bump) are dropped, the window is in seconds, timing comes from the real timestamps, and cadence is in steps/min.',
       params: [P_H, { key: 'cozaWindow', label: 'Window', abbr: 'window', min: 0.05, max: 1.5, step: 0.01, default: 0.3, unit: 's', dec: 2, samples: true },
-        { key: 'weak', label: 'Drop weak peaks', abbr: 'weak peaks dropped', type: 'bool', default: true, hint: 'Ignore peaks that rise less than 40% as far above h as a typical peak, such as the bump when you stop walking.' }],
+        { key: 'weak', label: 'Drop weak peaks', abbr: 'weak peaks dropped', type: 'bool', default: true, hint: 'Ignore peaks that rise less than 40% as far above h as a typical peak and come out of rhythm, such as the bump when you stop walking. A faint first or last step on the rhythm is kept.' }],
       // Window in seconds, so it means the same at any sampling rate (Coza's w is samples).
       // Tied peaks are always counted once: Coza, beside it, shows the double count.
       detect: (A, t, p) => {
         const w = windowSamples(p.cozaWindow, p.fs, A.length);
-        return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: WEAK_RATIO }), { w });
+        return Object.assign(detectCoza(A, w, p.h, { ties: true, weak: p.weak, weakRatio: WEAK_RATIO, rhythmRatio: RHYTHM_RATIO, t }), { w });
       },
       settings: (p, fx) => [['coza_window_s', p.cozaWindow], ['coza_window_samples', fx.w],
-        ['fix_weak_peaks', p.weak ? 'on, ' + Math.round(WEAK_RATIO * 100) + '%' : 'off']],
+        ['fix_weak_peaks', p.weak ? 'on, below ' + Math.round(WEAK_RATIO * 100) + '% and out of rhythm (a gap under ' + Math.round(RHYTHM_RATIO * 100) + '%)' : 'off']],
     },
     {
       id: 'threshold',
@@ -2511,7 +2519,7 @@
   }
 
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
-    prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
+    prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText };

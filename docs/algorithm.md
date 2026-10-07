@@ -64,7 +64,7 @@ samples.
 |---|---|
 | Window in seconds | Default 0.3 s, which is Coza's `w = 30` at 100 Hz. It is turned into `round(seconds × fs)` samples, so the window covers the same time at any sampling rate. In samples, `w = 30` is only ±0.065 s at 460 Hz (free Physics Toolbox), where Coza finds many noise peaks. |
 | Tied peaks once | A sample must also be strictly greater than every earlier sample in its window, so on a plateau only the first sample counts. |
-| Weak peaks | Peak strength is `A(i) − h`. A peak is dropped when its strength is below 40% of the median strength. The cut-off is fixed, not a setting: it keeps the real first step in `Walking.mat` (strength 0.83) and drops the stop bump (0.13), with a wide margin on both sides. |
+| Weak peaks | Peak strength is `A(i) − h`. A peak is dropped when its strength is below 40% of the median strength **and** it is out of rhythm: a gap to a neighbouring peak is under 75% of the median gap (#81). The cut-offs are fixed, not settings. They keep the real first step in `Walking.mat` (strength 0.83) and drop the stop bump (strength 0.13, and 0.66 s after the previous peak against 1.14 s typical). A faint first or last step on the rhythm is kept: the synthetic walk fades in and out, and its first and last steps (strength 0.24 and 0.12, but 1.00 s and 1.03 s from their neighbours) count, so it gives the walk's 17 steps, where height alone gave 15. Rhythm is judged from the gaps between all candidate peaks, so when a faint step and an early bump sit side by side, both look out of rhythm and both are dropped, as before #81. |
 | Real timing | Intervals come from the timestamps, not `samples / 100`. |
 | Cadence | `60 / mean step interval`, in steps/min. |
 | Strides | With Phone position set to *One leg*, each peak counts as 2 steps; cadence doubles. Asymmetry is not reported, because it needs single steps. |
@@ -243,7 +243,9 @@ Coza (modified)'s fixes.
 
 Markers sit on the smoothed signal, which is drawn with the threshold. The weakness is
 the global threshold: a long rest pulls the mean and SD down, so noise at rest can clear
-it.
+it. It also misses faint steps: on the synthetic walk, which fades in and out, it finds
+15 of 17 at the default k = 0.5, missing the first and last (17 at k = 0.2). It is kept as
+its source describes it (#81).
 
 ## Peak-to-valley (`detectPeakToValley`)
 
@@ -266,7 +268,9 @@ sample.
 
 The weakness is signals with several bumps per step (the magnitude, or the vertical
 axis): each bump that crosses the moving threshold is a candidate, and similar-sized
-bumps all pass the swing rule.
+bumps all pass the swing rule. The swing rule also drops faint steps: on the synthetic
+walk it finds 16 of 17, missing the faint last one. It is kept as its source describes it
+(#81).
 
 ## Zero-crossing (`detectZeroCrossing`)
 
@@ -358,12 +362,12 @@ Linear Accelerometer at ~57 Hz, 7.6 s). None of these files is committed.
 | `Walking.mat` y (column 3) | 12 (1.14 s) | 12 (1.14 s) | 17 (0.98 s) | 13 (1.13 s) | 13 (1.13 s) |
 | `Walking.mat` z (column 4) | 21 (0.69 s) | 18 (0.82 s) | 16 (0.86 s) | 22 (0.71 s) | 17 (0.91 s) |
 | `Walking.mat` magnitude (column 5) | 27 (0.49 s) | 23 (0.57 s) | 21 (0.57 s) | 23 (0.57 s) | 21 (0.66 s) |
-| G-Force, gFz | 8 (0.80 s) | 5 (1.24 s) | 9 (0.75 s) | 8 (0.80 s) | 6 (1.13 s) |
-| G-Force, TgF (magnitude) | 193 (0.03 s) | 7 (0.93 s) | 7 (0.93 s) | 11 (0.56 s) | 8 (0.81 s) |
+| G-Force, gFz | 8 (0.80 s) | 6 (1.12 s) | 9 (0.75 s) | 8 (0.80 s) | 6 (1.13 s) |
+| G-Force, TgF (magnitude) | 193 (0.03 s) | 8 (0.80 s) | 7 (0.93 s) | 11 (0.56 s) | 8 (0.81 s) |
 | G-Force, vertical (computed) | 0 | 0 (7 at h = 0.1) | 8 (0.74 s) | 13 (0.48 s) | 8 (0.80 s) |
 | G-Force, horizontal (computed) | 0 | 0 | 6 (0.85 s) | 9 (0.69 s) | 7 (0.91 s) |
 | Linear Accelerometer, ay | 4 (1.78 s) | 6 (1.07 s) | 7 (0.81 s) | 6 (0.98 s) | 6 (1.17 s) |
-| Linear Accelerometer, aT (magnitude) | 5 (1.53 s) | 7 (0.88 s) | 7 (0.88 s) | 8 (0.87 s) | 4 (1.44 s) |
+| Linear Accelerometer, aT (magnitude) | 5 (1.53 s) | 9 (0.76 s) | 7 (0.88 s) | 8 (0.87 s) | 4 (1.44 s) |
 
 Cadence per minute from each algorithm's steps (peaks or crossings, not adjusted for
 strides) and from the spectrum alone (`Cadence (spectrum)`, 8 s segments; the phone
@@ -375,10 +379,10 @@ recordings are shorter, so their whole length is one segment):
 | `Walking.mat` y (column 3) | 53 | 53 | 61 | 53 | 53 |
 | `Walking.mat` z (column 4) | 103 | 74 | 69 | 84 | 66 |
 | `Walking.mat` magnitude (column 5) | 105 | 104 | 105 | 104 | 91 |
-| G-Force, gFz | 40 | 48 | 80 | 75 | 53 |
-| G-Force, TgF (magnitude) | — (no clear peak) | 64 | 65 | 108 | 74 |
+| G-Force, gFz | 40 | 54 | 80 | 75 | 53 |
+| G-Force, TgF (magnitude) | — (no clear peak) | 75 | 65 | 108 | 74 |
 | Linear Accelerometer, ay | 42 | 56 | 74 | 61 | 51 |
-| Linear Accelerometer, aT (magnitude) | 51 | 68 | 68 | 69 | 42 |
+| Linear Accelerometer, aT (magnitude) | 51 | 79 | 68 | 69 | 42 |
 
 On `Walking.mat`, wherever the algorithms agree, the spectrum agrees with them within
 1/min, without detecting a single step. On column 4 the spectrum picks the faster
@@ -402,8 +406,12 @@ What this shows, and what it doesn't:
   algorithms disagree by up to 6 steps. Without a known count, none of them can be
   called right.
 * **G-Force vertical** rests at 0 g, so with `h = 1` Coza and Coza (modified) find nothing.
-  At `h = 0.1`, Coza (modified) finds the same 7 steps on it as on the magnitude (TgF), and
+  At `h = 0.1`, Coza (modified) finds 7 steps on it (8 on the magnitude, TgF), and
   Threshold peaks and Zero-crossing agree at 8.
+* **The rhythm check (#81)** changed Coza (modified) only on the phone recordings. It keeps
+  faint peaks that fall on the rhythm: one more on gFz (at 0.32 s) and on TgF (4.12 s), two
+  more on aT (1.39 s and 6.93 s). `Walking.mat` is unchanged on every column. These
+  recordings have no known count, so whether those peaks are steps is open (#68).
 * **The phone recordings are too short** (fewer than 10 steps) and have no known count,
   so they only show that every detector except Coza gives a plausible rate at
   460 Hz. Their windows and cut-offs are in seconds and Hz, not samples.
