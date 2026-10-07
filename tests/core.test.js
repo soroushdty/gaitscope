@@ -394,6 +394,21 @@ test('the spectrum finds the cadence of a known walk, and the stride rate of a o
   assert.equal(C.spectrum(still, t, { specSeg: 8 }).peak.clear, false);
 });
 
+test('filter gain is the response as applied, and matches what the filter does to a sine', () => {
+  const fs = 100, t = Float64Array.from({ length: 4000 }, (_, i) => i / fs);
+  const cases = [Object.assign({}, FP, { filter: 'butter' }), Object.assign({}, FP, { filter: 'cheby1' }), Object.assign({}, FP, { filter: 'ellip' }),
+    { filter: 'notch', notchFreq: 10, notchQ: 5 }, { filter: 'movavg', maWindow: 0.1 }, { filter: 'savgol', sgWindow: 0.3, sgOrder: 3 }];
+  for (const p of cases) for (const fr of [1, 2.5, 4, 8, 10]) {
+    const g = C.filterGain(p, fs, [fr])[0];
+    const y = C.FILTERS.find(f => f.id === p.filter).apply(t.map(v => Math.sin(2 * Math.PI * fr * v)), fs, p);
+    let amp = 0; for (let i = 1000; i < 3000; i++) amp = Math.max(amp, Math.abs(y[i]));
+    assert.ok(Math.abs(amp - g) < 0.01, p.filter + ' at ' + fr + ' Hz: gain ' + g + ', measured ' + amp);
+  }
+  assert.equal(C.filterGain({ filter: 'median', medWindow: 0.05 }, fs, [1]), null, 'not linear');
+  assert.equal(C.filterGain({ filter: 'none' }, fs, [1]), null);
+  assert.equal(C.filterGain(Object.assign({}, FP, { fLow: 80 }), fs, [1]), null, 'settings that cannot be used');
+});
+
 /* ------------------------------------------------------- envelopes */
 const ENV_P = { fs: 100, envWindow: 1, envPeakWindow: 0.3 };
 const env = id => C.ENVELOPES.find(e => e.id === id);

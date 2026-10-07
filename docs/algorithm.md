@@ -238,6 +238,38 @@ so their times are earlier than the peak-based detectors' (about 0.4 s on `Walki
 column 2) but their intervals are the same. At the very first step the filter smears the rise from rest, so that one
 crossing can come up to about 0.07 s early.
 
+## Spectrum and spectral cadence (`welch`, `spectrum`, #36)
+
+The **Spectrum** panel, under the plot, shows the signal as frequencies instead of
+values over time. Walking repeats, so its rhythm shows as a tall peak.
+
+* **Method:** Welch's method, as `scipy.signal.welch` (within 1e-12):
+  - the signal is cut into half-overlapping segments (default 8 s, under Advanced)
+  - each segment has its mean removed and gets a Hann window
+  - the power of the segments is averaged
+  - uneven recordings go onto an even grid first (`evenGrid`, shared with the filters)
+  - the FFT (`fft`: radix-2, or Bluestein for other lengths) matches `numpy.fft` within 1e-12
+* **Resolution:** about 1 ÷ the segment length (0.125 Hz, 7.5 steps/min at 8 s). The
+  spectrum is zero-padded to 0.01 Hz bins so the peak is read precisely. On a steady
+  synthetic walk the peak lands within 0.4 steps/min of the true cadence.
+* **Cadence (spectrum):** 60 × the strongest frequency between 0.5 and 3.5 Hz (× 2 with
+  Phone position on One leg). No steps are detected, so it cross-checks every algorithm's
+  cadence. It is left empty when no frequency in that band stands at least 5× above the
+  band's median.
+* **Overlays:**
+  - With a filter on, the recorded signal's spectrum is drawn faded behind the filtered one.
+  - The filter's gain (`filterGain`) goes on a second axis: the share of each frequency's
+    swing it keeps, `|H|²` for filters run both ways. It is exact for every linear filter;
+    the median filter has none.
+
+On `Walking.mat` this speaks to the open steps-vs-strides question:
+- The x axis (column 2) has its strongest rhythm at 0.88 Hz, 52.7/min, matching the 12
+  clean peaks Coza counts (52.2/min).
+- The magnitude (column 5) peaks at twice that rate, 104.7/min.
+
+So the x axis rises once per stride and the magnitude once per step. That fits a phone on
+one leg, though it still needs confirming with the instructor.
+
 ## Comparison on real recordings
 
 Steps found with the dashboard defaults, and the mean interval between them (from the

@@ -1457,6 +1457,34 @@
     return { f: Float64Array.from({ length: bins }, (_, k) => k * fs / nfft), psd };
   }
 
+  /* Amplitude gain of the selected filter at the given frequencies, as applied (so zero-phase
+     IIR filters give |H|², run once each way): what fraction of each frequency's swing the
+     filter keeps. null for no filter, settings that can't be used, and the median filter,
+     which isn't linear and has no fixed response. */
+  function filterGain(p, fs, freqs) {
+    const f = FILTERS.find(x => x.id === p.filter);
+    if (!f || !f.apply || f.id === 'median') return null;
+    const sosGain = sos => freqs.map(fr => {
+      const w = 2 * Math.PI * fr / fs; let g = 1;
+      for (const [b0, b1, b2, , a1, a2] of sos) {
+        const nr = b0 + b1 * Math.cos(w) + b2 * Math.cos(2 * w), ni = -b1 * Math.sin(w) - b2 * Math.sin(2 * w);
+        const dr = 1 + a1 * Math.cos(w) + a2 * Math.cos(2 * w), di = -a1 * Math.sin(w) - a2 * Math.sin(2 * w);
+        g *= (nr * nr + ni * ni) / (dr * dr + di * di);
+      }
+      return g; // |H|² = |H| forwards × |H| backwards
+    });
+    // a centred FIR with symmetric weights c[0..w-1] is real: Σ c_k cos(2πf(k−h)/fs)
+    const firGain = c => { const h = (c.length - 1) / 2; return freqs.map(fr => { let g = 0; for (let k = 0; k < c.length; k++) g += c[k] * Math.cos(2 * Math.PI * fr * (k - h) / fs); return Math.abs(g); }); };
+    try {
+      if (f.iir) return sosGain(designFilter({ type: f.id, order: p.fOrder, fs, lowpass: p.fLow, highpass: p.fHigh, rp: p.fRipple, rs: p.fAtten }).sos);
+      if (f.id === 'notch') return sosGain(notchSos(p.notchFreq, p.notchQ, fs));
+      const n = 1e9; // window limits are about the recording, not the response
+      if (f.id === 'movavg') { const w = oddWindow(p.maWindow, fs, n, 3); return firGain(new Float64Array(w).fill(1 / w)); }
+      if (f.id === 'savgol') { const w = oddWindow(p.sgWindow, fs, n, p.sgOrder + 2); return firGain(savgolWeights(w, p.sgOrder)((w - 1) / 2)); }
+    } catch (e) { if (e instanceof RangeError) return null; throw e; }
+    return null;
+  }
+
   // The walking band: 0.5 to 3.5 Hz holds both stride (about 1 Hz) and step (about 2 Hz) rates.
   const GAIT_BAND = [0.5, 3.5];
   /* The spectrum of a prepared channel: Welch over segments of p.specSeg seconds (default
@@ -1660,7 +1688,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, welch, spectrum, dominantFrequency, GAIT_BAND, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, welch, spectrum, dominantFrequency, GAIT_BAND, filterGain, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

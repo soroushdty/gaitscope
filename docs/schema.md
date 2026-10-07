@@ -126,3 +126,5 @@ the lab code always runs on the recorded signal.
 | Lab code counts tied peaks twice | warn: explains the effect on variability and asymmetry. |
 | Weak peaks dropped by Coza | info: lists their times. |
 | Steps 0.85–1.6 s apart | info: suggests they may be strides rather than steps, and to set Phone position to *One leg*. |
+| No clear walking peak in the spectrum (nothing in 0.5–3.5 Hz at least 5× the band's median) | info: Cadence (spectrum) is left empty; short or irregular walks, or mostly standing, do this. |
+| Spectral cadence about 2× or ½ the algorithm's cadence | info: one of them counts strides rather than steps; explains which is usual for the phone position. |
