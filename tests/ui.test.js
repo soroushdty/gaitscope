@@ -687,6 +687,14 @@ test('reads a Physics Toolbox CSV', async () => {
   assert.ok(opts.includes('x (gFx)') && opts.includes('wx (gyroscope)'));
 });
 
+test('steps about a second apart: strides, or a slow walk', async () => {
+  const pg = makePage();
+  pg.d.getElementById('demoBtn').click(); await sleep(40); // its peaks are about 1.1 s apart
+  assert.match(text(pg, 'valList'), /Steps may be strides, or the walk was slow ?Coza’s steps are 1\.\d\d s apart.*Either the walk was slow \(a careful walk can take a second per step\), or each peak is a stride, a left plus a right step\. Only for strides, set Phone position to "One leg"/);
+  pg.d.getElementById('posSel').value = 'leg'; pg.d.getElementById('posSel').dispatchEvent(new pg.w.Event('change')); await sleep(60);
+  assert.doesNotMatch(text(pg, 'valList'), /Steps may be strides/, 'not once they count as strides');
+});
+
 test('a phone export opens on its total; a MAT file on column 2; the synthetic walk on x', async () => {
   const pg = makePage();
   const opened = () => pg.d.getElementById('chanSel').selectedOptions[0].textContent;
