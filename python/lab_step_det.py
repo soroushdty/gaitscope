@@ -63,7 +63,7 @@ def gait_metrics(step_idx, fs=100):
 
 # --- Physics Toolbox CSV input (the MATLAB script only reads .mat) ---------
 # Same rules as parseCsv/buildDataset in src/core.js, for the layouts the app
-# exports: '#' metadata lines, ',' or ';' (decimal comma) or tab delimiters,
+# exports: '#' metadata lines, ',' or ';' or tab delimiters (decimal comma with ';' or tab),
 # units in headers ('ax (m/s^2)'), clock times ('13:05:10:006') and blank cells
 # where several sensors take turns.
 
@@ -114,7 +114,7 @@ def load_csv(path):
         counts = {len(ln.split(d)) for ln in sample}
         if len(counts) == 1 and (n := counts.pop()) > best:
             delim, best = d, n
-    decimal_comma = delim == ";" and any(re.search(r"\d,\d", ln) for ln in sample[1:])
+    decimal_comma = delim in ";\t" and any(re.search(r"\d,\d", ln) for ln in sample[1:])
 
     first = lines[0].split(delim)
     has_header = sum(_number(t, decimal_comma) is None for t in first) > len(first) / 2
