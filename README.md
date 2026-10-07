@@ -63,8 +63,10 @@ window `w` in samples. The rate comes from the time column of CSV exports and of
 files in the Walking.mat layout, after any `--resample` (so `--resample 50` warns too).
 Physics Toolbox only lets you choose the rate in the paid version, and the free version
 records at about 460 Hz. `--resample 100` linearly interpolates the recording onto a
-100 Hz grid first (MATLAB: `interp1(t, A, 0:0.01:t(end))`). The detector itself is
-unchanged. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
+100 Hz grid first (MATLAB: `interp1(t, A, 0:0.01:t(end))`). `--resample-method pchip`
+uses a monotone cubic instead, and `--antialias` low-passes below the new Nyquist frequency
+first when going down in rate.
+The detector itself is unchanged. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
 h5py. A missing or non-numeric `--var` says which variables the file has.
 
 ```bash
