@@ -319,9 +319,9 @@
     const algM = C.timingMetrics(finalIdx, t, { stride: p.stride });
     const weakSet = new Set(fx.weakDropped);
     // spectrum of the signal the algorithm sees, and of the recording when a filter changed it
-    const spec = C.spectrum(filt.A, t, p), specRaw = filt.applied ? C.spectrum(A, t, p) : null;
+    const spec = C.spectrum(filt.A, t, p), specRaw = filt.applied ? C.spectrum(A, t, p) : null, rhythm = C.rhythmOverTime(filt.A, t, p);
     const specCadence = spec.peak.clear ? spec.peak.freq * 60 * (p.stride ? 2 : 1) : NaN;
-    S.res = { p, algo, filt, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet, spec, specRaw, specCadence };
+    S.res = { p, algo, filt, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet, spec, specRaw, specCadence, rhythm };
     render();
   }
 
@@ -475,6 +475,10 @@
         hovertemplate: esc(S.res.algo.name) + ': %{y:.3f} s between steps<extra></extra>' },
       { x: oi.x, y: oi.y, type: 'scatter', mode: 'markers', name: 'Lab interval', xaxis: 'x', yaxis: 'y2', visible: iv && showLab(),
         marker: { symbol: 'triangle-down', size: 7, color: colors.orig }, hovertemplate: 'Lab code: %{y:.3f} s between peaks<extra></extra>' },
+      // 11: period of the spectrum's main rhythm over time, in the strip (gaps where no clear peak)
+      { x: Array.from(S.res.rhythm.t), y: Array.from(S.res.rhythm.freq, f => Number.isFinite(f) ? 1 / f : null), type: 'scatter', mode: 'lines', name: 'Spectrum rhythm',
+        xaxis: 'x', yaxis: 'y2', visible: iv, connectgaps: false, line: { color: colors.signal, width: 1.6 },
+        hovertemplate: 'Spectrum: main rhythm every %{y:.3f} s (%{customdata:.0f}/min)<extra></extra>', customdata: Array.from(S.res.rhythm.freq, f => f * 60) },
     ];
     const tMax = t[t.length - 1];
     const layout = {

@@ -142,6 +142,14 @@ def spectral_fixtures():
         x = filter_input(fs)
         z = signal.hilbert(x - x.mean())
         out["hilbert"].append({"fs": fs, "re": z.real.tolist(), "im": z.imag.tolist()})
+    out["spectrogram"] = []
+    for fs in (57, 100, 460):
+        x = filter_input(fs, dur=10.0)
+        nperseg = round(4.0 * fs)
+        nfft = 2 ** math.ceil(math.log2(nperseg))
+        f, tt, sxx = signal.spectrogram(x, fs, window="hann", nperseg=nperseg, noverlap=nperseg - round(0.5 * fs), nfft=nfft,
+                                        detrend="constant", scaling="density", mode="psd")
+        out["spectrogram"].append({"fs": fs, "nperseg": nperseg, "noverlap": nperseg - round(0.5 * fs), "nfft": nfft, "t": tt.tolist(), "S": sxx.T.tolist()})
     out["welch"] = []
     for fs in (57, 100, 460):
         x = filter_input(fs, dur=10.0)

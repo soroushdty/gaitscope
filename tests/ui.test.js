@@ -42,7 +42,7 @@ async function upload(pg, file) {
   await sleep(60);
 }
 // Plot trace order (src/app.js renderPlot): hidden traces stay in place so these never move.
-const TR = { envLower: 0, envUpper: 1, signal: 2, filtered: 3, envMid: 4, guide: 5, guide2: 6, lab: 7, algo: 8, algoIv: 9, labIv: 10 };
+const TR = { envLower: 0, envUpper: 1, signal: 2, filtered: 3, envMid: 4, guide: 5, guide2: 6, lab: 7, algo: 8, algoIv: 9, labIv: 10, rhythm: 11 };
 const C_mean = a => Array.from(a).reduce((x, y) => x + y, 0) / a.length;
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
@@ -166,6 +166,11 @@ test('the interval strip is off by default and can be turned on', async () => {
   $('showIntervals').checked = true; $('showIntervals').dispatchEvent(new pg.w.Event('change'));
   ({ traces, layout } = pg.plots.at(-1));
   assert.equal(traces[TR.algoIv].visible, true); assert.equal(traces[TR.labIv].visible, true);
+  // the spectrum's rhythm over time sits in the same strip: column 2 repeats about every 1.1 s
+  const rh = traces[TR.rhythm];
+  assert.equal(rh.visible, true); assert.equal(rh.yaxis, 'y2');
+  const periods = rh.y.filter(v => v !== null);
+  assert.ok(periods.length > 10 && periods.every(v => v > 1 && v < 1.25), 'about 1.1 s: ' + periods.slice(0, 3));
   assert.deepEqual([...layout.yaxis.domain], [0.3, 1]);
   assert.equal(layout.yaxis2.visible, true); assert.equal(layout.xaxis.anchor, 'y2');
   assert.match($('plot').getAttribute('aria-label'), /time between steps/);
