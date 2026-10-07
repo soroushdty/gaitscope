@@ -19,6 +19,7 @@ import os
 import sys
 
 import numpy as np
+import pywt
 import scipy.io as sio
 from scipy import interpolate, ndimage, signal
 
@@ -85,6 +86,12 @@ def other_filter_fixtures():
         for sec, order in ((0.3, 3), (0.15, 2), (0.2, 5)):
             y = signal.savgol_filter(x, odd_window(sec, fs), order, mode="interp")
             cases.append({"filter": "savgol", "fs": fs, "p": {"sgWindow": sec, "sgOrder": order}, "idx": idx, "y": y[idx].tolist()})
+        for level, scale in ((4, 1.0), (2, 0.5)):
+            coeffs = pywt.wavedec(x, "db4", mode="symmetric", level=level)
+            t = scale * np.median(np.abs(coeffs[-1])) / 0.6745 * np.sqrt(2 * np.log(n))
+            coeffs[1:] = [pywt.threshold(c, t, "soft") for c in coeffs[1:]]
+            y = pywt.waverec(coeffs, "db4", mode="symmetric")[:n]
+            cases.append({"filter": "wavelet", "fs": fs, "p": {"wLevel": level, "wScale": scale}, "idx": idx, "y": y[idx].tolist()})
         for f0, q in ((17, 30), (25, 10)):
             b, a = signal.iirnotch(f0, q, fs=fs)
             y = signal.sosfiltfilt(np.concatenate([b, a])[None, :], x)
@@ -158,6 +165,18 @@ def spectral_fixtures():
             nfft = pad * 2 ** math.ceil(math.log2(nperseg))
             f, psd = signal.welch(x, fs, window="hann", nperseg=nperseg, noverlap=nperseg // 2, nfft=nfft, detrend="constant", scaling="density")
             out["welch"].append({"fs": fs, "nperseg": nperseg, "nfft": nfft, "f": f.tolist(), "psd": psd.tolist()})
+    return out
+
+
+def dwt_fixtures():
+    """PyWavelets single-level db4 transforms (symmetric edges), forwards and back, on
+    fft_input() of odd and even lengths, plus the db4 filters themselves."""
+    w = pywt.Wavelet("db4")
+    out = {"dec_lo": list(w.dec_lo), "dec_hi": list(w.dec_hi), "rec_lo": list(w.rec_lo), "rec_hi": list(w.rec_hi), "cases": []}
+    for n in (9, 20, 57, 200):
+        cA, cD = pywt.dwt(fft_input(n), "db4", mode="symmetric")
+        back = pywt.idwt(cA, cD, "db4", mode="symmetric")
+        out["cases"].append({"n": n, "cA": cA.tolist(), "cD": cD.tolist(), "back": back.tolist()})
     return out
 
 
@@ -271,7 +290,8 @@ def main():
         json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures(),
                    "other_source": "scipy.ndimage (mode='nearest'), scipy.signal.savgol_filter (mode='interp'), iirnotch + sosfiltfilt; input: spiky_input()",
                    "other": other_filter_fixtures(),
-                   "savgol_exact": {"window": 231, "order": 5, "weights": savgol_exact_weights(231, 5)}}, f)
+                   "savgol_exact": {"window": 231, "order": 5, "weights": savgol_exact_weights(231, 5)},
+                   "dwt": dwt_fixtures()}, f)
     print("Wrote fixtures to", OUT)
 
 

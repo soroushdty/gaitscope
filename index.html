@@ -133,6 +133,15 @@
         <div class="ctl-head"><label for="sgOrderIn">Polynomial order</label><output id="sgOrderOut" for="sgOrderIn" data-unit="" data-dec="0">3</output></div>
         <input type="range" id="sgOrderIn" data-param="sgOrder" min="1" max="5" value="3" step="1">
       </div>
+      <div class="ctl" data-only="wavelet">
+        <div class="ctl-head"><label for="wLevelIn">Levels</label><output id="wLevelOut" for="wLevelIn" data-unit="" data-dec="0">4</output></div>
+        <input type="range" id="wLevelIn" data-param="wLevel" min="1" max="6" value="4" step="1">
+      </div>
+      <div class="ctl" data-only="wavelet">
+        <div class="ctl-head"><label for="wScaleIn">Threshold (× universal)</label><output id="wScaleOut" for="wScaleIn" data-unit="×" data-dec="2">1.00 ×</output></div>
+        <input type="range" id="wScaleIn" data-param="wScale" min="0.25" max="2" value="1" step="0.05">
+      </div>
+      <p class="hint" data-only="wavelet">Each level halves the band; 4 levels at 460 Hz reach down to about 14 Hz. The universal threshold (1×) is the textbook choice and smooths more; 0.5× keeps more of each heel strike.</p>
       <div class="ctl" data-only="notch">
         <div class="ctl-head"><label for="notchFIn">Frequency</label><output id="notchFOut" for="notchFIn" data-unit="Hz" data-dec="1">50.0 Hz</output></div>
         <input type="range" id="notchFIn" data-param="notchFreq" min="1" max="100" value="50" step="0.5">

@@ -1281,6 +1281,51 @@
     return [[gain, -2 * gain * Math.cos(w0), gain, 1, -2 * gain * Math.cos(w0), 2 * gain - 1]];
   }
 
+  /* Wavelet denoising with Daubechies-4, as PyWavelets: wavedec(A, 'db4', mode='symmetric',
+     level), soft-threshold every detail level at the universal threshold σ·√(2 ln n) times
+     scale (σ from the finest level: median |d| / 0.6745), waverec, cut to the input length.
+     Noise spreads thinly over the detail coefficients and is removed; steps and heel strikes
+     are a few large coefficients and stay, sharp edges included. */
+  const DB4_DEC_LO = [-0.010597401785069032, 0.0328830116668852, 0.030841381835560764, -0.18703481171909309,
+    -0.027983769416859854, 0.6308807679298589, 0.7148465705529157, 0.2303778133088965];
+  const DB4 = (() => {
+    const recLo = DB4_DEC_LO.slice().reverse(), decHi = recLo.map((v, k) => (k % 2 ? 1 : -1) * v);
+    return { decLo: DB4_DEC_LO, decHi, recLo, recHi: decHi.slice().reverse() };
+  })();
+  // x at index k with half-sample symmetric extension (…cba|abc…cba|…), as PyWavelets 'symmetric'
+  const symAt = (x, k) => { const n = x.length, m = ((k % (2 * n)) + 2 * n) % (2 * n); return m < n ? x[m] : x[2 * n - 1 - m]; };
+  function dwt(x, w = DB4) {
+    const n = x.length, F = w.decLo.length, len = Math.floor((n + F - 1) / 2), cA = new Float64Array(len), cD = new Float64Array(len);
+    for (let o = 0; o < len; o++) {
+      let a = 0, d = 0;
+      for (let j = 0; j < F; j++) { const v = symAt(x, 2 * o + 1 - j); a += w.decLo[j] * v; d += w.decHi[j] * v; }
+      cA[o] = a; cD[o] = d;
+    }
+    return { cA, cD };
+  }
+  // inverse: the coefficients upsampled by 2 and convolved with the reconstruction filters,
+  // keeping the 2·len − F + 2 samples PyWavelets keeps
+  function idwt(cA, cD, w = DB4) {
+    const N = cA.length, F = w.recLo.length, out = new Float64Array(2 * N - F + 2);
+    for (let m = 0; m < out.length; m++) {
+      const nn = m + F - 2; let sum = 0;
+      for (let j = nn % 2; j < F; j += 2) { const k = (nn - j) / 2; if (k >= 0 && k < N) sum += w.recLo[j] * cA[k] + w.recHi[j] * cD[k]; }
+      out[m] = sum;
+    }
+    return out;
+  }
+  function waveletDenoise(A, level, scale) {
+    const n = A.length, F = DB4.decLo.length, maxLevel = Math.floor(Math.log2(n / (F - 1)));
+    if (!(level >= 1 && Number.isInteger(level))) throw new RangeError('The number of wavelet levels must be a whole number from 1.');
+    if (level > maxLevel) throw new RangeError('This recording is too short for ' + level + ' wavelet levels: at most ' + Math.max(0, maxLevel) + '.');
+    const ds = []; let a = A;
+    for (let l = 0; l < level; l++) { const r = dwt(a); ds.unshift(r.cD); a = r.cA; }
+    const sigma = median(Array.from(ds[ds.length - 1], Math.abs)) / 0.6745, T = scale * sigma * Math.sqrt(2 * Math.log(n));
+    for (const d of ds) for (let k = 0; k < d.length; k++) d[k] = Math.sign(d[k]) * Math.max(Math.abs(d[k]) - T, 0);
+    for (const d of ds) { if (a.length === d.length + 1) a = a.subarray(0, d.length); a = idwt(a, d); }
+    return a.slice(0, n);
+  }
+
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
      algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
      Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
@@ -1323,6 +1368,12 @@
         return savgol(A, w, p.sgOrder);
       },
       label: p => 'Savitzky\u2013Golay, ' + fmt(p.sgWindow, 2) + ' s window, order ' + p.sgOrder,
+    },
+    {
+      id: 'wavelet', name: 'Wavelet (Daubechies-4)',
+      tagline: 'Splits the signal into frequency bands over time and removes the small, noise-like detail. It keeps sharp heel strikes better than a low-pass that removes as much noise; a lower threshold keeps more.',
+      apply: (A, fs, p) => waveletDenoise(A, p.wLevel, p.wScale),
+      label: p => 'Wavelet db4, ' + p.wLevel + ' levels, soft threshold \u00d7 ' + fmt(p.wScale, 2),
     },
     {
       id: 'notch', name: 'Notch',
@@ -1467,11 +1518,11 @@
 
   /* Amplitude gain of the selected filter at the given frequencies, as applied (so zero-phase
      IIR filters give |H|², run once each way): what fraction of each frequency's swing the
-     filter keeps. null for no filter, settings that can't be used, and the median filter,
-     which isn't linear and has no fixed response. */
+     filter keeps. null for no filter, settings that can't be used, and the median and wavelet
+     filters, which aren't linear and have no fixed response. */
   function filterGain(p, fs, freqs) {
     const f = FILTERS.find(x => x.id === p.filter);
-    if (!f || !f.apply || f.id === 'median') return null;
+    if (!f || !f.apply || f.id === 'median' || f.id === 'wavelet') return null; // not linear: no fixed response
     const sosGain = sos => freqs.map(fr => {
       const w = 2 * Math.PI * fr / fs; let g = 1;
       for (const [b0, b1, b2, , a1, a2] of sos) {
@@ -1733,7 +1784,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

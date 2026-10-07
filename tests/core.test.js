@@ -150,9 +150,9 @@ test('Butterworth, Bessel, Chebyshev I/II and elliptic match scipy: design and z
 // Same as spiky_input() in scripts/make_fixtures.py.
 const spikyInput = fs => { const x = filterInput(fs); for (let i = 7; i < x.length; i += 53) x[i] += 2.5; return x; };
 
-test('moving average, median, Savitzky–Golay and notch match scipy, edges included', () => {
+test('moving average, median, Savitzky–Golay, wavelet and notch match scipy/PyWavelets, edges included', () => {
   const { other } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
-  assert.deepEqual([...new Set(other.map(c => c.filter))], ['movavg', 'median', 'savgol', 'notch']);
+  assert.deepEqual([...new Set(other.map(c => c.filter))], ['movavg', 'median', 'savgol', 'wavelet', 'notch']);
   for (const c of other) {
     const y = C.FILTERS.find(f => f.id === c.filter).apply(spikyInput(c.fs), c.fs, c.p);
     c.idx.forEach((i, k) => assert.ok(Math.abs(y[i] - c.y[k]) < 1e-9, c.filter + ' ' + JSON.stringify(c.p) + ' at ' + c.fs + ' Hz, sample ' + i));
@@ -167,6 +167,39 @@ test('the notch removes one frequency and keeps the walk', () => {
   assert.ok(Math.max(...Array.from(y.slice(460, -460), (v, i) => Math.abs(v - walk[i + 460]))) < 0.002);
   assert.ok(Math.abs(y[100] - walk[100]) > 0.01, 'the ringing near the start is real');
   assert.throws(() => C.notchSos(30, 30, 57), /under 28\.5 Hz/);
+});
+
+test('db4 wavelet transforms match PyWavelets forwards and back', () => {
+  const { dwt: ref } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
+  for (const k of ['decLo', 'decHi', 'recLo', 'recHi']) {
+    const want = ref[k.replace(/([A-Z])/, '_$1').toLowerCase()];
+    C.DB4[k].forEach((v, j) => assert.ok(Math.abs(v - want[j]) < 1e-15, k + '[' + j + ']'));
+  }
+  for (const c of ref.cases) {
+    const { cA, cD } = C.dwt(fftInput(c.n));
+    assert.equal(cA.length, c.cA.length, 'n = ' + c.n);
+    c.cA.forEach((v, k) => assert.ok(Math.abs(cA[k] - v) < 1e-12 && Math.abs(cD[k] - c.cD[k]) < 1e-12, 'dwt, n = ' + c.n + ', ' + k));
+    const back = C.idwt(Float64Array.from(c.cA), Float64Array.from(c.cD));
+    assert.equal(back.length, c.back.length);
+    c.back.forEach((v, k) => assert.ok(Math.abs(back[k] - v) < 1e-12, 'idwt, n = ' + c.n + ', ' + k));
+  }
+  assert.throws(() => C.waveletDenoise(new Float64Array(50), 4, 1), /too short for 4 wavelet levels: at most 2/);
+});
+
+test('wavelet denoising keeps heel strikes better than a low-pass that removes as much noise', () => {
+  const fs = 460, t = Float64Array.from({ length: 4600 }, (_, i) => i / fs);
+  let seed = 9; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+  // 2 Hz sway with a sharp 20 ms heel-strike spike each step, plus white noise
+  const clean = t.map(v => { const ph = (v * 2) % 1; return 0.5 * Math.sin(2 * Math.PI * 2 * v) + (ph < 0.02 ? 2 * (1 - Math.abs(ph - 0.01) / 0.01) : 0); });
+  const A = clean.map(v => v + 0.52 * rnd());
+  const err = y => Math.sqrt(C.mean(Array.from(y, (v, i) => (v - clean[i]) ** 2)));
+  const spike = y => C.mean(Array.from({ length: 18 }, (_, k) => { const c = Math.round(((k + 1) / 2 + 0.01) * fs); return Math.max(...y.slice(c - 5, c + 6)); }));
+  const wv = C.waveletDenoise(A, 4, 0.5);
+  assert.ok(err(wv) < 0.6 * err(A), 'removes noise');
+  for (const fLow of [10, 20, 40]) {
+    const bw = C.FILTERS.find(f => f.id === 'butter').apply(A, fs, { fOrder: 4, fLow, fHigh: 0 });
+    assert.ok(err(wv) < err(bw) && spike(wv) > spike(bw), 'beats a ' + fLow + ' Hz low-pass on both');
+  }
 });
 
 test('Savitzky–Golay weights are exact even for long windows of high order', () => {
