@@ -76,6 +76,31 @@ how the metrics are computed, so their results compare directly.
 | `lowpass(A, fs, fc)` | 2nd-order Butterworth low-pass run forwards and backwards (MATLAB `filtfilt`, scipy `filtfilt`), so peaks keep their timing. Gain ½ at the cut-off `fc`. Same output as scipy to 1e-13. Uses the median sampling rate; phone timing jitter is small next to a cut-off of a few Hz. |
 | `dynamicThreshold(A, half)` | Sliding max and min and their midpoint. |
 
+## Vertical and horizontal acceleration (`gravitySplit`)
+
+A phone in a pocket is tilted and turns during a walk. The step bounce is then spread
+over x, y and z in proportions that drift. The magnitude avoids the tilt, but it mixes
+in forward and sideways motion and can show two bumps per stride. **Signal to analyse**
+offers two signals computed from x, y and z that don't depend on the tilt:
+
+1. **Gravity's direction:** x, y and z low-passed at 0.3 Hz (2nd-order Butterworth, run
+   both ways). Slow enough to ignore the steps, fast enough to follow the phone tilting.
+2. **Vertical** = each sample projected onto that direction, minus the size of gravity.
+   Standing still reads 0 whatever the tilt, so `h` for Coza and the lab code belongs a
+   little above 0 (about 0.1 g or 1 m/s²), not at 1.
+3. **Horizontal** = the size of what is left after the vertical part is removed: forward
+   and sideways sway.
+
+This needs gravity in the data. The sensor name decides when the file has one: G-Force
+yes, Linear Accelerometer no. Otherwise gravity must be a steady vector, at least 2× the
+motion around it and varying by under 15%. On the owner's recordings the G-Force export
+measures 4.8× and 3%; `Walking.mat`, the test fixture and the demo measure under 0.6× and
+over 35%. Without gravity the options are listed but disabled, with the reason.
+
+On a synthetic walk seen by a phone that tilts by 0.4–1.0 rad and turns about the
+vertical, the vertical signal is within 0.14 of the true bounce (amplitude 2), and every
+algorithm finds the same steps as on the bounce itself (`tests/core.test.js`).
+
 ## Signal filters (`FILTERS`, `applyFilter`)
 
 A **Filter** dropdown, above Algorithm, picks a filter for the signal the selected
@@ -210,6 +235,8 @@ Linear Accelerometer at ~57 Hz, 7.6 s). None of these files is committed.
 | `Walking.mat` magnitude (column 5) | 27 (0.49 s) | 23 (0.57 s) | 21 (0.57 s) | 23 (0.57 s) | 21 (0.66 s) |
 | G-Force, gFz | 8 (0.80 s) | 5 (1.24 s) | 9 (0.75 s) | 8 (0.80 s) | 6 (1.13 s) |
 | G-Force, TgF (magnitude) | 193 (0.03 s) | 7 (0.93 s) | 7 (0.93 s) | 11 (0.56 s) | 8 (0.81 s) |
+| G-Force, vertical (computed) | 0 | 0 (7 at h = 0.1) | 8 (0.74 s) | 13 (0.48 s) | 8 (0.80 s) |
+| G-Force, horizontal (computed) | 0 | 0 | 6 (0.85 s) | 9 (0.69 s) | 7 (0.91 s) |
 | Linear Accelerometer, ay | 4 (1.78 s) | 6 (1.07 s) | 7 (0.81 s) | 6 (0.98 s) | 6 (1.17 s) |
 | Linear Accelerometer, aT (magnitude) | 5 (1.53 s) | 7 (0.88 s) | 7 (0.88 s) | 8 (0.87 s) | 4 (1.44 s) |
 
@@ -228,6 +255,9 @@ What this shows, and what it doesn't:
 * **Columns 4 and 5 and the magnitudes** have several bumps per stride, and the
   algorithms disagree by up to 6 steps. Without a known count, none of them can be
   called right.
+* **G-Force vertical** rests at 0 g, so with `h = 1` Coza and the lab code find nothing.
+  At `h = 0.1`, Coza finds the same 7 steps on it as on the magnitude (TgF), and
+  Threshold peaks and Zero-crossing agree at 8.
 * **The phone recordings are too short** (fewer than 10 steps) and have no known count,
   so they only show that every algorithm except the lab code gives a plausible rate at
   460 Hz. Their windows and cut-offs are in seconds and Hz, not samples.

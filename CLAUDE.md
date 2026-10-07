@@ -88,6 +88,9 @@ unless the course file is present in `data/`.
 - The signal filters (#12) match scipy's `iirfilter` + `sosfiltfilt` within 1e-9 for
   Butterworth, Chebyshev I and II, orders 2–6, at 57, 100 and 460 Hz
   (`tests/fixtures/filters.json`). The lab code never sees the filtered signal.
+- Vertical / horizontal acceleration (#35) works on the G-Force export (gravity 0.98 g,
+  steady); `Walking.mat` and Linear Accelerometer files have gravity removed, so the
+  options are disabled there. Vertical rests at 0, so `h` needs to be about 0.1 g.
 
 ## Findings about the lab code (see docs/algorithm.md)
 
@@ -105,8 +108,6 @@ unless the course file is present in `data/`.
       intended? Are the peaks steps or strides?
 - [ ] Record walks with a known step count (e.g. 20 steps counted by hand, phone in the
       hand and in a pocket) to rank the algorithms (#11, decision 4).
-- [ ] #35: vertical and horizontal acceleration from x/y/z by the direction of gravity
-      (needs a recording that still includes gravity, such as G-Force).
 - [ ] #36: frequency domain (spectrum, cadence from the spectrum, spectrogram, Hilbert
       envelope, wavelet denoising, harmonic ratio). The spectrum would also settle
       steps vs. strides.
@@ -122,6 +123,6 @@ unless the course file is present in `data/`.
 
 | File | Key parts |
 |---|---|
-| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks), `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `designFilter` (Butterworth / Chebyshev I / II as second-order sections, like scipy `iirfilter`), `sosfiltfilt` (zero-phase, like scipy), `lowpass` (algorithms' internal 2nd-order Butterworth), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, usesH, detect → idx/markY/guides, settings for the export), `FILTERS` + `applyFilter` (filter for the algorithm only; resamples uneven timing onto an even grid), `filterLabel`, `interpAt`, `ENVELOPES` (sliding, peak-trough, dynamic threshold; view only), `localExtrema`, `halfWindow`, `demoWalk` |
-| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0–1 envelope band, 2 recorded signal (faded when filtered), 3 filtered signal, 4 envelope midline, 5–6 algorithm guide lines, 7 lab markers, 8 algorithm markers, 9–10 interval strip; hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), `hUsed()` (h control and line only for the lab code or algorithms with `usesH`), options under Advanced (`#advSec input[data-param]` → `params()`, reset to their HTML `value`), `showFilter()`, `showEnv()` (envelopes are a view: they redraw the plot, never recompute steps), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
+| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks; also takes 'computed', 'vertical', 'horizontal'), `gravitySplit` (vertical/horizontal from x, y, z by gravity's direction, #35), `datasetRate`, `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `designFilter` (Butterworth / Chebyshev I / II as second-order sections, like scipy `iirfilter`), `sosfiltfilt` (zero-phase, like scipy), `lowpass` (algorithms' internal 2nd-order Butterworth), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, usesH, detect → idx/markY/guides, settings for the export), `FILTERS` + `applyFilter` (filter for the algorithm only; resamples uneven timing onto an even grid), `filterLabel`, `interpAt`, `ENVELOPES` (sliding, peak-trough, dynamic threshold; view only), `localExtrema`, `halfWindow`, `demoWalk` |
+| `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `COMPUTED` + `chanInfo()` (labels and units of computed signals), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0–1 envelope band, 2 recorded signal (faded when filtered), 3 filtered signal, 4 envelope midline, 5–6 algorithm guide lines, 7 lab markers, 8 algorithm markers, 9–10 interval strip; hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), `hUsed()` (h control and line only for the lab code or algorithms with `usesH`), options under Advanced (`#advSec input[data-param]` → `params()`, reset to their HTML `value`), `showFilter()`, `showEnv()` (envelopes are a view: they redraw the plot, never recompute steps), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
 | `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, `load_csv` (Physics Toolbox CSV → Walking.mat layout), `sampling_rate`, `resample`, CLI |
