@@ -289,7 +289,7 @@ test('a filter feeds the algorithm, not the lab code, and is drawn over the fade
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
-  assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II', 'Elliptic', 'Moving average', 'Median', 'Savitzky–Golay', 'Notch']);
+  assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II', 'Elliptic', 'Moving average', 'Median', 'Savitzky–Golay', 'Wavelet (Daubechies-4)', 'Notch']);
   assert.equal($('filterSel').value, 'none', 'off by default');
   assert.equal($('filterOpts').hidden, true);
   let last = pg.plots.at(-1);
@@ -336,7 +336,7 @@ test('every filter shows only its own settings, and presets set an IIR band-pass
   const visible = () => [...$('filterOpts').querySelectorAll('input[data-param]')].filter(el => !el.closest('[data-only]').hidden).map(el => el.dataset.param);
   const want = { butter: ['fOrder', 'fLow', 'fHigh'], bessel: ['fOrder', 'fLow', 'fHigh'], cheby1: ['fOrder', 'fLow', 'fHigh', 'fRipple'],
     cheby2: ['fOrder', 'fLow', 'fHigh', 'fAtten'], ellip: ['fOrder', 'fLow', 'fHigh', 'fRipple', 'fAtten'], movavg: ['maWindow'], median: ['medWindow'],
-    savgol: ['sgWindow', 'sgOrder'], notch: ['notchFreq', 'notchQ'] };
+    savgol: ['sgWindow', 'sgOrder'], wavelet: ['wLevel', 'wScale'], notch: ['notchFreq', 'notchQ'] };
   let n = 0;
   for (const [id, params] of Object.entries(want)) {
     $('filterSel').value = id; $('filterSel').dispatchEvent(new pg.w.Event('change'));

@@ -13,7 +13,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=9.1.1"]
+dev = [
+    "pytest>=9.1.1",
+    "pywavelets>=1.10.0",
+]
 
 [tool.uv]
 package = false  # scripts in python/ and scripts/, not an installable package
