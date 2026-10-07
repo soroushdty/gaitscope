@@ -2278,16 +2278,21 @@
     const freqs = Float64Array.from(f), psd = lombScargle(tt, yy, freqs);
     return { f: freqs, psd, peak: dominantFrequency(freqs, psd), fs };
   }
-  /* Autocorrelation (#101): how well the signal matches itself delayed by each lag, as
-     numpy.correlate(x, x, 'full')[n-1:] / numpy.dot(x, x) with the mean removed. Run on the
-     walking band (walkingGrid), lags up to maxLag s. Peaks: the local maxima above 0 from
-     0.25 s on, each placed by a parabola through its three samples. Returns {lag (s), r,
-     peaks: [{lag, r}], fs}. */
-  // r[k] = sum x_i x_(i+k) / sum x_i^2 for k = 0..K, x with its mean removed
+  /* Autocorrelation (#101): how well the signal matches itself delayed by each lag (acf, the
+     unbiased form; numpy.correlate(x, x, 'full')[n-1:] / (n - k), over its value at no delay),
+     on the walking band (walkingGrid), lags up to maxLag s. Peaks: the local maxima above 0
+     from 0.25 s on, each placed by a parabola through its three samples (our addition).
+     Moe-Nilssen & Helbostad call the first two step and stride regularity, and their ratio
+     step symmetry. Returns {lag (s), r, peaks: [{lag, r}], fs}. */
+  /* The unbiased autocorrelation, x with its mean removed: r[k] = (sum x_i x_(i+k) / (n - k)) /
+     (sum x_i^2 / n), so each delay is averaged over the samples that overlap and r[0] = 1, as
+     Moe-Nilssen & Helbostad (2004, eq. 3). The biased form (dividing every delay by n) shrinks
+     with the delay, which they found unsuited to comparing the step and stride peaks. */
   function acf(x0, K) {
     const mu = mean(x0), x = Float64Array.from(x0, v => v - mu), n = x.length, r = new Float64Array(K + 1);
     let den = 0; for (let i = 0; i < n; i++) den += x[i] * x[i];
-    for (let k = 0; k <= K; k++) { let sum = 0; for (let i = 0; i + k < n; i++) sum += x[i] * x[i + k]; r[k] = sum / den; }
+    den /= n;
+    for (let k = 0; k <= K; k++) { let sum = 0; for (let i = 0; i + k < n; i++) sum += x[i] * x[i + k]; r[k] = sum / (n - k) / den; }
     return r;
   }
   function autocorrelation(A, t, maxLag) {
@@ -2320,13 +2325,16 @@
     },
     {
       id: 'lombscargle', kind: 'whole', name: 'Lomb\u2013Scargle (uneven timing)', params: [],
-      credit: [{ text: 'Zechmeister & K\u00fcrster, 2009', doi: '10.1051/0004-6361:200811296', note: 'generalised Lomb\u2013Scargle, as scipy computes it' }],
+      credit: [{ text: 'Lomb, 1976', doi: '10.1007/BF00648343', note: 'least-squares fit of sines to unevenly spaced data, which this generalises' },
+        { text: 'Scargle, 1982', doi: '10.1086/160554', note: 'the periodogram and its equivalence with least-squares fitting' },
+        { text: 'Zechmeister & K\u00fcrster, 2009', doi: '10.1051/0004-6361:200811296', note: 'generalised Lomb\u2013Scargle (an offset fitted too), as scipy computes it' }],
       tagline: 'Fits a sine, plus an offset, at each frequency directly at the samples\u2019 own times, with no even grid, so a phone\u2019s wobbly timing is used as it is. Power is the share of the signal\u2019s variance that sine explains (0 to 1).',
       compute: (A, t) => lombScargleSpectrum(A, t),
     },
     {
-      id: 'autocorr', kind: 'whole', name: 'Autocorrelation (repeats in time)', params: [], credit: [],
-      tagline: 'How well the walk matches itself after each delay, from 1 (the same) to \u22121 (opposite). A peak at a delay means the walk repeats that often: on the up-and-down signal the first is usually one step and the next one stride (two steps).',
+      id: 'autocorr', kind: 'whole', name: 'Autocorrelation (repeats in time)', params: [],
+      credit: [{ text: 'Moe-Nilssen & Helbostad, 2004', doi: '10.1016/S0021-9290(03)00233-1', note: 'unbiased autocorrelation; step and stride from the first two peaks, their regularity and symmetry' }],
+      tagline: 'How well the walk matches itself after each delay, from 1 (the same) to \u22121 (opposite). A peak at a delay means the walk repeats that often: on the up-and-down signal the first is usually one step and the next one stride (two steps). Each delay is averaged over the samples that overlap.',
       compute: (A, t) => autocorrelation(A, t, 3),
     },
     {

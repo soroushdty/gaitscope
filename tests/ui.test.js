@@ -783,7 +783,7 @@ test('Whole recording: Lomb\u2013Scargle on the samples\u2019 own times, and the
   assert.ok(sp.traces[1].y.every(v => v >= 0 && v <= 1));
   assert.match(sp.layout.annotations[0].text, /^0\.9\d Hz = 5\d\/min$/, 'the same rhythm as Welch');
   assert.match(text(pg, 'specNote'), /Lomb–Scargle at the samples’ own times \(about 2\d a second\), every 0\.01 Hz/);
-  assert.match(text(pg, 'wholeTag'), /Credit: Zechmeister & Kürster, 2009/);
+  assert.match(text(pg, 'wholeTag'), /Credit: Lomb, 1976 .*; Scargle, 1982 .*; Zechmeister & Kürster, 2009/);
   await choose('autocorr');
   sp = pg.spectra.at(-1);
   assert.equal(sp.layout.xaxis.title.text, 'Delay (s)');
@@ -791,7 +791,8 @@ test('Whole recording: Lomb\u2013Scargle on the samples\u2019 own times, and the
   assert.equal(sp.layout.shapes.length, 2, 'the first two repeats');
   assert.match(sp.layout.annotations[0].text, /^1\.\d\d s = 5\d\/min$/, 'the synthetic walk repeats about every 1.1 s');
   assert.equal($('specCard').querySelector('.plot-tools').hidden, true, 'no notes on a delay axis'); assert.equal($('specLog').disabled, true);
-  assert.match(text(pg, 'specNote'), /^The walk matches itself best after 1\.\d\d s/);
+  assert.match(text(pg, 'specNote'), /^The walk matches itself best after 1\.\d\d s .*step and stride regularity, and their ratio, here [\d.]+, step symmetry/);
+  assert.match(text(pg, 'wholeTag'), /Credit: Moe-Nilssen & Helbostad, 2004 \(unbiased autocorrelation/);
   await choose('welch');
   assert.equal($('specCard').querySelector('.plot-tools').hidden, false); assert.equal($('specLog').disabled, false);
   assert.equal(pg.spectra.at(-1).layout.xaxis.title.text, 'Frequency (Hz)');

@@ -219,7 +219,8 @@ def mra_fixtures():
 
 def lombscargle_fixtures():
     """scipy.signal.lombscargle(t, y, 2 pi f, normalize=True, floating_mean=True) on uneven times
-    (resample_input: +-30% jitter, repeated timestamps), and numpy's autocorrelation (#101)."""
+    (resample_input: +-30% jitter, repeated timestamps), and the unbiased autocorrelation with
+    numpy (Moe-Nilssen & Helbostad 2004, eq. 3) (#101)."""
     out = []
     for fs in (57, 100):
         t, a = resample_input(fs)
@@ -232,7 +233,9 @@ def lombscargle_fixtures():
     for n, K in ((200, 60), (57, 56)):
         x = fft_input(n) + 0.3
         xc = x - x.mean()
-        acf.append({"n": n, "K": K, "r": (np.correlate(xc, xc, "full")[n - 1:n + K] / np.dot(xc, xc)).tolist()})
+        # unbiased: each delay over the overlapping samples, then over its value at no delay
+        raw = np.correlate(xc, xc, "full")[n - 1:n + K] / (n - np.arange(K + 1))
+        acf.append({"n": n, "K": K, "r": (raw / raw[0]).tolist()})
     return out, acf
 
 

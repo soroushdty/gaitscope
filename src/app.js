@@ -995,8 +995,9 @@
     const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     Plotly.react($('specPlot'), traces, layout, config);
     $('specNote').textContent = (pk.length ? 'The walk matches itself best after ' + fmt(pk[0].lag, 2) + ' s (' + fmt(pk[0].r, 2) + ')' + (pk[1] ? ' and again after ' + fmt(pk[1].lag, 2) + ' s (' + fmt(pk[1].r, 2) + ')' : '') +
-      '. On the up-and-down signal the first is usually one step and the second one stride; a lower first peak means neighbouring steps, left and right, are less alike than neighbouring strides. '
-      : 'No delay up to 3 s where the walk clearly repeats. ') + 'On the walking band at about ' + fmt(res.fs, 0) + ' samples a second, each peak placed between samples by a parabola.';
+      '. On the up-and-down signal the first is usually one step and the second one stride; Moe-Nilssen & Helbostad call their heights step and stride regularity' +
+      (pk[1] ? ', and their ratio, here ' + fmt(pk[0].r / pk[1].r, 2) + ', step symmetry: under 1, neighbouring steps (left and right) are less alike than neighbouring strides' : '') + '. '
+      : 'No delay up to 3 s where the walk clearly repeats. ') + 'They measured trunk acceleration; here it is the chosen signal\u2019s walking band at about ' + fmt(res.fs, 0) + ' samples a second, each peak placed between samples by a parabola.';
   }
 
   function renderSpectrogram() {
