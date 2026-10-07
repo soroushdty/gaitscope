@@ -789,7 +789,7 @@ test('Over time: the CWT with its cone of influence and width, the DWT bands, ke
   assert.ok(Math.abs(coi[0].x.at(-1) - t[0] - Math.SQRT2 / coi[0].y.at(-1)) < 0.05, 'sqrt(2)/f from the start with width 2');
   const ridge = [...sg.traces].find(tr => tr.meta && tr.meta.role === 'rhythmLine').y.filter(v => v !== null);
   assert.ok(ridge.length > 10 && Core.median(ridge) > 0.85 && Core.median(ridge) < 1.0, 'the walk\u2019s rhythm, about 0.9 Hz');
-  assert.match(text(pg, 'timeTag'), /Credit: Torrence & Compo, 1998.*Lee et al\., 2019/);
+  assert.match(text(pg, 'timeTag'), /Credit: Grossmann & Morlet, 1984 \(the continuous wavelet transform\); Torrence & Compo, 1998.*Lee et al\., 2019/);
   assert.match(text(pg, 'spectroNote'), /divided by the scale.*Outside the dashed lines/);
   const before = sg.layout.images[0].source;
   $('m_cwtB').value = '6'; $('m_cwtB').dispatchEvent(new pg.w.Event('input', { bubbles: true })); await sleep(80);
