@@ -436,6 +436,11 @@ test('the spectrogram matches scipy.signal.spectrogram, and follows a walk that 
   const r = C.rhythmOverTime(A, t, { specWin: 4 });
   assert.ok(r.t.length > 40);
   r.t.forEach((tc, k) => assert.ok(Math.abs(r.freq[k] - (1.5 + tc / 45)) < 0.06, 'at ' + tc + ' s: ' + r.freq[k]));
+  // at 460 Hz it works on a decimated copy (about 20 Hz) and gives the same rhythm
+  const t4 = Float64Array.from({ length: 13800 }, (_, i) => i / 460);
+  let ph4 = 0; const A4 = t4.map(v => { ph4 += 2 * Math.PI * (1.5 + v / 45) / 460; return Math.sin(ph4) + 0.3 * Math.sin(2 * Math.PI * 60 * v); });
+  const r4 = C.rhythmOverTime(A4, t4, { specWin: 4 });
+  r4.t.forEach((tc, k) => assert.ok(Math.abs(r4.freq[k] - (1.5 + tc / 45)) < 0.06, '460 Hz, at ' + tc + ' s: ' + r4.freq[k]));
 });
 
 test('the spectrum finds the cadence of a known walk, and the stride rate of a one-leg walk', () => {

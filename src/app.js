@@ -313,13 +313,19 @@
     const orig = C.originalMetrics(origIdx, p.w);
     const algo = selectedAlgo();
     // the filter feeds the algorithm only; the lab code above stays on the recorded signal
-    const filt = C.applyFilter(A, t, S.ch.fs, p);
+    // filter and spectra only depend on the channel and their own settings, so moving h or w
+    // (or any algorithm setting) reuses them instead of recomputing (slow on long recordings)
+    const filtKey = JSON.stringify([S.chanKey, p.filter, p.fOrder, p.fLow, p.fHigh, p.fRipple, p.fAtten, p.maWindow, p.medWindow, p.sgWindow, p.sgOrder, p.wLevel, p.wScale, p.notchFreq, p.notchQ]);
+    if (!S.cache || S.cache.ch !== S.ch || S.cache.filtKey !== filtKey) S.cache = { ch: S.ch, filtKey, filt: C.applyFilter(A, t, S.ch.fs, p) };
+    const filt = S.cache.filt;
     const fx = algo.detect(filt.A, t, p);
     const finalIdx = fx.idx, finalSet = new Set(finalIdx);
     const algM = C.timingMetrics(finalIdx, t, { stride: p.stride });
     const weakSet = new Set(fx.weakDropped);
     // spectrum of the signal the algorithm sees, and of the recording when a filter changed it
-    const spec = C.spectrum(filt.A, t, p), specRaw = filt.applied ? C.spectrum(A, t, p) : null, rhythm = C.rhythmOverTime(filt.A, t, p);
+    if (S.cache.specSeg !== p.specSeg) Object.assign(S.cache, { specSeg: p.specSeg, spec: C.spectrum(filt.A, t, p), specRaw: filt.applied ? C.spectrum(A, t, p) : null });
+    if (S.cache.specWin !== p.specWin) Object.assign(S.cache, { specWin: p.specWin, rhythm: C.rhythmOverTime(filt.A, t, p) });
+    const { spec, specRaw, rhythm } = S.cache;
     const specCadence = spec.peak.clear ? spec.peak.freq * 60 * (p.stride ? 2 : 1) : NaN;
     // on the recorded signal: a low-pass filter would remove the very harmonics it compares
     const hr = C.harmonicRatio(A, t, finalIdx, p.stride);

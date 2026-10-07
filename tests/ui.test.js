@@ -485,6 +485,21 @@ test('the spectrum panel shows the walking rhythm, the filter gain and a cadence
   assert.match(csv, /\nharmonic_ratio,,\d+\.\d+,,even\/odd harmonics per stride \(\d+ strides\)\n/);
 });
 
+test('moving h or an algorithm setting reuses the filter and spectra; their own settings recompute them', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id), C = pg.w.StepCore, calls = { spectrum: 0, rhythmOverTime: 0, applyFilter: 0 };
+  for (const k of Object.keys(calls)) { const f = C[k]; C[k] = (...a) => { calls[k]++; return f(...a); }; }
+  const input = (id, v) => { $(id).value = v; $(id).dispatchEvent(new pg.w.Event('input')); };
+  input('hNum', '0.5'); await sleep(40);
+  input('cwIn', '0.4'); await sleep(40);
+  assert.deepEqual(calls, { spectrum: 0, rhythmOverTime: 0, applyFilter: 0 }, 'cached');
+  input('specSegIn', '6'); await sleep(40);
+  assert.equal(calls.spectrum, 1); assert.equal(calls.rhythmOverTime, 0);
+  $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change')); await sleep(40);
+  assert.equal(calls.applyFilter, 1); assert.equal(calls.spectrum, 3, 'filtered and recorded spectra'); assert.equal(calls.rhythmOverTime, 1);
+});
+
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
