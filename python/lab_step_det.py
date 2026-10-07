@@ -159,6 +159,45 @@ def load_csv(path):
     return W, [headers[k] for k in order]
 
 
+MAT_NUMERIC = {"double", "single", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64"}
+
+
+def load_mat(path, var):
+    """A numeric variable from a .mat file, rows and columns as in MATLAB.
+
+    v5-v7 files go through scipy's loadmat. v7.3 files are HDF5 behind a 512-byte MATLAB
+    header, which scipy can't read, so they go through h5py; MATLAB stores matrices
+    column-major, so the HDF5 array is transposed back. MATLAB equivalent: load(path, var).
+    """
+    with open(path, "rb") as f:
+        v73 = b"MATLAB 7.3" in f.read(116)
+    if not v73:
+        m = loadmat(path)
+        names = [k for k in m if not k.startswith("__")]
+        if var not in m:
+            raise ValueError(f"{path} has no variable {var!r}. It has: {', '.join(names) or 'none'}. Pick one with --var.")
+        return m[var]
+    import h5py  # only needed for v7.3 files
+    try:
+        f = h5py.File(path, "r")
+    except OSError as e:
+        raise ValueError(f"{path} is a MATLAB v7.3 file that could not be read ({e}). "
+                         "In MATLAB, re-save it with save('myfile.mat','-v7'), or export the data as CSV.") from None
+    with f:
+        names = [k for k in f if not k.startswith("#")]
+        if var not in f:
+            raise ValueError(f"{path} has no variable {var!r}. It has: {', '.join(names) or 'none'}. Pick one with --var.")
+        d = f[var]
+        cls = d.attrs.get("MATLAB_class", b"")
+        cls = cls.decode() if isinstance(cls, bytes) else str(cls)
+        if not isinstance(d, h5py.Dataset) or cls not in MAT_NUMERIC or "MATLAB_empty" in d.attrs or d.dtype.names:
+            kind = "struct" if isinstance(d, h5py.Group) else ("empty" if "MATLAB_empty" in d.attrs else "complex" if d.dtype.names else cls or "unknown")
+            raise ValueError(f"{var!r} in {path} is a MATLAB {kind} variable, not a numeric matrix. "
+                             f"Pick a numeric one with --var (it has: {', '.join(names)}), or in MATLAB save the "
+                             f"samples as a plain matrix: save('myfile.mat','A','-v7').")
+        return np.asarray(d[()], dtype=float).T
+
+
 def sampling_rate(t):
     """Median sampling rate in Hz from a time column in seconds."""
     dt = np.diff(t)
@@ -225,7 +264,10 @@ def main():
             print("  Note: Linear Accelerometer data is in m/s^2 without gravity; "
                   "h = 1 was chosen for G-Force Meter data (g, gravity included).")
     else:
-        data = loadmat(args.file)[args.var]
+        try:
+            data = load_mat(args.file, args.var)
+        except ValueError as e:
+            p.error(str(e))
     if args.resample:
         if data.ndim != 2 or data.shape[1] < 2:
             p.error("--resample needs a time column in column 1 and data after it.")

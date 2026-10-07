@@ -10,7 +10,7 @@ from scipy.io import loadmat
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
 import lab_step_det  # noqa: E402
-from lab_step_det import detect_steps, gait_metrics, load_csv, rate_warning, resample, sampling_rate  # noqa: E402
+from lab_step_det import detect_steps, gait_metrics, load_csv, load_mat, rate_warning, resample, sampling_rate  # noqa: E402
 
 FIX = os.path.join(ROOT, "tests", "fixtures")
 WALKING = os.path.join(ROOT, "data", "Walking.mat")
@@ -175,3 +175,36 @@ def test_cli_warns_for_mat_files_and_any_resample_rate(tmp_path, monkeypatch, ca
     out = run_cli(monkeypatch, capsys, "--file", str(f), *extra)
     assert ("lab code assumes 100 Hz" in out) == warned, out
     assert f"AverageStepDuration: {duration:.4f} s" in out, out
+
+
+# --- MATLAB v7.3 (HDF5) files (#48)
+def test_v73_reads_like_the_v5_file():
+    W5 = loadmat(os.path.join(FIX, "walk.mat"))["Walking"]
+    W73 = load_mat(os.path.join(FIX, "walk_v73.mat"), "Walking")
+    assert W73.shape == W5.shape == (1800, 5)
+    assert np.array_equal(W73, W5)
+    for col in (2, 3, 4):
+        assert np.array_equal(detect_steps(W73[:, col - 1])[1], detect_steps(W5[:, col - 1])[1])
+
+
+def test_v73_compact_storage_and_messages():
+    mixed = os.path.join(FIX, "walk_v73_mixed.mat")
+    W5 = loadmat(os.path.join(FIX, "walk.mat"))["Walking"]
+    assert np.array_equal(load_mat(mixed, "A"), W5[:25]), "small array, compact storage"
+    with pytest.raises(ValueError, match=r"'labels' .* MATLAB cell variable, not a numeric matrix.*-v7"):
+        load_mat(mixed, "labels")
+    with pytest.raises(ValueError, match=r"'rec' .* MATLAB struct variable"):
+        load_mat(mixed, "rec")
+    with pytest.raises(ValueError, match=r"MATLAB complex variable"):
+        load_mat(mixed, "z")
+    with pytest.raises(ValueError, match=r"has no variable 'Walking'\. It has: A, flags, labels, nothing, rec, subject, z\. Pick one with --var"):
+        load_mat(mixed, "Walking")
+
+
+def test_cli_reads_v73_and_reports_input_errors(monkeypatch, capsys):
+    out73 = run_cli(monkeypatch, capsys, "--file", os.path.join(FIX, "walk_v73.mat"))
+    out5 = run_cli(monkeypatch, capsys, "--file", os.path.join(FIX, "walk.mat"))
+    assert out73 == out5
+    with pytest.raises(SystemExit):
+        run_cli(monkeypatch, capsys, "--file", os.path.join(FIX, "walk_v73_mixed.mat"))
+    assert "has no variable 'Walking'" in capsys.readouterr().err
