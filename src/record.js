@@ -12,6 +12,11 @@
   // The countdown is a setting (#recCount, remembered in this browser): 3 s was too short to put
   // the phone in a pocket (the owner's recordings, 2026-10-07).
   const COUNTDOWNS = ['3', '5', '10', '15', '30'], COUNTDOWN_KEY = 'gaitscope-countdown';
+  // A locked screen hides the page, and browsers send no motion data to hidden pages (#86).
+  const LOCK_ON = 'The screen stays on by itself; don\u2019t lock it, or the recording stops.',
+    LOCK_OFF = 'This browser can\u2019t keep the screen on: make the screen timeout longer, and don\u2019t lock it, or the recording stops.',
+    LOCK_LOST = 'The browser stopped keeping the screen on (battery saver?): make the screen timeout longer, and don\u2019t lock it, or the recording stops.',
+    RELOCKS = 3; // asking again after the browser drops the lock, at most this often per recording
 
   // Phones and tablets: a motion API and a touch screen as the main pointer. Desktops usually
   // have the API but no sensor, so they get a hint to open the page on a phone instead.
@@ -44,7 +49,8 @@
     document.removeEventListener('visibilitychange', onVisibility);
     for (const t of st.timers) { clearTimeout(t); clearInterval(t); }
     st.timers = [];
-    if (st.lock) { st.lock.release().catch(() => {}); st.lock = null; }
+    // forgotten before it's released: the browser may fire its release event straight away
+    if (st.lock) { const lock = st.lock; st.lock = null; lock.release().catch(() => {}); }
   }
   function fail(title, fix, link) {
     cleanup();
@@ -80,7 +86,7 @@
       if (st && !st.gotData) fail('No motion sensor is sending data.', 'Open this page on a phone. Most computers have no accelerometer.');
     }, NO_SENSOR_MS));
     let left = Number($('recCount').value) || 5;
-    show('countdown', 'Get ready', String(left), 'Put the phone where you will carry it. Recording starts in a moment; tap to start now.');
+    show('countdown', 'Get ready', String(left), 'Put the phone where you will carry it. Don\u2019t lock the screen: the recording stops when it locks. Tap to start now.');
     st.timers.push(setInterval(() => { if (--left <= 0) begin(); else $('recBig').textContent = String(left); }, 1000));
   }
 
@@ -89,10 +95,9 @@
     for (const t of st.timers.splice(1)) clearInterval(t); // keep the no-sensor timer
     st.phase = 'recording'; st.samples = []; st.started = new Date();
     show('recording', 'Recording', '0:00', '');
-    let lockNote = 'This browser can’t keep the screen on: make the screen timeout longer, or the recording stops when the screen locks.';
-    try { if (navigator.wakeLock) { st.lock = await navigator.wakeLock.request('screen'); lockNote = 'The screen stays on while recording.'; } } catch (e) { /* refused: keep the note */ }
+    st.lockNote = LOCK_OFF; st.relocks = 0;
+    await keepAwake();
     if (!st) { return; }
-    st.lockNote = lockNote;
     const tick = () => {
       if (!st || st.phase !== 'recording') return;
       const n = st.samples.length, dur = n > 1 ? (st.samples[n - 1].ts - st.samples[0].ts) / 1000 : 0;
@@ -101,6 +106,26 @@
     };
     tick();
     st.timers.push(setInterval(tick, 250));
+  }
+
+  /* The Screen Wake Lock keeps the screen from timing out (it can't stop a lock by hand). The
+     browser can drop it, e.g. in battery saver: then ask again while the page is visible, a few
+     times at most, and otherwise say the screen may turn off. */
+  async function keepAwake() {
+    if (!st || st.phase !== 'recording') return;
+    let lock;
+    try {
+      if (!navigator.wakeLock) return;
+      lock = await navigator.wakeLock.request('screen');
+    } catch (e) { if (st) st.lockNote = st.relocks ? LOCK_LOST : LOCK_OFF; return; }
+    if (!st || st.phase !== 'recording') { lock.release().catch(() => {}); return; }
+    st.lock = lock; st.lockNote = LOCK_ON;
+    lock.addEventListener('release', () => {
+      if (!st || st.lock !== lock) return; // released by us (cleanup)
+      st.lock = null;
+      if (st.phase !== 'recording' || document.hidden) return;
+      if (st.relocks++ < RELOCKS) keepAwake(); else st.lockNote = LOCK_LOST;
+    });
   }
 
   function onMotion(e) {
