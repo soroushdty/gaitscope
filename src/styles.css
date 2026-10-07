@@ -81,6 +81,7 @@ details[open] > summary::after { transform: rotate(180deg); }
 .howto { margin-top: 8px; font-size: 13px; color: var(--muted); }
 .howto > summary { color: var(--signal); }
 .howto p { margin: 6px 0 0; }
+.credit a { color: inherit; }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 13.5px; font-weight: 500; }
 .btn:hover:not(:disabled) { border-color: var(--signal); }

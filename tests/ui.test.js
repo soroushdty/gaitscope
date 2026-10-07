@@ -892,3 +892,33 @@ test('Export… writes zip, MATLAB, NumPy and JSON; a JSON export reopens to the
   await uploadText(pg2, 'other.json', '{"name": "not ours"}');
   assert.match(text(pg2, 'valList'), /not a GaitScope export.*Export… → JSON/);
 });
+
+test('credits show under each indicator\'s settings and under the filter, with no emails (#63)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id), C = pg.w.StepCore;
+  $('demoBtn').click(); await sleep(40);
+  for (const a of C.ALGORITHMS.slice(2)) await addInd(pg, 'detector', a.id);
+  for (const e of C.ENVELOPES) await addInd(pg, 'envelope', e.id);
+  const credit = name => indRow(pg, name).querySelector('.credit');
+  assert.match(credit('Coza').textContent, /^Credit: Dr\. Aurel Coza \(Lab 1 of Wearable Devices for Sport, Health, and Wellness, ASU; LabStepDet_2025\.m\)$/);
+  assert.match(credit('Coza (modified)').textContent, /modified by Dr\. Soroush Dianaty \(tied peaks counted once/);
+  const link = credit('Threshold peaks').querySelector('a');
+  assert.equal(link.textContent, 'Brajdic & Harle, 2013'); assert.equal(link.href, 'https://doi.org/10.1145/2493432.2493449');
+  assert.equal(link.target, '_blank'); assert.equal(link.rel, 'noopener');
+  assert.deepEqual([...credit('Hilbert envelope').querySelectorAll('a')].map(a => a.textContent), ['Gabor, 1946', 'Marple, 1999']);
+  assert.equal(credit('Sliding window'), null, 'nothing shown when none is needed');
+  // the filter's credit, under its description
+  assert.equal($('filterCredit').hidden, true, 'no filter, no credit');
+  $('filterSel').value = 'savgol'; $('filterSel').dispatchEvent(new pg.w.Event('change')); await sleep(40);
+  assert.equal($('filterCredit').hidden, false);
+  assert.equal($('filterCredit').querySelector('a').href, 'https://doi.org/10.1021/ac60214a047');
+  $('filterSel').value = 'movavg'; $('filterSel').dispatchEvent(new pg.w.Event('change')); await sleep(40);
+  assert.equal($('filterCredit').hidden, true);
+  // names only: no email address anywhere in the page, hidden panels included. The domain
+  // must start with a letter, so pinned scripts (pako@2.1.0) don't count.
+  const EMAIL = /[\w.+-]+@[a-z][\w-]*(\.[a-z][\w-]*)*\.[a-z]{2,}\b/i;
+  assert.ok(EMAIL.test('Neil Zhao [neil.zhao@analog.com]') && !EMAIL.test('npm/pako@2.1.0/dist'), 'the pattern itself');
+  for (const f of C.FILTERS) {
+    $('filterSel').value = f.id; $('filterSel').dispatchEvent(new pg.w.Event('change')); await sleep(20);
+    assert.ok(!EMAIL.test(pg.d.documentElement.outerHTML), 'no email address with the ' + f.id + ' filter');
+  }
+});

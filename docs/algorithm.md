@@ -324,7 +324,7 @@ values over time. Walking repeats, so its rhythm shows as a tall peak.
   settings change, so moving h or an algorithm's settings stays quick.
 
 * **Harmonic ratio** (`harmonicRatio`, a Metrics row): a gait-symmetry measure from the
-  literature (e.g. Menz et al. 2003).
+  literature (Smidt et al. 1971; Menz et al. 2003, [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5)).
   - Each stride is one period: two detected steps, or one peak-to-peak with Phone position
     on One leg.
   - Its Fourier amplitudes at harmonics 1–20 of the stride frequency (below half the
@@ -413,3 +413,66 @@ To say which algorithm is best needs recordings with a known step count, for exa
 (#11, decision 4). The synthetic walk in `tests/core.test.js` (`knownWalk`) has a
 known count, and every algorithm finds all 20 steps there at 57, 100 and 460 Hz, with and
 without gravity.
+
+## Credits (#63)
+
+Who made each method. The page shows the same credit under each detector's and envelope's
+settings and under the filter's description (`credit` in `ALGORITHMS`, `ENVELOPES` and
+`FILTERS` in `src/core.js`). The page shows names only, never email addresses.
+
+How the references were checked, on 2026-10-07:
+- **Every DOI** against Crossref: title, first author and year.
+- **Zhao 2010 and Brajdic & Harle 2013** were read for what they are credited for. Zhao's
+  "dynamic threshold" is (max + min)/2 over the last 50 samples, and a step is a fall
+  through it. Brajdic & Harle test "windowed peak detection" (peaks of the smoothed signal)
+  and "mean crossing counts" (each upward crossing of the mean is a step). analog.com
+  did not answer scripted requests, so the article was read from a PDF of it.
+- **Smidt et al. 1971** against PubMed.
+- **Butterworth 1930, Cauer 1931 and Tukey 1977** are standard citations with no DOI. They
+  were not checked against the originals.
+
+A DOI often given for Menz et al. 2003, `10.1016/S0966-6362(02)00190-X`, belongs to a
+different paper (Zijlstra & Hof 2003, "Assessment of spatio-temporal gait parameters from
+trunk accelerations during human walking"). Don't use it.
+
+**Step detectors**
+
+| Detector | Credit | DOI or link |
+|---|---|---|
+| Coza | Dr. Aurel Coza: Lab 1 of *Wearable Devices for Sport, Health, and Wellness*, ASU (`LabStepDet_2025.m`) | none |
+| Coza (modified) | Coza's detector, modified by Dr. Soroush Dianaty. Changes: tied peaks counted once, weak start/stop peaks dropped, window in seconds, real timestamps, cadence in steps/min, strides with Phone position *One leg* | none |
+| Threshold peaks | Brajdic & Harle, 2013: windowed peak detection | [10.1145/2493432.2493449](https://doi.org/10.1145/2493432.2493449) |
+| Peak-to-valley | Zhao, 2010, *Analog Dialogue* 44-06: the dynamic threshold | [analog.com](https://www.analog.com/en/resources/analog-dialogue/articles/pedometer-design-3-axis-digital-acceler.html) |
+| Zero-crossing | Brajdic & Harle, 2013: mean crossing counts | [10.1145/2493432.2493449](https://doi.org/10.1145/2493432.2493449) |
+
+**Filters**
+
+| Filter | Credit | DOI |
+|---|---|---|
+| Butterworth | Butterworth, 1930 (*Wireless Engineer* 7: 536–541) | none |
+| Bessel | Thomson, 1949 | [10.1049/pi-3.1949.0101](https://doi.org/10.1049/pi-3.1949.0101) |
+| Chebyshev I and II | none needed (named after the polynomials) | |
+| Elliptic | Cauer, 1931 (*Siebschaltungen*, a book) | none |
+| Median | Tukey, 1977 (*Exploratory Data Analysis*, a book) | none |
+| Savitzky–Golay | Savitzky & Golay, 1964 | [10.1021/ac60214a047](https://doi.org/10.1021/ac60214a047) |
+| Wavelet (Daubechies-4) | Donoho & Johnstone, 1994 (universal threshold); Donoho, 1995 (soft thresholding); Daubechies, 1988 (db4 wavelet) | [10.1093/biomet/81.3.425](https://doi.org/10.1093/biomet/81.3.425); [10.1109/18.382009](https://doi.org/10.1109/18.382009); [10.1002/cpa.3160410705](https://doi.org/10.1002/cpa.3160410705) |
+| Every IIR filter and the notch, run forwards and backwards (`sosfiltfilt`) | Likhterov & Kopeika, 2003: the start-up conditions (`sosfilt_zi`; scipy's `lfilter_zi` cites them). Not Gustafsson 1996, which is scipy's `method="gust"` | [10.1080/00207210310001612482](https://doi.org/10.1080/00207210310001612482) |
+| Moving average, notch design | none needed (scipy's `iirnotch` cites Orfanidis 1996, a book) | |
+
+**Envelopes and bands**
+
+| Envelope | Credit | DOI or link |
+|---|---|---|
+| Peak-trough, smooth joins | Fritsch & Carlson, 1980 (monotone cubic, PCHIP) | [10.1137/0717021](https://doi.org/10.1137/0717021) |
+| Dynamic threshold | Zhao, 2010 (as above) | [analog.com](https://www.analog.com/en/resources/analog-dialogue/articles/pedometer-design-3-axis-digital-acceler.html) |
+| Hilbert envelope | Gabor, 1946 (analytic signal); Marple, 1999 (computed with the FFT) | [10.1049/ji-3-2.1946.0074](https://doi.org/10.1049/ji-3-2.1946.0074); [10.1109/78.782222](https://doi.org/10.1109/78.782222) |
+| Sliding window, mean ± k·SD, percentile band | none needed (mean ± k·SD is like Bollinger bands in finance, from a book) | |
+
+**Spectrum and features** (in these docs; the page doesn't show credits for them yet)
+
+| Method | Credit | DOI |
+|---|---|---|
+| Welch's method | Welch, 1967 | [10.1109/TAU.1967.1161901](https://doi.org/10.1109/TAU.1967.1161901) |
+| FFT | Cooley & Tukey, 1965; Bluestein, 1970 (any length) | [10.1090/S0025-5718-1965-0178586-1](https://doi.org/10.1090/S0025-5718-1965-0178586-1); [10.1109/TAU.1970.1162132](https://doi.org/10.1109/TAU.1970.1162132) |
+| Harmonic ratio | Smidt et al., 1971 (the origin; PubMed 5141651, no DOI); Menz et al., 2003 | [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5) |
+| Vertical acceleration from gravity (`gravitySplit`) | Mizell, 2003 | [10.1109/ISWC.2003.1241424](https://doi.org/10.1109/ISWC.2003.1241424) |
