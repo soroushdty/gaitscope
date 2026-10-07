@@ -116,6 +116,14 @@ one over it.
 | Chebyshev II | Flat | Ripple, at least the set attenuation (default 40 dB) | The cut-off is where the stopband starts, so the passband ends lower. |
 | Elliptic | Ripple (default 0.5 dB) | Ripple, at least the set attenuation (default 40 dB) | The steepest roll-off for its order. The cut-off is where the passband ripple ends. |
 
+Smoothing filters take a window in seconds, which becomes an odd number of samples
+(`2·round(seconds·fs/2) + 1`) centred on each sample. They are checked against scipy,
+edges included, on a signal with spikes (`smoothing` in `tests/fixtures/filters.json`).
+
+| Filter | What it does | Edges | Note |
+|---|---|---|---|
+| Moving average | Mean over the window (default 0.1 s) | Repeat the end sample (scipy `ndimage.uniform_filter1d`, `mode='nearest'`) | The simplest smoother; it also lowers peaks |
+
 Settings, under Advanced: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
 kept below half the sampling rate), and an optional high-pass cut-off (default off). A
 high-pass removes gravity and drift and turns the filter into a band-pass of twice the

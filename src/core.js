@@ -1203,6 +1203,30 @@
     },
   ];
 
+  /* Smoothing windows (moving average, median, Savitzky–Golay). The window is set in seconds
+     and becomes an odd number of samples, 2·round(seconds·fs/2) + 1, so it is centred and
+     means the same at any sampling rate. */
+  function oddWindow(seconds, fs, n, min) {
+    const w = 2 * Math.round(seconds * fs / 2) + 1;
+    if (w < min) throw new RangeError('The window is ' + w + ' sample' + (w > 1 ? 's' : '') + ' at this sampling rate; it needs at least ' + min + '. Lengthen it to ' + fmt(min / fs, 3) + ' s or more.');
+    if (w > n) throw new RangeError('The window (' + w + ' samples) is longer than the recording (' + n + ' samples). Shorten it.');
+    return w;
+  }
+  // Edges repeat the first and last sample, like scipy.ndimage's mode='nearest'.
+  function padNearest(A, h) {
+    const n = A.length, x = new Float64Array(n + 2 * h);
+    x.fill(A[0], 0, h); x.set(A, h); x.fill(A[n - 1], n + h);
+    return x;
+  }
+  // Moving average, as scipy.ndimage.uniform_filter1d(A, w, mode='nearest').
+  function movingAverage(A, w) {
+    const h = (w - 1) / 2, x = padNearest(A, h), out = new Float64Array(A.length);
+    let sum = 0;
+    for (let i = 0; i < w; i++) sum += x[i];
+    for (let i = 0; i < A.length; i++) { out[i] = sum / w; sum += x[i + w] - x[i]; }
+    return out;
+  }
+
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
      algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
      Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
@@ -1225,6 +1249,12 @@
     iirEntry('cheby2', 'Chebyshev II', 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.', p => ', ' + fmt(p.fAtten, 0) + ' dB stopband'),
     iirEntry('ellip', 'Elliptic', 'The steepest roll-off for its order, with ripple in both passband and stopband. The cut-off is where the passband ripple ends.',
       p => ', ' + fmt(p.fRipple, 1) + ' dB ripple, ' + fmt(p.fAtten, 0) + ' dB stopband'),
+    {
+      id: 'movavg', name: 'Moving average',
+      tagline: 'The mean over a sliding window: the simplest smoother. It also lowers peaks.',
+      apply: (A, fs, p) => movingAverage(A, oddWindow(p.maWindow, fs, A.length, 3)),
+      label: p => 'Moving average, ' + fmt(p.maWindow, 2) + ' s window',
+    },
   ];
   function filterLabel(p) {
     const f = FILTERS.find(x => x.id === p.filter);
@@ -1353,7 +1383,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
+    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
