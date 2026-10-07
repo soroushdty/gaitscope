@@ -522,15 +522,73 @@
     return { level: 'info', title: 'Units: gravity removed', detail: 'The quietest stretch averages ' + best.mu.toFixed(2) + ' with noise of similar size, which is typical of linear acceleration (gravity subtracted), most likely in m/s².' };
   }
 
+  /* Vertical and horizontal acceleration from x, y, z (#35). Gravity's direction is x, y, z
+     low-passed at 0.3 Hz: slow enough to ignore the steps, fast enough to follow the phone
+     tilting in a pocket. Each sample is projected onto that direction and the size of
+     gravity subtracted, so standing still reads 0 whatever the tilt (vertical); what is left
+     over, as a magnitude, is forward and sideways sway (horizontal). Needs gravity in the
+     data: the sensor name decides when the file has one (G-Force yes, Linear Accelerometer
+     no); otherwise gravity must be a steady vector, at least 2× the motion around it and
+     varying by under 15%. Measured on the owner's recordings: G-Force 4.8× and 3%; every
+     gravity-removed file under 0.6× and over 35%. Returns {ok, reason?, vertical,
+     horizontal, gravity} (arrays over all rows, NaN where x, y, z or t is missing),
+     cached on the dataset per sampling rate. */
+  const GRAVITY_CUTOFF = 0.3, GRAVITY_RATIO = 2, GRAVITY_CV = 0.15;
+  function datasetRate(ds, fsManual) {
+    if (!ds.t) return fsManual || 100;
+    const dts = [];
+    for (let i = 1; i < ds.n; i++) { const d = ds.t[i] - ds.t[i - 1]; if (d > 0) dts.push(d); }
+    return 1 / median(dts);
+  }
+  function gravitySplit(ds, fsManual) {
+    const fs = datasetRate(ds, fsManual);
+    if (ds._gravity && ds._gravity.fs === fs) return ds._gravity;
+    const out = r => (ds._gravity = Object.assign({ fs }, r));
+    const axes = [ds.x, ds.y, ds.z];
+    if (!axes.every(Boolean)) return out({ ok: false, reason: 'needs x, y and z' });
+    const sensor = ds.x.sensor;
+    if (sensor && !sensor.accel) return out({ ok: false, reason: 'x, y, z are not acceleration (' + sensor.label + ')' });
+    if (sensor && !sensor.gravity) return out({ ok: false, reason: 'gravity was removed in this recording (' + sensor.label + ')' });
+    const rows = [];
+    for (let i = 0; i < ds.n; i++) if (axes.every(c => Number.isFinite(c.data[i])) && (!ds.t || Number.isFinite(ds.t[i]))) rows.push(i);
+    if (rows.length < MIN_ROWS) return out({ ok: false, reason: 'too few rows with x, y and z' });
+    const a = axes.map(c => Float64Array.from(rows, i => c.data[i]));
+    const g = a.map(v => lowpass(v, fs, GRAVITY_CUTOFF));
+    const m = rows.length, gMag = new Float64Array(m), dyn = new Float64Array(m);
+    for (let k = 0; k < m; k++) {
+      gMag[k] = Math.hypot(g[0][k], g[1][k], g[2][k]);
+      dyn[k] = Math.hypot(a[0][k] - g[0][k], a[1][k] - g[1][k], a[2][k] - g[2][k]);
+    }
+    const gravity = median(gMag), motion = Math.sqrt(mean(Array.from(dyn, v => v * v))), cv = std(gMag) / mean(gMag);
+    if (!sensor && !(gravity >= GRAVITY_RATIO * motion && cv < GRAVITY_CV)) {
+      return out({ ok: false, reason: 'no steady gravity in x, y, z (it looks removed)' });
+    }
+    const vertical = new Float64Array(ds.n).fill(NaN), horizontal = new Float64Array(ds.n).fill(NaN);
+    rows.forEach((i, k) => {
+      const ux = g[0][k] / gMag[k], uy = g[1][k] / gMag[k], uz = g[2][k] / gMag[k];
+      const along = a[0][k] * ux + a[1][k] * uy + a[2][k] * uz;
+      vertical[i] = along - gMag[k];
+      horizontal[i] = Math.hypot(a[0][k] - along * ux, a[1][k] - along * uy, a[2][k] - along * uz);
+    });
+    return out({ ok: true, vertical, horizontal, gravity });
+  }
+
   /* Channel-level validation + cleaning. Returns {A, t, fs, checks, fatal} */
   function prepareChannel(ds, colIndex, fsManual) {
     const checks = [];
-    const col = colIndex === 'computed' ? null : ds.columns[colIndex];
+    const col = typeof colIndex === 'string' ? null : ds.columns[colIndex];
     const n = ds.n;
     let raw;
     if (colIndex === 'computed') {
       raw = new Float64Array(n);
       for (let i = 0; i < n; i++) raw[i] = Math.hypot(ds.x.data[i], ds.y.data[i], ds.z.data[i]);
+    } else if (colIndex === 'vertical' || colIndex === 'horizontal') {
+      const gs = gravitySplit(ds, fsManual);
+      if (!gs.ok) return { fatal: true, checks: [{ level: 'error', title: cap(colIndex) + ' acceleration not available', detail: 'It ' + gs.reason + '.', fix: 'Pick another signal, or record with the G-Force Meter, which keeps gravity.' }] };
+      raw = gs[colIndex];
+      checks.push(colIndex === 'vertical'
+        ? { level: 'info', title: 'Vertical acceleration from the direction of gravity', detail: 'Gravity is x, y, z low-passed at ' + GRAVITY_CUTOFF + ' Hz (' + fmt(gs.gravity, 2) + ' on average). Each sample is projected onto it and gravity is subtracted, so standing still reads 0 whatever the phone\u2019s tilt. Coza and the lab code compare peaks with h, which then belongs a little above 0 (about 0.1 g or 1 m/s\u00b2), not at 1.' }
+        : { level: 'info', title: 'Horizontal acceleration from the direction of gravity', detail: 'What is left after the vertical part (along gravity, x, y, z low-passed at ' + GRAVITY_CUTOFF + ' Hz) is removed, as a magnitude: forward and sideways sway.' });
     } else raw = col.data;
 
     let keep = [];
@@ -1171,7 +1229,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, ENVELOPES, localExtrema, halfWindow,
+    FILTERS, filterLabel, applyFilter, interpAt, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
