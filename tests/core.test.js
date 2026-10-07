@@ -813,6 +813,27 @@ test('phyphox metadata files on their own say which file to upload instead', () 
   assert.throws(() => C.parseCsv('"property","value"\n"version","1.2.1"\n"deviceModel","Pixel 9a"\n'),
     e => /meta\/device\.csv/.test(e.message) && /Raw Data\.csv/.test(e.fix));
 });
+test('phyphox zip: Raw Data.csv and the details in meta/', () => {
+  const z = C.readPhyphoxZip(readU8(path.join(FIX, 'phyphox.zip')), u8 => pako.inflateRaw(u8));
+  assert.equal(z.name, 'Raw Data.csv');
+  assert.equal(z.text, fs.readFileSync(path.join(FIX, 'phyphox_accel.csv'), 'utf8'));
+  assert.deepEqual(z.checks[0], { level: 'pass', title: 'phyphox export read', detail: '"Raw Data.csv" from the zip; recorded on Google Pixel 9a with phyphox 1.2.1, ' +
+    'sensor: Test Accelerometer (Test Vendor), started 2026-09-21 07:13:20.000 UTC-07:00, 18.0 s of recording.' });
+  assert.equal(z.checks[1].level, 'warn'); assert.equal(z.checks[1].title, 'Recording paused 1 time');
+  assert.match(z.checks[1].detail, /joined with no gap at 9\.0 s\./);
+  assert.deepEqual(C.parseZip(readU8(path.join(FIX, 'phyphox.zip'))).map(e => [e.name, e.size]),
+    [['Raw Data.csv', z.text.length], ['meta/device.csv', 273], ['meta/time.csv', 351]]);
+});
+test('zip errors say what is wrong and how to fix it', () => {
+  const zip = readU8(path.join(FIX, 'phyphox.zip')), inflateRaw = u8 => pako.inflateRaw(u8);
+  const fails = (u8, msg, fix) => assert.throws(() => C.readPhyphoxZip(u8, inflateRaw), e => e instanceof C.InputError && msg.test(e.message) && fix.test(e.fix));
+  fails(zip.slice(0, zip.length - 30), /incomplete or damaged/, /unzip it/);
+  const scrambled = zip.slice(); scrambled.fill(7, 200, 900);
+  fails(scrambled, /incomplete or damaged/, /unzip it/);
+  fails(readU8(path.join(FIX, 'bad_phyphox_excel.zip')), /Excel export/, /CSV \(comma, decimal point\)/);
+  assert.throws(() => C.readPhyphoxZip(zip), /decompressor did not load/);
+  assert.equal(C.isZip(zip), true); assert.equal(C.isZip(readU8(path.join(FIX, 'walk.mat'))), false);
+});
 test('clipping: rounding plateaus at high rates are ignored, long plateaus are flagged', () => {
   const n = 4600, fs = 460;
   const t = Array.from({ length: n }, (_, i) => i / fs);

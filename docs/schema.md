@@ -15,7 +15,7 @@ Every check has one of four levels:
 **Rule of thumb:** be strict where bad input produces wrong numbers with no visible sign,
 and lenient where a person looking at the plot can judge for themselves.
 
-All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`,
+All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`, `readPhyphoxZip`,
 `buildDataset`, `prepareChannel`) and in `derivedChecks()` in `src/app.js`.
 
 ## 1. File
@@ -32,7 +32,11 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`,
 | Text file named `.mat` | warn / error | Read as CSV if it parses; otherwise told to rename it. |
 | Random or corrupted bytes, truncated blocks | error | Detected from the header and element sizes. |
 | CSV lines starting with `#` | skipped | Newer Physics Toolbox exports start with metadata lines (`# sensor:g_force`, `# Requested Sample Rate: …`). |
-| phyphox `meta/time.csv` or `meta/device.csv` uploaded on its own | error | They hold start/pause times or the phone's details, not samples; `time.csv` would otherwise be read as a two-row recording. Fix: upload `Raw Data.csv`. |
+| phyphox `meta/time.csv` or `meta/device.csv` uploaded on its own | error | They hold start/pause times or the phone's details, not samples; `time.csv` would otherwise be read as a two-row recording. Fix: upload the whole zip, or `Raw Data.csv`. |
+| Zip file (phyphox export) | pass, read in the browser | The zip's directory is parsed in `core.js` and entries are inflated with pako, which is already loaded. `Raw Data.csv` is read (else the largest CSV outside `meta/`; other CSVs are listed as unused). `meta/device.csv` and `meta/time.csv` give the phone, phyphox version, sensor chip, start time and length. |
+| phyphox recording paused and resumed | warn | phyphox's experiment time leaves out pauses, so the stretches are joined with no gap; the message gives the join times. A step across a join can be missed or doubled. |
+| Zip with no CSV (e.g. an Excel export), damaged or truncated, password-protected, ZIP64, or an unknown compression method | error | Fix: export again as CSV (comma, decimal point), or unzip and upload the CSV. |
+| File named `.zip` that isn't a zip | error | Fix: export again, or upload the CSV or MAT file itself. |
 
 ## 2. Variables (MAT)
 
