@@ -98,6 +98,10 @@
         <input type="range" id="fHighIn" data-param="fHigh" min="0" max="1" value="0" step="0.05">
       </div>
       <p class="hint" data-only="butter bessel cheby1 cheby2 ellip">A high-pass removes gravity and slow drift, making a band-pass. The signal is then centred on zero, so h needs to change for Coza.</p>
+      <div class="ctl" data-only="movavg">
+        <div class="ctl-head"><label for="maWinIn">Window</label><output id="maWinOut" for="maWinIn" data-unit="s" data-dec="2">0.10 s</output></div>
+        <input type="range" id="maWinIn" data-param="maWindow" min="0.02" max="0.5" value="0.1" step="0.01">
+      </div>
       <div class="ctl" data-only="cheby1 ellip">
         <div class="ctl-head"><label for="fRippleIn">Passband ripple</label><output id="fRippleOut" for="fRippleIn" data-unit="dB" data-dec="1">0.5 dB</output></div>
         <input type="range" id="fRippleIn" data-param="fRipple" min="0.1" max="3" value="0.5" step="0.1">

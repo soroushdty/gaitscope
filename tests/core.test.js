@@ -147,6 +147,25 @@ test('Butterworth, Bessel, Chebyshev I/II and elliptic match scipy: design and z
   }
 });
 
+// Same as spiky_input() in scripts/make_fixtures.py.
+const spikyInput = fs => { const x = filterInput(fs); for (let i = 7; i < x.length; i += 53) x[i] += 2.5; return x; };
+
+test('smoothing filters match scipy, edges included', () => {
+  const { smoothing } = JSON.parse(fs.readFileSync(path.join(FIX, 'filters.json'), 'utf8'));
+  const ids = new Set(smoothing.map(c => c.filter));
+  for (const id of ids) assert.ok(C.FILTERS.some(f => f.id === id), id + ' is offered');
+  for (const c of smoothing) {
+    const y = C.FILTERS.find(f => f.id === c.filter).apply(spikyInput(c.fs), c.fs, c.p);
+    c.idx.forEach((i, k) => assert.ok(Math.abs(y[i] - c.y[k]) < 1e-9, c.filter + ' ' + JSON.stringify(c.p) + ' at ' + c.fs + ' Hz, sample ' + i));
+  }
+});
+
+test('smoothing windows are odd, in seconds, and refuse sizes that do not fit', () => {
+  assert.equal(C.oddWindow(0.1, 100, 1000, 3), 11); assert.equal(C.oddWindow(0.1, 460, 1000, 3), 47); assert.equal(C.oddWindow(0.05, 100, 1000, 3), 7, 'halves round up');
+  assert.throws(() => C.oddWindow(0.01, 57, 1000, 3), /needs at least 3\. Lengthen it to 0\.053 s/);
+  assert.throws(() => C.oddWindow(1, 100, 50, 3), /longer than the recording/);
+});
+
 test('filter design refuses impossible settings with a fix', () => {
   const base = { type: 'butter', order: 4, fs: 50, lowpass: 3, highpass: 0 };
   const bad = [[{ lowpass: 25 }, /below half the sampling rate: under 25\.0 Hz/], [{ highpass: 3 }, /high-pass cut-off must be below the low-pass/],

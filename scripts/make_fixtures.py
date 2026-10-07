@@ -11,12 +11,13 @@ Run from the repo root:
     python scripts/make_fixtures.py
 """
 import json
+import math
 import os
 import sys
 
 import numpy as np
 import scipy.io as sio
-from scipy import signal
+from scipy import ndimage, signal
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "tests", "fixtures")
@@ -48,6 +49,32 @@ def filter_input(fs, dur=2.0):
     """Test signal for the filter fixtures; tests/core.test.js builds the same one."""
     t = np.arange(round(fs * dur)) / fs
     return 1 + np.sin(2 * np.pi * 1.8 * t) + 0.3 * np.sin(2 * np.pi * 17 * t + 0.4) + 0.1 * np.sin(2 * np.pi * 0.2 * t)
+
+
+def spiky_input(fs):
+    """filter_input() with a 2.5 spike every 53 samples, for the smoothing filters."""
+    x = filter_input(fs)
+    x[7::53] += 2.5
+    return x
+
+
+def odd_window(seconds, fs):
+    """Same as oddWindow() in src/core.js (JS Math.round: halves round up)."""
+    return 2 * math.floor(seconds * fs / 2 + 0.5) + 1
+
+
+def smoothing_fixtures():
+    """scipy references for the smoothing filters, on spiky_input(): the first and last 12
+    samples (where edge handling shows) and every 8th sample in between."""
+    cases = []
+    for fs in (57, 100, 460):
+        x = spiky_input(fs)
+        n = len(x)
+        idx = sorted(set(range(12)) | set(range(0, n, 8)) | set(range(n - 12, n)))
+        for sec in (0.1, 0.25):
+            y = ndimage.uniform_filter1d(x, odd_window(sec, fs), mode="nearest")
+            cases.append({"filter": "movavg", "fs": fs, "p": {"maWindow": sec}, "idx": idx, "y": y[idx].tolist()})
+    return cases
 
 
 def filter_fixtures():
@@ -153,7 +180,9 @@ def main():
     with open(p("expected.json"), "w") as f:
         json.dump({"source": "walk.mat (synthetic), python/lab_step_det.py, w=30, h=1", "columns": expected}, f, indent=2)
     with open(p("filters.json"), "w") as f:
-        json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures()}, f)
+        json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures(),
+                   "smoothing_source": "scipy.ndimage (mode='nearest') and scipy.signal.savgol_filter (mode='interp'); input: spiky_input()",
+                   "smoothing": smoothing_fixtures()}, f)
     print("Wrote fixtures to", OUT)
 
 
