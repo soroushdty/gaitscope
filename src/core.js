@@ -1371,6 +1371,64 @@
       return Object.assign(none, { checks: [{ level: 'warn', title: 'Filter not applied', detail: e.message + ' Detection runs on the recorded signal.', fix: 'Change the filter settings under Advanced.' }] });
     }
   }
+  /* ------------------------------------------------------- frequency domain (#36) */
+  // Discrete Fourier transform of any length, as numpy.fft.fft: radix-2 for powers of two,
+  // Bluestein's chirp-z (a power-of-two convolution) otherwise. Returns {re, im}.
+  function fft(re, im) {
+    const n = re.length;
+    im = im || new Float64Array(n);
+    if (n <= 1) return { re: Float64Array.from(re), im: Float64Array.from(im) };
+    if ((n & (n - 1)) === 0) return fftPow2(Float64Array.from(re), Float64Array.from(im));
+    // Bluestein: X_k = w_k Σ (x_j w_j) conj(w_{k−j}), w_k = exp(−iπk²/n); k² is taken mod 2n so
+    // the angle stays exact for long signals
+    let m = 1; while (m < 2 * n - 1) m *= 2;
+    const wr = new Float64Array(n), wi = new Float64Array(n);
+    for (let k = 0; k < n; k++) { const a = Math.PI * ((k * k) % (2 * n)) / n; wr[k] = Math.cos(a); wi[k] = -Math.sin(a); }
+    const ar = new Float64Array(m), ai = new Float64Array(m), br = new Float64Array(m), bi = new Float64Array(m);
+    for (let k = 0; k < n; k++) { ar[k] = re[k] * wr[k] - im[k] * wi[k]; ai[k] = re[k] * wi[k] + im[k] * wr[k]; }
+    br[0] = wr[0]; bi[0] = -wi[0];
+    for (let k = 1; k < n; k++) { br[k] = br[m - k] = wr[k]; bi[k] = bi[m - k] = -wi[k]; }
+    const A = fftPow2(ar, ai), B = fftPow2(br, bi);
+    for (let k = 0; k < m; k++) { const r = A.re[k] * B.re[k] - A.im[k] * B.im[k]; A.im[k] = A.re[k] * B.im[k] + A.im[k] * B.re[k]; A.re[k] = r; }
+    const c = ifftPow2(A.re, A.im);
+    const outR = new Float64Array(n), outI = new Float64Array(n);
+    for (let k = 0; k < n; k++) { outR[k] = c.re[k] * wr[k] - c.im[k] * wi[k]; outI[k] = c.re[k] * wi[k] + c.im[k] * wr[k]; }
+    return { re: outR, im: outI };
+  }
+  // inverse, as numpy.fft.ifft (divided by n)
+  function ifft(re, im) {
+    const n = re.length, f = fft(re, Float64Array.from(im, v => -v));
+    for (let k = 0; k < n; k++) { f.re[k] /= n; f.im[k] = -f.im[k] / n; }
+    return f;
+  }
+  function fftPow2(re, im) { // in place, iterative radix-2; twiddles from a table for accuracy
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+    }
+    const cs = new Float64Array(n / 2), sn = new Float64Array(n / 2);
+    for (let k = 0; k < n / 2; k++) { cs[k] = Math.cos(2 * Math.PI * k / n); sn[k] = -Math.sin(2 * Math.PI * k / n); }
+    for (let len = 2; len <= n; len *= 2) {
+      const half = len / 2, step = n / len;
+      for (let i = 0; i < n; i += len) {
+        for (let k = 0; k < half; k++) {
+          const wr = cs[k * step], wi = sn[k * step], a = i + k, b = a + half;
+          const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        }
+      }
+    }
+    return { re, im };
+  }
+  function ifftPow2(re, im) {
+    const n = re.length, f = fftPow2(Float64Array.from(re), Float64Array.from(im, v => -v));
+    for (let k = 0; k < n; k++) { f.re[k] /= n; f.im[k] = -f.im[k] / n; }
+    return f;
+  }
+
   /* The signal on an even time grid at the median sampling rate, for methods that assume even
      spacing (IIR and smoothing filters, FFT). Returns {A, t, fs, resampled, jitter, gaps}:
      the input itself when the timestamps vary by under 1%, or when long gaps would make the
@@ -1554,7 +1612,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

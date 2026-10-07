@@ -6,7 +6,8 @@ Also writes tests/fixtures/expected.json with the Python port's results,
 which the JavaScript tests use to check that both ports agree, and
 tests/fixtures/filters.json with scipy's filter designs and zero-phase outputs,
 which the JavaScript filters (src/core.js designFilter, sosfiltfilt) must match, and
-tests/fixtures/envelopes.json with scipy's PchipInterpolator for the smooth envelope.
+tests/fixtures/envelopes.json with scipy's PchipInterpolator for the smooth envelope, and
+tests/fixtures/spectral.json with numpy/scipy references for the frequency-domain features.
 
 Run from the repo root:
     python scripts/make_fixtures.py
@@ -124,6 +125,21 @@ def pchip_fixtures():
     return cases
 
 
+def fft_input(n):
+    """Deterministic test signal for the FFT; tests/core.test.js builds the same one."""
+    k = np.arange(n)
+    return np.sin(0.37 * k) + 0.5 * np.cos(1.9 * k + 0.3) + 0.01 * k
+
+
+def spectral_fixtures():
+    """numpy/scipy references for the frequency-domain features (#36)."""
+    out = {"fft": []}
+    for n in (1, 2, 8, 100, 114, 920, 1000, 1024):
+        X = np.fft.fft(fft_input(n))
+        out["fft"].append({"n": n, "re": X.real.tolist(), "im": X.imag.tolist()})
+    return out
+
+
 def filter_fixtures():
     """scipy references for every filter the dashboard offers: three types, orders 2-6,
     low-pass 3 Hz alone and with a 0.3 Hz high-pass (band-pass), at 57, 100 and 460 Hz.
@@ -228,6 +244,8 @@ def main():
         json.dump({"source": "walk.mat (synthetic), python/lab_step_det.py, w=30, h=1", "columns": expected}, f, indent=2)
     with open(p("envelopes.json"), "w") as f:
         json.dump({"source": "scipy.interpolate.PchipInterpolator", "pchip": pchip_fixtures()}, f)
+    with open(p("spectral.json"), "w") as f:
+        json.dump({"source": "numpy.fft, scipy.signal; inputs: fft_input(), filter_input()", **spectral_fixtures()}, f)
     with open(p("filters.json"), "w") as f:
         json.dump({"source": "scipy.signal.iirfilter(output='sos') and sosfiltfilt; input: filter_input()", "cases": filter_fixtures(),
                    "other_source": "scipy.ndimage (mode='nearest'), scipy.signal.savgol_filter (mode='interp'), iirnotch + sosfiltfilt; input: spiky_input()",
