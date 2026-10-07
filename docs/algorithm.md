@@ -363,19 +363,26 @@ method is shown. Walking repeats, so its rhythm shows as a tall peak.
 
 * **Lomb–Scargle** (Whole recording → *Lomb–Scargle (uneven timing)*, #101): at each
   frequency, a sine plus an offset is fitted directly at the samples' own times, with no
-  even grid, so a phone's wobbly timing is used as it is. `lombScargle` is Zechmeister &
-  Kürster's generalised periodogram (2009, eqs. 7–20), operation for operation as
+  even grid, so a phone's wobbly timing is used as it is. Lomb (1976) fitted sines by least
+  squares to unevenly spaced, mean-removed data, and Scargle (1982) gave the equivalent
+  periodogram and its statistics. `lombScargle` is Zechmeister & Kürster's generalisation,
+  which also fits an offset at each frequency: their periodogram (2009, eqs. 7–20), operation for operation as
   `scipy.signal.lombscargle(t, y, 2πf, normalize=True, floating_mean=True)`, within 1e-12
   on uneven times with repeated timestamps (`tests/fixtures/periodicity.json`). The power
   is the share of the variance the sine explains (0 to 1). From 0.05 to 10 Hz every
   0.01 Hz; above about 25 samples a second, consecutive samples are first averaged in
   groups (their mean time and value) to about 20 a second, keeping the times uneven.
 * **Autocorrelation** (Whole recording → *Autocorrelation (repeats in time)*, #101): how
-  well the walk matches itself after each delay, on the walking band, as
-  `numpy.correlate(x, x, 'full')[n−1:] / numpy.dot(x, x)` with the mean removed (within
-  1e-13). The first two peaks from 0.25 s on are marked, each placed between samples by a
-  parabola. On the owner's noisy walk they fall at 0.60 s (0.45) and 1.19 s (0.53): one
-  step and one stride, with the stride repeating more faithfully than the step. On a delay
+  well the walk matches itself after each delay, on the walking band, in Moe-Nilssen &
+  Helbostad's unbiased form (2004, eq. 3): each delay averaged over the samples that overlap
+  and divided by the value at no delay, as `numpy.correlate(x, x, 'full')[n−1:] / (n − k)`
+  with the mean removed (within 1e-13). They found the biased form, which divides every
+  delay by n and so shrinks with the delay, unsuited to comparing the step and stride
+  peaks. The first two peaks from 0.25 s on are marked, each placed between samples by a
+  parabola (our addition). Following them, the note calls the heights step and stride
+  regularity and their ratio step symmetry. On the owner's noisy walk the peaks fall at
+  0.60 s (0.45) and 1.19 s (0.54): one step and one stride, step symmetry 0.83, so
+  neighbouring steps are less alike than neighbouring strides. On a delay
   axis the notes and the log scale are switched off.
 * **Continuous wavelet transform** (Over time → *Continuous wavelet (CWT, Morlet)*, #101): a
   wavelet that stretches for slow rhythms and shrinks for fast ones, so the picture is sharp
@@ -582,7 +589,9 @@ trunk accelerations during human walking"). Don't use it.
 | Continuous wavelet transform (Morlet), its power per scale and cone of influence (#101) | Torrence & Compo, 1998 (read: sections 3b–3h, the Morlet wavelet, normalisation, eq. 14, the cone of influence) | [10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2](https://doi.org/10.1175/1520-0477(1998)079<0061:APGTWA>2.0.CO;2) |
 | Multiresolution analysis, behind the DWT bands (#101) | Mallat, 1989 (read: §I–III, pp. 674–682): the signal split level by level with a pair of filters and downsampling by 2 into a coarse approximation and orthogonal detail signals, each roughly one octave (p. 680), that add back up to the signal. The page uses Daubechies' db4 filters and PyWavelets' half-sample symmetric edges (Mallat mirrors about the end samples), and its band edges are nominal: Mallat notes the channels overlap | [10.1109/34.192463](https://doi.org/10.1109/34.192463) |
 | The CWT's discretisation and the DWT bands' wavedec/waverec, which the page follows exactly | Lee et al., 2019 (PyWavelets) | [10.21105/joss.01237](https://doi.org/10.21105/joss.01237) |
-| Generalised Lomb–Scargle periodogram (floating mean, normalised power), as scipy computes it (#101) | Zechmeister & Kürster, 2009 (read: sections 1–3, eqs. 4–20). Lomb 1976 and Scargle 1982, whose method it generalises, are not credited until read | [10.1051/0004-6361:200811296](https://doi.org/10.1051/0004-6361:200811296) |
-| Autocorrelation | none needed (a standard statistic) | |
+| Lomb–Scargle: least-squares fitting of sines to unevenly spaced data (#101) | Lomb, 1976 (read: §2, eqs. 1–3, and §4): sines fitted to mean-removed data, the time offset τ, the fit as a 0–1 share of the sum of squares | [10.1007/BF00648343](https://doi.org/10.1007/BF00648343) |
+| The Lomb–Scargle periodogram (#101) | Scargle, 1982 (read: §IIb, eqs. 10–11, §III, appendices A–C): the modified periodogram, its equivalence with least-squares fitting and its statistics | [10.1086/160554](https://doi.org/10.1086/160554) |
+| Generalised Lomb–Scargle periodogram (floating mean, normalised power), as scipy computes it (#101) | Zechmeister & Kürster, 2009 (read: sections 1–3, eqs. 4–20): it also fits an offset at each frequency, which Lomb's and Scargle's fits to mean-removed data don't; this is what the page computes | [10.1051/0004-6361:200811296](https://doi.org/10.1051/0004-6361:200811296) |
+| Autocorrelation: the unbiased form, step and stride from its first two peaks, their regularity and symmetry (#101) | Moe-Nilssen & Helbostad, 2004 (read in full): unbiased autocorrelation of trunk acceleration (eq. 3), one step and one stride from the first two dominant peaks, their heights as step and stride regularity and their ratio as step symmetry. They used trunk (L3) acceleration in its vertical and forward directions; the page uses whichever signal is chosen, and places peaks between samples by a parabola, which is its own addition | [10.1016/S0021-9290(03)00233-1](https://doi.org/10.1016/S0021-9290(03)00233-1) |
 | Harmonic ratio | Smidt et al., 1971 (the origin; PubMed 5141651, no DOI); Menz et al., 2003 | [10.1016/S0966-6362(02)00159-5](https://doi.org/10.1016/S0966-6362(02)00159-5) |
 | Vertical acceleration from gravity (`gravitySplit`) | Mizell, 2003 | [10.1109/ISWC.2003.1241424](https://doi.org/10.1109/ISWC.2003.1241424) |
