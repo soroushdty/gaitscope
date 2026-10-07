@@ -78,7 +78,7 @@ test('loads a MAT file, compares versions and exports', async () => {
   assert.match(text(pg, 'algoDetail'), /tied peaks are counted once/, 'the full list is under How detection works');
   assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza');
   const names = [...pg.d.querySelectorAll('#metricsTable td .tip')];
-  assert.equal(names.length, 8);
+  assert.equal(names.length, 9);
   assert.ok(names.every(n => n.title.length > 20), 'every metric explains itself in a tooltip');
   assert.equal(pg.d.querySelectorAll('#metricsTable small').length, 0, 'no grey explanations under the values');
   assert.ok([...pg.d.querySelectorAll('#metricsTable td')].filter(td => td.textContent.startsWith('—')).every(td => td.textContent === '—'));
@@ -455,6 +455,8 @@ test('the spectrum panel shows the walking rhythm, the filter gain and a cadence
   assert.match(row('Cadence (spectrum)').cells[2].textContent, /^5\d\.\d steps\/min$/);
   assert.match(row('Cadence (spectrum)').querySelector('.tip').title, /resolution is about 60 ÷ the segment length/);
   assert.match(text(pg, 'specNote'), /strongest rhythm .* 0\.9\d Hz: 5\d per minute/);
+  assert.match(row('Harmonic ratio').cells[2].textContent, /^\d+\.\d\d$/);
+  assert.match(row('Harmonic ratio').querySelector('.tip').title, /averaged over \d+ strides/);
 
   $('specLog').checked = true; $('specLog').dispatchEvent(new pg.w.Event('change'));
   assert.equal(pg.spectra.at(-1).layout.yaxis.type, 'log');
@@ -480,6 +482,7 @@ test('the spectrum panel shows the walking rhythm, the filter gain and a cadence
   const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
   assert.match(csv, /\ncadence_spectrum,,1\d\d\.\d+,,steps\/min/);
   assert.match(csv, /\nspectrum_segment_s,(7\.99|8\.00)\d*\n/, "8 s, as a whole number of samples");
+  assert.match(csv, /\nharmonic_ratio,,\d+\.\d+,,even\/odd harmonics per stride \(\d+ strides\)\n/);
 });
 
 test('the demo walk drops its start and stop bumps as weak peaks', async () => {

@@ -321,7 +321,9 @@
     // spectrum of the signal the algorithm sees, and of the recording when a filter changed it
     const spec = C.spectrum(filt.A, t, p), specRaw = filt.applied ? C.spectrum(A, t, p) : null, rhythm = C.rhythmOverTime(filt.A, t, p);
     const specCadence = spec.peak.clear ? spec.peak.freq * 60 * (p.stride ? 2 : 1) : NaN;
-    S.res = { p, algo, filt, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet, spec, specRaw, specCadence, rhythm };
+    // on the recorded signal: a low-pass filter would remove the very harmonics it compares
+    const hr = C.harmonicRatio(A, t, finalIdx, p.stride);
+    S.res = { p, algo, filt, origIdx, orig, fx, finalIdx, finalSet, algM, weakSet, spec, specRaw, specCadence, rhythm, hr };
     render();
   }
 
@@ -613,6 +615,8 @@
       { name: 'Walking span', tip: 'Time from the first to the last ' + name + ' step.', lab: '—', algo: f(algM.span, 1, 's') },
       { name: 'Cadence (spectrum)', tip: '60 × the strongest frequency between ' + C.GAIT_BAND[0] + ' and ' + C.GAIT_BAND[1] + ' Hz in the spectrum of the signal ' + name + ' sees (× 2 with Phone position on One leg). No steps are detected, so it cross-checks Cadence. Its resolution is about 60 ÷ the segment length (' + fmt(S.res.spec.segment, 0) + ' s): ' + fmt(60 / S.res.spec.segment, 1) + ' steps/min. — means the spectrum has no clear walking peak.',
         lab: '—', algo: f(S.res.specCadence, 1, 'steps/min') },
+      { name: 'Harmonic ratio', tip: 'Gait symmetry from the shape of each stride (two of ' + name + '\u2019s steps, or one peak-to-peak on One leg): the amplitudes of harmonics 1\u201320 of the stride frequency, even over odd, averaged over ' + S.res.hr.strides + ' strides. Identical left and right steps make only even harmonics, so higher means more alike (for the vertical or forward direction; side to side it inverts). Computed on the recorded signal, since a low-pass filter would remove the harmonics.',
+        lab: '—', algo: f(S.res.hr.ratio, 2) },
     ];
     const lab = showLab();
     $('labNote').hidden = !lab;
@@ -684,6 +688,7 @@
       csvRow(['coefficient_of_variation', '', n(algM.cv), '', '%']),
       csvRow(['gait_asymmetry', n(orig.asymmetry), p.stride ? '' : n(algM.asymmetry), 'even/odd intervals', 'even/odd intervals']),
       csvRow(['cadence_spectrum', '', n(S.res.specCadence), '', 'steps/min (dominant frequency × 60)']),
+      csvRow(['harmonic_ratio', '', n(S.res.hr.ratio), '', 'even/odd harmonics per stride (' + S.res.hr.strides + ' strides)']),
       '',
       csvRow(['setting', 'value']),
       csvRow(['algorithm', S.res.algo.name]),

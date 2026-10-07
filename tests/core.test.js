@@ -471,6 +471,24 @@ test('filter gain is the response as applied, and matches what the filter does t
   assert.equal(C.filterGain(Object.assign({}, FP, { fLow: 80 }), fs, [1]), null, 'settings that cannot be used');
 });
 
+test('harmonic ratio: even over odd harmonics per stride, falling as the steps differ', () => {
+  const fs = 100, T = 1.1, t = Float64Array.from({ length: 2200 }, (_, i) => i / fs);
+  // exact case: 2nd harmonic of amplitude 1 and 1st of amplitude c gives even/odd = 1/c
+  const c = 0.25, A = t.map(v => Math.cos(2 * Math.PI * 2 * v / T) + c * Math.cos(2 * Math.PI * v / T));
+  const strides = Array.from({ length: 19 }, (_, k) => Math.round(k * T * fs)); // one detection per stride
+  const r = C.harmonicRatio(A, t, strides, true);
+  assert.equal(r.strides, 18); assert.ok(Math.abs(r.ratio - 1 / c) < 1e-3, 'ratio ' + r.ratio);
+  // steps detected (two per stride): same strides from every other step
+  const steps = Array.from({ length: 37 }, (_, k) => Math.round(k * T / 2 * fs));
+  assert.ok(Math.abs(C.harmonicRatio(A, t, steps, false).ratio - 1 / c) < 1e-3);
+  // a walk whose left and right steps differ more and more
+  const walk = a => t.map(v => { const ph = (v % T) / T; return (ph < 0.5 ? 1 : a) * Math.sin(2 * Math.PI * 2 * ph) ** 2; });
+  const hr = [1, 0.8, 0.5].map(a => C.harmonicRatio(walk(a), t, steps, false).ratio);
+  assert.ok(hr[0] > 1e6, 'identical steps: no odd harmonics');
+  assert.ok(hr[1] > hr[2] && hr[2] > 1, 'more asymmetry, lower ratio: ' + hr.slice(1));
+  assert.ok(Number.isNaN(C.harmonicRatio(A, t, [0, 50], false).ratio), 'fewer than one stride');
+});
+
 /* ------------------------------------------------------- envelopes */
 const ENV_P = { fs: 100, envWindow: 1, envPeakWindow: 0.3 };
 const env = id => C.ENVELOPES.find(e => e.id === id);
