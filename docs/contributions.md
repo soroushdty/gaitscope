@@ -29,8 +29,8 @@ Roles follow the [CRediT taxonomy](https://credit.niso.org/).
 | Writing | Review and final approval of all text | Drafts of the documentation, issue analyses and pull request descriptions |
 | Supervision, accountability | All of it. The owner is responsible for everything in the repository | None. An AI can't be an author or take responsibility |
 
-The course instructor, Dr. Aurel Coza, wrote the original step-detection script
-(`LabStepDet_2025.m`). The repository ports its rule exactly and credits it. The script and
+The original step-detection script (`LabStepDet_2025.m`) comes from BME 598/494 (Dr. Aurel
+Coza). The repository ports its rule exactly and credits it. The script and
 the course data are never committed.
 
 ## Where to see it

@@ -1189,7 +1189,7 @@ test('every detector, envelope and filter has a credit, with well-formed DOIs an
     assert.ok(!/@/.test(JSON.stringify(d.credit)), d.id + ': no email addresses');
   }
   const credit = id => C.creditText(all.find(d => d.id === id).credit);
-  assert.match(credit('coza_original'), /^Dr\. Aurel Coza \(Lab 1 of Wearable Devices/);
+  assert.equal(credit('coza_original'), 'Dr. Aurel Coza (BME 598/494; LabStepDet_2025.m)', 'the course code and instructor (#78)');
   assert.match(credit('coza'), /modified by Dr\. Soroush Dianaty \(tied peaks counted once/);
   assert.equal(credit('savgol'), 'Savitzky & Golay, 1964 https://doi.org/10.1021/ac60214a047');
   assert.equal(credit('sliding'), '');

@@ -5,8 +5,9 @@ Step detection and gait metrics from phone accelerometer recordings, in the brow
 **[Open GaitScope](https://soroushdianaty.com/gaitscope/)**. There is nothing to install, and
 your files never leave the browser.
 
-GaitScope started as Lab 1 of *Wearable Devices for Sport, Health, and Wellness* (ASU, Fall
-2026): Dr. Aurel Coza's MATLAB step detector and a sample walk. It is now a dashboard that
+GaitScope started in Fall 2026 as a lab of BME 598/494 *Wearable Devices for Sport,
+Health, and Wellness* (ASU, Dr. Aurel Coza): a MATLAB step detector and a sample walk. It
+is now a dashboard that
 loads or records a walk, checks that the file is usable, and puts any number of step
 detectors and envelopes on the plot side by side, with filters, a spectrum, gait metrics
 and exports. A Python port of Coza's detector gives exactly the same steps as MATLAB.
@@ -50,7 +51,8 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
 - **Step detectors and envelopes as chart indicators.** Put any number on the plot at
   once, in any mix, like indicators on a trading chart. Each has its own settings, colour,
   source signal, show/hide and remove, and gets its own metrics column.
-  - **Coza:** Dr. Aurel Coza's Lab 1 detector exactly as written, bugs included.
+  - **Coza:** the step detector from BME 598/494 *Wearable Devices for Sport, Health, and
+    Wellness* (ASU, Dr. Aurel Coza), exactly as written, bugs included.
   - **Coza (modified):** the same detector with its bugs fixed. It counts tied peaks once,
     drops start/stop artefacts, uses real timestamps, and reports cadence.
   - **Threshold peaks, Peak-to-valley and Zero-crossing:** three textbook detectors.
@@ -173,8 +175,9 @@ data/                 local course files (git-ignored)
 
 ## Credits and license
 
-- **Coza** and the Lab 1 sample walk: Dr. Aurel Coza. The page's sample is a synthetic walk
-  of our own; the course files stay out of this repository.
+- **Coza** and the sample walk (`Walking.mat`) come from BME 598/494 *Wearable Devices
+  for Sport, Health, and Wellness* (ASU, Dr. Aurel Coza). The page's sample is a synthetic
+  walk of our own; the course files stay out of this repository.
 - **Coza (modified):** Dr. Soroush Dianaty.
 - **Everything else:** each detector, filter and envelope credits its authors on the page,
   with a DOI link, and in exports. The full list, including the spectrum and features, is

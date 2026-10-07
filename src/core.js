@@ -1469,8 +1469,8 @@
       // detector's; the metrics rows marked "Coza's formula" are the .m file's outputs.
       id: 'coza_original',
       name: 'Coza',
-      tagline: 'The Lab 1 peak detector exactly as written, bugs included.',
-      credit: [{ text: 'Dr. Aurel Coza', note: 'Lab 1 of Wearable Devices for Sport, Health, and Wellness, ASU; LabStepDet_2025.m' }],
+      tagline: 'The peak detector from BME 598/494 (Dr. Aurel Coza), exactly as written, bugs included.',
+      credit: [{ text: 'Dr. Aurel Coza', note: 'BME 598/494; LabStepDet_2025.m' }],
       summary: 'Coza is LabStepDet_2025.m\u2019s rule unchanged: a sample is a step when it is the highest within w samples on each side and above h. The window counts samples, so it means \u00b10.3 s only at 100 Hz; tied peaks count twice and the stop bump counts as a step. Its metrics come from the timestamps, like every detector\u2019s; the rows marked \u201cCoza\u2019s formula\u201d reproduce the .m file\u2019s own outputs.',
       params: [P_W, P_H],
       detect: (A, t, p) => ({ idx: detectOriginal(A, p.w, p.h), weakDropped: [] }),
