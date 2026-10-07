@@ -17,7 +17,7 @@ fix individual steps by hand, and export the results.
   Record exports, comma or semicolon separated, elapsed or clock time).
 - **Validation.** Every file is checked against an [input schema](docs/schema.md)
   before analysis. Problems come with a concrete fix, such as the exact MATLAB line
-  to re-save a v7.3 file.
+  to re-save a file in a format the page can't read.
 - **Live sliders** for the window `w` and threshold `h`.
 - **Lab code vs Coza**, compared on the same plot and metrics table. Coza, picked from
   the Algorithm dropdown, is the lab detector with its bugs fixed: it counts tied peaks
@@ -104,4 +104,5 @@ data/                 local course files (git-ignored)
 
 - The algorithm is a port of course material provided by the instructor. Check the
   course policy before making this repository public.
-- MATLAB v7.3 files (HDF5) are not supported in the browser; re-save with `-v7`.
+- MATLAB v7.3 files (HDF5) are read with jsfive, loaded only when one is opened. Cell
+  arrays, strings, sparse and complex data inside them are listed but not analysed.

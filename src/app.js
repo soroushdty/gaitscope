@@ -61,7 +61,9 @@
     const ext = (file.name.split('.').pop() || '').toLowerCase();
     const isText = C.looksLikeText(buf);
     try {
-      if (ext === 'mat' && !isText) loadMat(buf);
+      // MATLAB v7.3 (HDF5): fetch the HDF5 reader first, the only time it is needed
+      if (!isText && C.isMat73(buf)) loadMat(buf, await loadHdf5().catch(() => null));
+      else if (ext === 'mat' && !isText) loadMat(buf);
       else if (isText) loadCsv(new TextDecoder('utf-8').decode(buf), ext === 'mat');
       else if (ext === 'csv' || ext === 'txt' || ext === 'tsv') {
         return fatal('This file has a text extension but contains binary data.', 'If it is a MATLAB file, rename it to .mat.');
@@ -86,12 +88,32 @@
     setDataset(d.names, d.cols, 'csv');
   }
 
-  function loadMat(buf) {
-    if (typeof pako === 'undefined') throw new C.InputError('The decompression library did not load.', 'Check your internet connection and reload the page.');
-    const parsed = C.parseMat(buf, u8 => pako.inflate(u8));
+  // jsfive reads HDF5 (MATLAB v7.3) in plain JavaScript; pinned like the other two libraries
+  const HDF5_URL = 'https://cdn.jsdelivr.net/npm/jsfive@0.4.2/dist/browser/hdf5.js';
+  let hdf5Loading = null;
+  function loadHdf5() {
+    if (window.hdf5) return Promise.resolve(window.hdf5);
+    return hdf5Loading || (hdf5Loading = new Promise((resolve, reject) => {
+      const s = document.createElement('script'), fail = () => { hdf5Loading = null; s.remove(); reject(new Error('jsfive did not load')); };
+      const timer = setTimeout(fail, 20000);
+      s.src = HDF5_URL;
+      s.onload = () => { clearTimeout(timer); window.hdf5 ? resolve(window.hdf5) : fail(); };
+      s.onerror = () => { clearTimeout(timer); fail(); };
+      document.head.appendChild(s);
+    }));
+  }
+
+  // hdf5 given (even null): the file is MATLAB v7.3; otherwise a v5–v7 MAT-file
+  function loadMat(buf, hdf5) {
+    let parsed;
+    if (hdf5 !== undefined) parsed = C.parseMat73(buf, hdf5);
+    else {
+      if (typeof pako === 'undefined') throw new C.InputError('The decompression library did not load.', 'Check your internet connection and reload the page.');
+      parsed = C.parseMat(buf, u8 => pako.inflate(u8));
+    }
     const { cands, notes } = C.matCandidates(parsed.variables);
     S.mat = { cands, notes };
-    S.fileChecks.push({ level: 'pass', title: 'MATLAB file read', detail: parsed.variables.length + ' variable' + (parsed.variables.length === 1 ? '' : 's') + ' found: ' + (parsed.variables.map(v => v.name + ' (' + v.cls + (v.dims.length ? ', ' + v.dims.join('×') : v.className ? ' ' + v.className : '') + ')').join(', ') || 'none') + '.' });
+    S.fileChecks.push({ level: 'pass', title: parsed.v73 ? 'MATLAB v7.3 file read' : 'MATLAB file read', detail: (parsed.v73 ? 'HDF5 format, read with jsfive. ' : '') + parsed.variables.length + ' variable' + (parsed.variables.length === 1 ? '' : 's') + ' found: ' + (parsed.variables.map(v => v.name + ' (' + v.cls + (v.dims.length ? ', ' + v.dims.join('×') : v.className ? ' ' + v.className : '') + ')').join(', ') || 'none') + '.' });
     for (const n of notes) S.fileChecks.push({ level: 'warn', title: 'Skipped ' + n.path, detail: n.reason, fix: n.fix });
     for (const c of cands.filter(c => !c.ok)) S.fileChecks.push({ level: 'info', title: 'Skipped ' + c.path, detail: '"' + c.path + '" ' + c.reason + '.' });
     const ok = cands.filter(c => c.ok);

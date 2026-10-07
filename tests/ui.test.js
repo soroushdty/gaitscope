@@ -13,7 +13,7 @@ const FIX = path.join(__dirname, 'fixtures');
 const pageErrors = [];
 test.afterEach(() => assert.deepEqual(pageErrors.splice(0), [], 'uncaught error in the page'));
 
-function makePage() {
+function makePage(opts = {}) {
   let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')
     .replace(/<script src="https:[^>]+><\/script>/g, '')
     .replace(/<link[^>]+>/g, '')
@@ -24,6 +24,7 @@ function makePage() {
   vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
   const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
     w.pako = pako; w.TextDecoder = TextDecoder;
+    if (opts.hdf5 !== false) w.hdf5 = require('jsfive'); // the page loads it from jsDelivr when a v7.3 file arrives
     w.matchMedia = () => ({ matches: false, addEventListener() {} });
     // the main plot and the spectrum are recorded separately
     w.Plotly = { react(el, traces, layout, config) { (el.id === 'specPlot' ? spectra : plots).push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
@@ -545,6 +546,23 @@ test('vertical and horizontal signals appear for recordings with gravity, disabl
   assert.equal(opt('vertical').disabled, true);
   assert.equal(opt('vertical').textContent, 'vertical: not available, no steady gravity in x, y, z (it looks removed)');
   assert.equal(opt('horizontal'), undefined);
+});
+
+test('reads a MATLAB v7.3 file like the v5 one', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'walk_v73.mat'));
+  assert.match(text(pg, 'valTitle'), /^Valid/);
+  pg.d.getElementById('valToggle').click();
+  pg.d.getElementById('passToggle').click();
+  assert.match(text(pg, 'valList'), /MATLAB v7\.3 file read.*HDF5 format, read with jsfive\. 1 variable found: Walking \(double, 1800×5\)/);
+  const v73 = pg.plots.at(-1).traces[TR.lab].x;
+  const ref = makePage();
+  await upload(ref, path.join(FIX, 'walk.mat'));
+  assert.deepEqual(Array.from(v73), Array.from(ref.plots.at(-1).traces[TR.lab].x), 'same lab-code steps as walk.mat');
+
+  await upload(pg, path.join(FIX, 'walk_v73_mixed.mat'));
+  assert.deepEqual([...pg.d.getElementById('varSel').options].map(o => o.textContent), ['A (25×5, double)', 'rec.acc (1800×3, int16)']);
+  assert.match(text(pg, 'valList'), /"labels" is a cell array/);
 });
 
 test('shows a fix for an unreadable file', async () => {

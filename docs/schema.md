@@ -24,7 +24,10 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`,
 |---|---|---|
 | Size ≤ 50 MB, not empty | error | Keeps the browser responsive. |
 | MAT v5–v7 (MATLAB or Octave, compressed or not) | — | The format MATLAB writes by default. |
-| MAT v7.3 (HDF5) | error | Browsers need a large WebAssembly HDF5 library to read it. Fix: `save('f.mat','-v7')`. |
+| MAT v7.3 (HDF5) | pass, read with jsfive | The 41 KB reader loads from jsDelivr only when such a file is opened. Numeric matrices and structs are read; cell, char, logical, empty, sparse, complex and object variables get the same notes as in v5 files. Small arrays in compact storage, which jsfive alone can't read, are decoded by `patchCompactStorage`. |
+| MAT v7.3: the reader didn't load | error | Fix: check the connection and reload, or `save('f.mat','-v7')`, or export CSV. |
+| MAT v7.3: no HDF5 data after the header, or HDF5 the reader can't open | error | Fix: re-save or re-download; or `save('f.mat','-v7')`, or export CSV. |
+| MAT v7.3: one variable can't be decoded | note on that variable | The other variables are still offered. Fix: `save('f.mat','-v7')` or CSV. |
 | MAT v4 | error | Obsolete. Fix: re-save with `-v7`. |
 | Text file named `.mat` | warn / error | Read as CSV if it parses; otherwise told to rename it. |
 | Random or corrupted bytes, truncated blocks | error | Detected from the header and element sizes. |
