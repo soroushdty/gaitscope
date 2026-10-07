@@ -52,6 +52,7 @@
     S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.chRaw = null; S.rs = null; S.res = null;
     S.notes = []; closeNoteForm();
     S.recording = null; $('saveRec').hidden = true; S.counted = null; S.countedBy = null; // 'hand' or 'demo'
+    dropPlainUndo();
   }
 
   async function handleFile(file) {
@@ -356,7 +357,7 @@
     for (const b of document.querySelectorAll('[data-preset]')) b.disabled = !on;
     for (const b of document.querySelectorAll('[data-rs-rate]')) b.disabled = !on;
     // the indicator lists stay usable without a recording, so a set can be prepared first
-    for (const id of ['rsSel', 'rsRate', 'rsMethod', 'rsAA', 'filterSel', 'posSel', 'showIntervals', 'noteMode', 'resetParams']) $(id).disabled = !on;
+    for (const id of ['rsSel', 'rsRate', 'rsMethod', 'rsAA', 'filterSel', 'posSel', 'showIntervals', 'noteMode', 'resetParams', 'plainBtn']) $(id).disabled = !on;
     for (const el of optionInputs()) el.disabled = !on;
     updateExportButtons();
   }
@@ -535,6 +536,34 @@
     renderIndicators();
     refresh(ind);
   }
+
+  /* Signal only (#79): take away every step detector and envelope, the filter, resampling and
+     the step-interval strip, to see just the signal. Notes stay. Undo puts it all back, until
+     anything else is changed. */
+  let plainSaved = null;
+  function signalOnly() {
+    if (!S.ch) return;
+    plainSaved = { ind: S.ind.slice(), filter: $('filterSel').value, rs: $('rsSel').value, iv: $('showIntervals').checked };
+    S.ind = []; renderIndicators();
+    $('filterSel').value = 'none'; showFilter();
+    $('showIntervals').checked = false;
+    const rsWasOn = $('rsSel').value !== 'off';
+    $('rsSel').value = 'off'; showRs();
+    if (rsWasOn) applyResample(); else recompute();
+    $('plainUndo').hidden = false;
+  }
+  function undoSignalOnly() {
+    const s = plainSaved;
+    if (!s || !S.ch) return;
+    dropPlainUndo();
+    S.ind = s.ind; renderIndicators();
+    $('filterSel').value = s.filter; showFilter();
+    $('showIntervals').checked = s.iv;
+    const rsChanged = $('rsSel').value !== s.rs;
+    $('rsSel').value = s.rs; showRs();
+    if (rsChanged) applyResample(); else recompute();
+  }
+  function dropPlainUndo() { plainSaved = null; $('plainUndo').hidden = true; }
 
   /* ------------------------------------------------------------ compute */
   // the source signal an indicator runs on
@@ -1052,7 +1081,13 @@
     schedule();
   });
   showFilter();
-  $('showIntervals').addEventListener('change', () => { if (S.ch && S.res) renderPlot(); });
+  $('showIntervals').addEventListener('change', () => { dropPlainUndo(); if (S.ch && S.res) renderPlot(); });
+  $('plainBtn').addEventListener('click', signalOnly);
+  $('plainUndo').addEventListener('click', undoSignalOnly);
+  // any other change to the set-up ends the Undo (opening an indicator's settings doesn't)
+  const aside = document.querySelector('aside');
+  for (const ev of ['input', 'change']) aside.addEventListener(ev, dropPlainUndo, true);
+  aside.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.act !== 'open') dropPlainUndo(); }, true);
   $('specLog').addEventListener('change', () => { if (S.ch && S.res) renderSpectrum(); });
   $('noteMode').addEventListener('change', () => { if (!$('noteMode').checked) closeNoteForm(); else updateNoteUi(); });
   $('noteForm').addEventListener('submit', addNote);

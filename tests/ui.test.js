@@ -951,3 +951,35 @@ test('the theme button cycles System, Light and Dark, redraws the plots and reme
   pg3.d.getElementById('themeBtn').click();
   assert.equal(pg3.d.documentElement.getAttribute('data-theme'), 'light');
 });
+
+test('Signal only takes away the extras and keeps the notes; Undo puts them back (#79)', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  $('demoBtn').click(); await sleep(40);
+  await addInd(pg, 'envelope', 'peaktrough');
+  $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change', { bubbles: true })); await sleep(40);
+  $('rsSel').value = 'even'; $('rsSel').dispatchEvent(new pg.w.Event('change', { bubbles: true })); await sleep(40);
+  $('showIntervals').checked = true; $('showIntervals').dispatchEvent(new pg.w.Event('change', { bubbles: true })); await sleep(20);
+  $('noteMode').checked = true; $('noteMode').dispatchEvent(new pg.w.Event('change'));
+  $('plot')._click({ points: [{ x: 5, curveNumber: 0 }] });
+  $('noteText').value = 'stairs'; $('noteForm').dispatchEvent(new pg.w.Event('submit', { cancelable: true })); await sleep(20);
+  const before = { det: indNames(pg, 'detList'), env: indNames(pg, 'envList'), steps: samples(pg, 'Coza (modified)') };
+
+  $('plainBtn').click(); await sleep(40);
+  assert.deepEqual(indNames(pg, 'detList'), []); assert.equal($('envList').hidden, true);
+  assert.equal($('filterSel').value, 'none'); assert.equal($('rsSel').value, 'off'); assert.equal($('showIntervals').checked, false);
+  const roles = new Set([...pg.plots.at(-1).traces].map(t => t.meta && t.meta.role));
+  assert.deepEqual([...roles].filter(r => r !== 'signal'), [], 'only the signal is drawn');
+  assert.match(text(pg, 'noteList'), /stairs/, 'notes stay');
+  assert.equal($('plainUndo').hidden, false);
+
+  $('plainUndo').click(); await sleep(40);
+  assert.deepEqual(indNames(pg, 'detList'), before.det); assert.deepEqual(indNames(pg, 'envList'), before.env);
+  assert.equal($('filterSel').value, 'butter'); assert.equal($('rsSel').value, 'even'); assert.equal($('showIntervals').checked, true);
+  assert.equal(samples(pg, 'Coza (modified)'), before.steps, 'the same steps as before');
+  assert.equal($('plainUndo').hidden, true);
+
+  // any other change ends the chance to undo
+  $('plainBtn').click(); await sleep(40);
+  $('posSel').value = 'leg'; $('posSel').dispatchEvent(new pg.w.Event('change', { bubbles: true })); await sleep(20);
+  assert.equal($('plainUndo').hidden, true);
+});
