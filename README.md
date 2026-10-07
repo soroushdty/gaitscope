@@ -58,7 +58,8 @@ files in the Walking.mat layout, after any `--resample` (so `--resample 50` warn
 Physics Toolbox only lets you choose the rate in the paid version, and the free version
 records at about 460 Hz. `--resample 100` linearly interpolates the recording onto a
 100 Hz grid first (MATLAB: `interp1(t, A, 0:0.01:t(end))`). The detector itself is
-unchanged.
+unchanged. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
+h5py. A missing or non-numeric `--var` says which variables the file has.
 
 ```bash
 uv sync                          # once per clone: creates .venv from uv.lock (Python ≥ 3.12)
