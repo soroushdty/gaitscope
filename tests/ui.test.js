@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const pako = require('pako');
+const Core = require('../src/core.js');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures');
@@ -14,12 +15,14 @@ const pageErrors = [];
 test.afterEach(() => assert.deepEqual(pageErrors.splice(0), [], 'uncaught error in the page'));
 
 function makePage(opts = {}) {
+  // scripts go in with replacer functions, so '$&' and the like in their code stay as written
+  const inline = f => () => '<script>' + fs.readFileSync(path.join(ROOT, 'src', f), 'utf8') + '</script>';
   let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')
     .replace(/<script src="https:[^>]+><\/script>/g, '')
     .replace(/<link[^>]+>/g, '')
-    .replace('<script src="src/core.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/core.js'), 'utf8') + '</script>')
-    .replace('<script src="src/record.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/record.js'), 'utf8') + '</script>')
-    .replace('<script src="src/app.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8') + '</script>');
+    .replace('<script src="src/core.js"></script>', inline('core.js'))
+    .replace('<script src="src/record.js"></script>', inline('record.js'))
+    .replace('<script src="src/app.js"></script>', inline('app.js'));
   const plots = [], spectra = [], blobs = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
@@ -48,73 +51,109 @@ async function upload(pg, file) {
   input.dispatchEvent(new pg.w.Event('change'));
   await sleep(60);
 }
-// Plot trace order (src/app.js renderPlot): hidden traces stay in place so these never move.
-const TR = { envLower: 0, envUpper: 1, signal: 2, filtered: 3, envMid: 4, guide: 5, guide2: 6, lab: 7, algo: 8, algoIv: 9, labIv: 10, rhythm: 11, recorded: 12 };
+// Plot traces carry meta {role, uid} (src/app.js renderPlot); an indicator's traces are named
+// after it ("Coza", "Threshold peaks: Smoothed (3 Hz)").
+// copied into this realm's arrays, so deepEqual compares contents, not the page's Array prototype
+const traces = (pg, role) => [...pg.plots.at(-1).traces].filter(t => t.meta && t.meta.role === role);
+const trace = (pg, role, name) => traces(pg, role).find(t => name === undefined || t.name === name);
+const markers = (pg, name) => trace(pg, 'markers', name);
+const samples = (pg, name) => markers(pg, name).customdata.map(c => c[0]).join();
+// indicators: rows in the Step detectors and Envelopes lists, driven by name
+const indRow = (pg, name) => [...pg.d.querySelectorAll('.ind')].find(li => li.querySelector('.ind-name').textContent === name);
+const indNames = (pg, list) => [...pg.d.querySelectorAll('#' + list + ' .ind-name')].map(b => b.textContent);
+async function addInd(pg, kind, type) {
+  const sel = pg.d.getElementById(kind === 'detector' ? 'detAdd' : 'envAdd');
+  sel.value = type; sel.dispatchEvent(new pg.w.Event('change')); await sleep(40);
+}
+async function setParam(pg, name, key, value) {
+  const el = indRow(pg, name).querySelector('[data-key="' + key + '"]:not([data-mirror])');
+  if (el.type === 'checkbox') { el.checked = value; el.dispatchEvent(new pg.w.Event('change', { bubbles: true })); }
+  else { el.value = String(value); el.dispatchEvent(new pg.w.Event('input', { bubbles: true })); }
+  await sleep(40);
+}
+const paramOut = (pg, name, key) => indRow(pg, name).querySelector('output[for$="_' + key + '"]').textContent;
+async function act(pg, name, action) { indRow(pg, name).querySelector('[data-act="' + action + '"]').click(); await sleep(40); }
+async function setSource(pg, name, v) { const s = indRow(pg, name).querySelector('[data-act="source"]'); s.value = v; s.dispatchEvent(new pg.w.Event('change', { bubbles: true })); await sleep(40); }
+const heads = pg => [...pg.d.querySelectorAll('#metricsTable th')].map(th => th.textContent);
+const metric = (pg, name) => { const r = [...pg.d.querySelectorAll('#metricsTable tbody tr')].find(tr => tr.cells[0].textContent === name); return r ? [...r.cells].slice(1).map(c => c.textContent) : null; };
+async function exportCsv(pg, which) {
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  pg.d.getElementById(which || 'expMetrics').click();
+  return new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+}
 const C_mean = a => Array.from(a).reduce((x, y) => x + y, 0) / a.length;
 const text = (pg, id) => pg.d.getElementById(id).textContent.replace(/\s+/g, ' ').trim();
 
-test('loads a MAT file, compares versions and exports', async () => {
+test('loads a MAT file and compares Coza with Coza (modified), side by side', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
+  const $ = id => pg.d.getElementById(id);
   assert.match(text(pg, 'valTitle'), /^Valid/);
-  assert.equal(pg.d.getElementById('subtitle').hidden, true, 'subtitle goes once a file is loaded');
+  assert.equal($('subtitle').hidden, true, 'subtitle goes once a file is loaded');
   const cfg = pg.plots.at(-1).config;
   assert.equal(cfg.displayModeBar, 'hover');
   assert.ok(['zoomIn2d', 'zoomOut2d'].every(b => cfg.modeBarButtonsToRemove.includes(b)), 'no +/- zoom buttons');
   assert.equal(pg.d.querySelector('#fileChip strong').title, 'walk.mat', 'full name in a tooltip');
-  assert.equal(pg.d.getElementById('valList').hidden, true, 'checks start collapsed when the file is valid');
-  pg.d.getElementById('valToggle').click();
-  assert.equal(pg.d.getElementById('valList').hidden, false, 'and open on click');
-  assert.equal(pg.d.getElementById('analysis').hidden, false);
-  assert.equal(pg.d.getElementById('advDetails').open, false, 'advanced options start closed');
-  assert.equal(pg.d.getElementById('chanSel').value, '1', 'defaults to column 2 like the lab code');
-  const last = pg.plots.at(-1);
-  const lab = last.traces[TR.lab].x.length, fixed = last.traces[TR.algo].x.length;
-  assert.ok(lab > fixed, 'Coza drops the tied duplicate');
-  assert.equal(last.traces[TR.guide].visible, false, 'Coza draws no guide lines');
-  assert.equal(text(pg, 'legGuides'), '');
-  assert.equal(pg.d.getElementById('fxTies'), null, 'tied peaks are always counted once, no option');
-  assert.equal(pg.d.getElementById('rIn'), null, 'weak-peak cut-off is fixed at 40%, no slider');
-  assert.match(text(pg, 'valList'), /counts? \d+ peaks? twice.*Coza \(modified\) counts each once/);
-  assert.equal(pg.d.getElementById('algoSel').value, 'coza');
-  assert.deepEqual([...pg.d.getElementById('algoSel').options].map(o => o.textContent), ['Coza', 'Coza (modified)', 'Threshold peaks', 'Peak-to-valley', 'Zero-crossing']);
-  assert.equal(text(pg, 'legAlgo'), 'Coza (modified)', 'opens on the modified one');
-  assert.ok(!/Signal/.test(pg.d.querySelector('.legend').textContent), 'the signal line needs no legend entry');
-  assert.equal(text(pg, 'legH'), 'Threshold h = 1');
-  assert.equal(text(pg, 'algoDesc'), 'The lab detector with its bugs fixed.', 'one line under the dropdown');
-  assert.match(text(pg, 'algoDetail'), /tied peaks are counted once/, 'the full list is under How detection works');
-  assert.equal(pg.d.querySelector('#metricsTable th.col-algo').textContent, 'Coza (modified)');
+  assert.equal($('valList').hidden, true, 'checks start collapsed when the file is valid');
+  $('valToggle').click();
+  assert.equal($('valList').hidden, false, 'and open on click');
+  assert.equal($('analysis').hidden, false);
+  assert.equal($('advDetails').open, false, 'advanced options start closed');
+  assert.equal($('chanSel').value, '1', 'defaults to column 2, like the .m file');
+  // the page opens with the two Cozas, as indicators
+  assert.deepEqual(indNames(pg, 'detList'), ['Coza', 'Coza (modified)']);
+  assert.equal($('envList').hidden, true);
+  assert.deepEqual([...$('detAdd').options].map(o => o.textContent), ['Add a step detector…', 'Coza', 'Coza (modified)', 'Threshold peaks', 'Peak-to-valley', 'Zero-crossing']);
+  assert.deepEqual([...$('envAdd').options].map(o => o.textContent), ['Add an envelope or band…', 'Sliding window', 'Peak-trough', 'Dynamic threshold', 'Mean ± k·SD', 'Hilbert envelope', 'Percentile band']);
+  assert.equal(indRow(pg, 'Coza').querySelector('.ind-sum').textContent, 'w 30 · h 1');
+  assert.equal(indRow(pg, 'Coza (modified)').querySelector('.ind-sum').textContent, 'h 1 · window 0.30 s · weak peaks dropped');
+  assert.ok(!/lab code/i.test(pg.d.body.textContent), 'no "lab code" anywhere on the page');
+  const lab = markers(pg, 'Coza').x.length, fixed = markers(pg, 'Coza (modified)').x.length;
+  assert.equal(lab - fixed, 1, 'Coza counts the tied peak twice');
+  assert.notEqual(markers(pg, 'Coza').marker.symbol, markers(pg, 'Coza (modified)').marker.symbol);
+  const colorVar = name => indRow(pg, name).style.getPropertyValue('--ic'); // jsdom can't resolve the colours themselves
+  assert.notEqual(colorVar('Coza'), colorVar('Coza (modified)'));
+  assert.equal(traces(pg, 'guide').length, 0, 'neither draws guide lines');
+  assert.equal(pg.plots.at(-1).layout.shapes.length, 2, 'an h line for each');
+  assert.deepEqual([...$('legInd').children].map(c => c.textContent), ['Coza', 'Coza h = 1', 'Coza (modified)', 'Coza (modified) h = 1']);
+  assert.match(text(pg, 'valList'), /Coza counts 1 peak twice.*Coza \(modified\) counts each once/);
+  assert.deepEqual(heads(pg), ['Metric', 'Coza', 'Coza (modified)']);
   const names = [...pg.d.querySelectorAll('#metricsTable td .tip')];
-  assert.equal(names.length, 9);
+  assert.equal(names.length, 11, '7 shared rows and Coza’s 4');
   assert.ok(names.every(n => n.title.length > 20), 'every metric explains itself in a tooltip');
-  assert.equal(pg.d.querySelectorAll('#metricsTable small').length, 0, 'no grey explanations under the values');
-  assert.ok([...pg.d.querySelectorAll('#metricsTable td')].filter(td => td.textContent.startsWith('—')).every(td => td.textContent === '—'));
-  assert.equal(pg.d.getElementById('stepsDetails').open, false, 'steps table starts collapsed');
-  assert.match(text(pg, 'stepsTitle'), new RegExp(fixed + ' Coza \\(modified\\), ' + lab + ' lab code'));
+  assert.deepEqual(metric(pg, 'Steps'), [String(lab), String(fixed)]);
+  assert.deepEqual(metric(pg, 'Pace (Coza’s formula)').slice(1), ['—'], 'Coza’s formulas are Coza’s');
+  assert.equal($('cozaNote').hidden, false);
+  assert.equal($('stepsDetails').open, false, 'steps table starts collapsed');
+  assert.equal(text(pg, 'stepsTitle'), 'All steps (' + lab + ' Coza, ' + fixed + ' Coza (modified))');
+  assert.match($('stepsTable').textContent, /dropped: weak peak|—/);
 
-  // the lab code's w (samples) no longer moves Coza, which has its own window in seconds
-  assert.match(text(pg, 'cwOut'), /^0\.30 s \(30 samples\)$/);
-  const wIn = pg.d.getElementById('wIn');
-  wIn.value = '150'; wIn.dispatchEvent(new pg.w.Event('input'));
-  await sleep(40);
-  assert.equal(pg.plots.at(-1).traces[TR.algo].x.length, fixed, 'Coza unchanged by the lab w');
-  assert.notEqual(pg.plots.at(-1).traces[TR.lab].x.length, lab, 'the lab code follows w');
-  const cw = pg.d.getElementById('cwIn');
-  cw.value = '0.6'; cw.dispatchEvent(new pg.w.Event('input'));
-  await sleep(40);
-  assert.match(text(pg, 'cwOut'), /^0\.60 s \(60 samples\)$/);
-  const hNum = pg.d.getElementById('hNum');
-  hNum.value = '0.35'; hNum.dispatchEvent(new pg.w.Event('input'));
-  await sleep(40);
-  assert.equal(text(pg, 'legH'), 'Threshold h = 0.35');
-  pg.d.getElementById('resetParams').click();
-  assert.equal(wIn.value, '30'); assert.equal(cw.value, '0.3');
+  // each has its own settings: Coza's w (samples) doesn't move Coza (modified), whose window is in seconds
+  await act(pg, 'Coza', 'open');
+  assert.equal(indRow(pg, 'Coza').querySelector('.ind-body').hidden, false);
+  assert.equal(paramOut(pg, 'Coza', 'w'), '30 samples (0.30 s)');
+  await setParam(pg, 'Coza', 'w', 150);
+  assert.equal(indRow(pg, 'Coza').querySelector('.ind-sum').textContent, 'w 150 · h 1');
+  assert.notEqual(markers(pg, 'Coza').x.length, lab, 'Coza follows its w');
+  assert.equal(markers(pg, 'Coza (modified)').x.length, fixed, 'Coza (modified) doesn’t');
+  await act(pg, 'Coza (modified)', 'open');
+  assert.equal(paramOut(pg, 'Coza (modified)', 'cozaWindow'), '0.30 s (30 samples)');
+  await setParam(pg, 'Coza (modified)', 'h', 0.35);
+  assert.match(text(pg, 'legInd'), /Coza \(modified\) h = 0\.35/);
+  assert.equal(indRow(pg, 'Coza (modified)').querySelector('input[type=range][data-key="h"]').value, '0.35', 'box and slider together');
+  await act(pg, 'Coza', 'reset');
+  assert.equal(markers(pg, 'Coza').x.length, lab, 'Default settings');
 
-  // export uses a download link outside Claude
+  // the steps export: a column per detector
   let saved = null;
   pg.w.HTMLAnchorElement.prototype.click = function () { saved = this.download; };
-  pg.d.getElementById('expSteps').click();
+  $('expSteps').click();
   assert.equal(saved, 'walk_steps.csv');
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /^time_s,sample_matlab,value,coza,coza_modified\n/);
+  assert.match(csv, /\n[\d.]+,\d+,[-\d.]+,step,step\n/, 'found by both');
+  assert.match(csv, /\n[\d.]+,450,[-\d.]+,step,\n/, 'the tied peak: Coza only');
+  assert.match(csv, /\n[\d.]+,\d+,[-\d.]+,,weak peak\n/, 'dropped by Coza (modified)');
 });
 
 test('notes are pinned to the plot, listed, exported and deleted, without changing steps', async () => {
@@ -150,11 +189,9 @@ test('notes are pinned to the plot, listed, exported and deleted, without changi
   assert.equal($('noteForm').hidden, true);
   assert.equal($('noteList').children.length, 1);
 
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  $('expMetrics').click();
-  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  const csv = await exportCsv(pg);
   assert.match(csv, /note_time_s,note\n3\.250,turned <around>\n/);
-  assert.match(csv, /\ncoza_window_s,0\.3\ncoza_window_samples,30\nfix_weak_peaks,"on, 40%"\n/, 'the algorithm lists its own settings');
+  assert.match(csv, /\ncoza,Coza: w 30 · h 1 \(filtered\)\ncoza_modified,Coza \(modified\): h 1 · window 0\.30 s · weak peaks dropped \(filtered\)\n/, 'each detector with its settings');
 
   $('noteList').querySelector('button').click();
   assert.equal($('noteList').hidden, true);
@@ -165,17 +202,18 @@ test('the interval strip is off by default and can be turned on', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
-  let { traces, layout } = pg.plots.at(-1);
+  let { layout } = pg.plots.at(-1);
   assert.equal($('showIntervals').checked, false);
-  assert.equal(traces[TR.algoIv].visible, false); assert.equal(traces[TR.labIv].visible, false);
+  assert.equal(traces(pg, 'intervals').length, 0);
   assert.deepEqual([...layout.yaxis.domain], [0, 1], 'the signal takes the full height');
   assert.equal(layout.yaxis2.visible, false); assert.equal(layout.xaxis.anchor, 'y');
   $('showIntervals').checked = true; $('showIntervals').dispatchEvent(new pg.w.Event('change'));
-  ({ traces, layout } = pg.plots.at(-1));
-  assert.equal(traces[TR.algoIv].visible, true); assert.equal(traces[TR.labIv].visible, true);
+  ({ layout } = pg.plots.at(-1));
+  assert.deepEqual(traces(pg, 'intervals').map(t => t.name), ['Coza interval', 'Coza (modified) interval'], 'one per detector');
+  assert.ok(traces(pg, 'intervals').every(t => t.yaxis === 'y2'));
   // the spectrum's rhythm over time sits in the same strip: column 2 repeats about every 1.1 s
-  const rh = traces[TR.rhythm];
-  assert.equal(rh.visible, true); assert.equal(rh.yaxis, 'y2');
+  const rh = trace(pg, 'rhythm');
+  assert.equal(rh.yaxis, 'y2');
   const periods = rh.y.filter(v => v !== null);
   assert.ok(periods.length > 10 && periods.every(v => v > 1 && v < 1.25), 'about 1.1 s: ' + periods.slice(0, 3));
   assert.deepEqual([...layout.yaxis.domain], [0.3, 1]);
@@ -183,179 +221,153 @@ test('the interval strip is off by default and can be turned on', async () => {
   assert.match($('plot').getAttribute('aria-label'), /time between steps/);
 });
 
-test('the lab code comparison can be hidden', async () => {
+test('indicators can be hidden, removed, added again and repeated with their own settings', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
-  const heads = () => [...pg.d.querySelectorAll('#metricsTable th')].map(th => th.textContent);
-  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza (modified)']);
-  assert.match(text(pg, 'valList'), /Lab code counts 1 peak twice/);
-  $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
-  const last = pg.plots.at(-1);
-  assert.equal(last.traces[TR.lab].visible, false, 'lab markers hidden');
-  assert.equal(last.traces[TR.labIv].visible, false, 'lab interval triangles hidden');
-  assert.equal(last.traces[TR.algo].visible, undefined, 'Coza still drawn');
-  assert.deepEqual(heads(), ['Metric', 'Coza (modified)']);
-  assert.ok(!/Pace \(lab formula\)/.test(text(pg, 'metricsTable')), 'lab-only rows go too');
-  assert.equal($('labNote').hidden, true);
-  assert.equal($('legLab').hidden, true);
-  assert.equal($('wCtl').hidden, true, 'the lab window slider goes with it');
-  assert.equal($('hCtl').hidden, false, 'Coza still uses h');
-  assert.equal(last.layout.shapes.length, 1, 'so the h line stays');
-  assert.ok(!/Lab code/.test(text(pg, 'valList')), 'lab-only checks hidden');
-  $('showLab').checked = true; $('showLab').dispatchEvent(new pg.w.Event('change'));
-  assert.deepEqual(heads(), ['Metric', 'Lab code', 'Coza (modified)']);
-  assert.equal(pg.plots.at(-1).traces[TR.lab].visible, true);
+  await act(pg, 'Coza', 'eye');
+  assert.equal(markers(pg, 'Coza'), undefined, 'hidden: off the plot');
+  assert.ok(indRow(pg, 'Coza').classList.contains('off')); assert.equal(indRow(pg, 'Coza').querySelector('[data-act=eye]').getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(heads(pg), ['Metric', 'Coza (modified)'], 'and out of the metrics');
+  assert.equal(metric(pg, 'Pace (Coza’s formula)'), null, 'Coza’s own rows go with it');
+  assert.equal($('cozaNote').hidden, true);
+  assert.doesNotMatch(text(pg, 'valList'), /counts 1 peak twice/, 'checks about it go too');
+  assert.equal(pg.plots.at(-1).layout.shapes.length, 1);
+  await act(pg, 'Coza', 'eye');
+  assert.deepEqual(heads(pg), ['Metric', 'Coza', 'Coza (modified)']);
+
+  await act(pg, 'Coza', 'remove');
+  await act(pg, 'Coza (modified)', 'remove');
+  assert.deepEqual(indNames(pg, 'detList'), []);
+  assert.equal($('detNone').hidden, false);
+  assert.match(text(pg, 'valList'), /No step detector on the plot/);
+  assert.deepEqual(heads(pg), ['Metric']);
+  assert.equal(traces(pg, 'markers').length, 0);
+
+  // the same detector twice, with different settings: numbered, coloured apart
+  await addInd(pg, 'detector', 'coza_original');
+  await addInd(pg, 'detector', 'coza_original');
+  assert.deepEqual(indNames(pg, 'detList'), ['Coza 1', 'Coza 2']);
+  assert.equal(indRow(pg, 'Coza 2').querySelector('.ind-body').hidden, false, 'a new one opens its settings');
+  await setParam(pg, 'Coza 2', 'w', 150);
+  assert.notEqual(samples(pg, 'Coza 1'), samples(pg, 'Coza 2'));
+  assert.notEqual(indRow(pg, 'Coza 1').style.getPropertyValue('--ic'), indRow(pg, 'Coza 2').style.getPropertyValue('--ic'));
+  assert.deepEqual(heads(pg), ['Metric', 'Coza 1', 'Coza 2']);
+  const csv = await exportCsv(pg, 'expSteps');
+  assert.match(csv, /^time_s,sample_matlab,value,coza,coza_2\n/);
 });
 
-test('Coza is the lab rule as written: the lab code\'s steps, its w and h, ties kept', async () => {
+test('Coza is the rule in LabStepDet_2025.m, with its own w and h, tied peaks kept', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
-  const $ = id => pg.d.getElementById(id);
-  const pick = async (id, v) => { $(id).value = v; $(id).dispatchEvent(new pg.w.Event(id === 'wIn' ? 'input' : 'change')); await sleep(40); };
-  await pick('algoSel', 'coza_original');
-  assert.equal(text(pg, 'legAlgo'), 'Coza'); assert.equal(text(pg, 'algoDesc'), 'The lab detector exactly as written, bugs included.');
-  assert.match(text(pg, 'algoDetail'), /tied peaks count twice and the stop bump counts as a step/);
-  assert.equal($('advDetails').querySelector('[data-algo="coza"]').hidden, true, 'no options of its own');
-  const same = () => { const tr = pg.plots.at(-1).traces; return tr[TR.algo].x.join() === tr[TR.lab].x.join(); };
-  assert.ok(same(), 'the lab code\'s steps, tied peak included');
-  assert.doesNotMatch(text(pg, 'valList'), /weak peak|counts each once/);
-  const heads = [...pg.d.querySelectorAll('#metricsTable th')].map(th => th.textContent);
-  assert.deepEqual(heads, ['Metric', 'Lab code', 'Coza']);
-  const stepsRow = [...pg.d.querySelectorAll('#metricsTable tbody tr')][0].textContent;
-  const n = pg.plots.at(-1).traces[TR.lab].x.length;
-  assert.equal(stepsRow, 'Steps' + n + n, 'same count in both columns');
-  await pick('wIn', '50'); assert.ok(same(), 'follows the lab code\'s w');
-  await pick('hNum', '2'); $('hNum').dispatchEvent(new pg.w.Event('input')); await sleep(40); assert.ok(same(), 'and h');
-  $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
-  assert.equal($('wCtl').hidden, false, 'w stays: Coza uses it'); assert.equal($('hCtl').hidden, false);
-  await pick('algoSel', 'coza');
-  assert.equal($('wCtl').hidden, true, 'Coza (modified) has its own window in seconds');
+  const C = pg.w.StepCore, sig = () => Float64Array.from(trace(pg, 'signal').y);
+  const want = (w, h) => C.detectOriginal(sig(), w, h).map(i => i + 1).join();
+  assert.equal(samples(pg, 'Coza'), want(30, 1));
+  await act(pg, 'Coza', 'open');
+  const body = indRow(pg, 'Coza').querySelector('.ind-body');
+  assert.match(body.textContent, /exactly as written, bugs included/);
+  assert.match(body.querySelector('.howto').textContent, /tied peaks count twice and the stop bump counts as a step/);
+  assert.deepEqual([...body.querySelectorAll('[data-key]:not([data-mirror])')].map(e => e.dataset.key), ['w', 'h']);
+  await setParam(pg, 'Coza', 'w', 50); assert.equal(samples(pg, 'Coza'), want(50, 1));
+  await setParam(pg, 'Coza', 'h', 2); assert.equal(samples(pg, 'Coza'), want(50, 2));
+  assert.doesNotMatch(text(pg, 'valList'), /Coza drops/, 'no weak-peak removal');
 });
 
 test('Threshold peaks draws its smoothed signal and threshold, and does not use h', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
-  const $ = id => pg.d.getElementById(id);
-  const algo = $('algoSel');
-  algo.value = 'threshold'; algo.dispatchEvent(new pg.w.Event('change'));
-  await sleep(40);
-  let last = pg.plots.at(-1);
-  assert.equal(text(pg, 'legAlgo'), 'Threshold peaks');
-  assert.match(text(pg, 'algoDesc'), /mean \+ k·SD/);
-  assert.equal($('advDetails').querySelector('[data-algo="coza"]').hidden, true, 'Coza options hide');
-  assert.equal($('advDetails').querySelector('[data-algo="threshold"]').hidden, false);
-  assert.equal(last.traces[TR.guide].visible, true); assert.equal(last.traces[TR.guide].name, 'Smoothed (3 Hz)');
-  assert.equal(last.traces[TR.guide2].line.dash, 'dash');
-  assert.match(text(pg, 'legGuides'), /^Smoothed \(3 Hz\)Mean \+ k·SD = -?\d+\.\d\d$/, 'not confused with h');
-  const smooth = last.traces[TR.guide].y, markers = last.traces[TR.algo];
-  assert.ok(markers.x.length >= 10, 'finds the walk');
-  assert.ok(markers.y.every((y, k) => y === smooth[markers.customdata[k][0] - 1]), 'markers sit on the smoothed signal');
-  assert.equal($('hCtl').hidden, false, 'h still shown while the lab code is compared');
-
-  $('showLab').checked = false; $('showLab').dispatchEvent(new pg.w.Event('change'));
-  last = pg.plots.at(-1);
-  assert.equal($('hCtl').hidden, true, 'h hides when nothing uses it');
-  assert.equal($('legHItem').hidden, true);
-  assert.equal(last.layout.shapes.length, 0, 'no h line');
-
-  const k = $('tpKIn');
-  k.value = '1.5'; k.dispatchEvent(new pg.w.Event('input'));
-  await sleep(40);
-  assert.equal(text(pg, 'tpKOut'), '1.50 SD');
-  assert.ok(pg.plots.at(-1).traces[TR.guide2].y[0] > last.traces[TR.guide2].y[0], 'threshold moves with k');
-  $('resetParams').click();
-  assert.equal(k.value, '0.5'); assert.equal(text(pg, 'tpKOut'), '0.50 SD');
-
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  $('expMetrics').click();
-  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
-  assert.match(csv, /^metric,lab_code,threshold,/);
-  assert.match(csv, /\nalgorithm,Threshold peaks\n/);
-  assert.match(csv, /\nlowpass_cutoff_hz,3\nthreshold_k,0\.5\nthreshold_value,-?[\d.]+\nmin_interval_s,0\.25\n/);
-  assert.ok(!/coza_window/.test(csv));
+  await addInd(pg, 'detector', 'threshold');
+  assert.deepEqual(indNames(pg, 'detList'), ['Coza', 'Coza (modified)', 'Threshold peaks']);
+  const smooth = trace(pg, 'guide', 'Threshold peaks: Smoothed (3 Hz)'), level = traces(pg, 'guide').find(t => /^Threshold peaks: Mean \+ k·SD = /.test(t.name));
+  assert.ok(smooth && level); assert.equal(level.line.dash, 'dash');
+  assert.match(text(pg, 'legInd'), /Threshold peaks: Mean \+ k·SD = -?\d+\.\d\d/, 'not confused with h');
+  const m = markers(pg, 'Threshold peaks');
+  assert.ok(m.x.length >= 10, 'finds the walk');
+  assert.ok(m.y.every((y, k) => Math.abs(y - 2 * ((Math.max(...trace(pg, 'signal').y) - Math.min(...trace(pg, 'signal').y)) * 0.06) - smooth.y[m.customdata[k][0] - 1]) < 1e-9), 'markers sit on the smoothed signal, stacked above the other two');
+  assert.equal(pg.plots.at(-1).layout.shapes.length, 2, 'no h line of its own');
+  assert.ok(!/Threshold peaks h =/.test(text(pg, 'legInd')));
+  assert.deepEqual([...indRow(pg, 'Threshold peaks').querySelectorAll('[data-key]')].map(e => e.dataset.key), ['tpCutoff', 'tpK', 'tpMinInterval']);
+  const before = level.y[0];
+  await setParam(pg, 'Threshold peaks', 'tpK', 1.5);
+  assert.equal(paramOut(pg, 'Threshold peaks', 'tpK'), '1.50 SD');
+  assert.ok(traces(pg, 'guide').find(t => /^Threshold peaks: Mean/.test(t.name)).y[0] > before, 'threshold moves with k');
+  await act(pg, 'Threshold peaks', 'reset');
+  assert.equal(paramOut(pg, 'Threshold peaks', 'tpK'), '0.50 SD');
+  const csv = await exportCsv(pg);
+  assert.match(csv, /^metric,unit,coza,coza_modified,threshold\n/);
+  assert.match(csv, /\nthreshold,Threshold peaks: cut-off 3\.0 Hz · k 0\.50 SD · min 0\.25 s \(filtered\)\n/);
 });
 
 test('Peak-to-valley draws its dynamic threshold and has its own options', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
-  const $ = id => pg.d.getElementById(id);
-  $('algoSel').value = 'peakvalley'; $('algoSel').dispatchEvent(new pg.w.Event('change'));
-  await sleep(40);
-  const last = pg.plots.at(-1);
-  assert.equal(last.traces[TR.guide2].name, 'Dynamic threshold');
-  assert.equal(last.traces[TR.guide2].y.length, last.traces[TR.signal].y.length, 'one threshold value per sample');
-  assert.equal($('advDetails').querySelector('[data-algo="peakvalley"]').hidden, false);
-  assert.equal(text(pg, 'pvSwingOut'), '40%');
-  const n = last.traces[TR.algo].x.length;
+  await addInd(pg, 'detector', 'peakvalley');
+  const dyn = trace(pg, 'guide', 'Peak-to-valley: Dynamic threshold');
+  assert.equal(dyn.y.length, trace(pg, 'signal').y.length, 'one threshold value per sample');
+  assert.equal(paramOut(pg, 'Peak-to-valley', 'pvSwing'), '40%');
+  const n = markers(pg, 'Peak-to-valley').x.length;
   assert.ok(n >= 14 && n <= 17, n + ' steps on the demo walk');
-  const sw = $('pvSwingIn');
-  sw.value = '100'; sw.dispatchEvent(new pg.w.Event('input'));
-  await sleep(40);
-  assert.equal(text(pg, 'pvSwingOut'), '100%');
-  assert.ok(pg.plots.at(-1).traces[TR.algo].x.length < n, 'a higher minimum swing keeps fewer steps');
+  await setParam(pg, 'Peak-to-valley', 'pvSwing', 100);
+  assert.equal(paramOut(pg, 'Peak-to-valley', 'pvSwing'), '100%');
+  assert.ok(markers(pg, 'Peak-to-valley').x.length < n, 'a higher minimum swing keeps fewer steps');
 });
 
 test('Zero-crossing marks crossings of its baseline and exports its settings', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
-  const $ = id => pg.d.getElementById(id);
-  $('algoSel').value = 'zerocross'; $('algoSel').dispatchEvent(new pg.w.Event('change'));
-  await sleep(40);
-  const last = pg.plots.at(-1);
-  assert.equal(last.traces[TR.guide2].name, 'Baseline (0.3 Hz)');
-  const base = last.traces[TR.guide2].y, sm = last.traces[TR.guide].y;
-  const m = last.traces[TR.algo];
+  await addInd(pg, 'detector', 'zerocross');
+  const base = trace(pg, 'guide', 'Zero-crossing: Baseline (0.3 Hz)').y, sm = trace(pg, 'guide', 'Zero-crossing: Smoothed (3 Hz)').y;
+  const m = markers(pg, 'Zero-crossing');
   assert.ok(m.x.length >= 14 && m.x.length <= 17, m.x.length + ' steps on the demo walk');
   for (const [s1] of m.customdata) assert.ok(sm[s1 - 2] < base[s1 - 2] && sm[s1 - 1] >= base[s1 - 1], 'each marker is an upward crossing');
   assert.match(text(pg, 'stepsTitle'), /Zero-crossing/);
+  const $ = id => pg.d.getElementById(id);
   pg.w.HTMLAnchorElement.prototype.click = function () {};
-  $('expMetrics').click();
-  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
-  assert.match(csv, /\nlowpass_cutoff_hz,3\nbaseline_cutoff_hz,0\.3\nhysteresis_sd,0\.3\nhysteresis_value,[\d.]+\nmin_interval_s,0\.25\n/);
+  $('expFmt').value = 'zip'; $('expFmt').dispatchEvent(new pg.w.Event('change'));
+  $('expGo').click(); await sleep(20);
+  const bytes = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(new Uint8Array(r.result)); r.readAsArrayBuffer(pg.blobs.at(-1)); });
+  const ind = new TextDecoder().decode(Core.parseZip(bytes).find(e => e.name === 'indicators.csv').read());
+  assert.match(ind, /zerocross,detector,zerocross,Zero-crossing,filtered,c3,"\{""zcCutoff"":3,""zcMinInterval"":0\.25\}","\{""lowpass_cutoff_hz"":3,""baseline_cutoff_hz"":0\.3,""hysteresis_sd"":0\.3,""hysteresis_value"":[\d.]+,""min_interval_s"":0\.25\}"/);
 });
 
-test('a filter feeds the algorithm, not the lab code, and is drawn over the faded recording', async () => {
+test('a filter feeds the indicators that take the filtered signal, drawn over the faded recording', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
   assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II', 'Elliptic', 'Moving average', 'Median', 'Savitzky–Golay', 'Wavelet (Daubechies-4)', 'Notch']);
   assert.equal($('filterSel').value, 'none', 'off by default');
   assert.equal($('filterOpts').hidden, true);
-  let last = pg.plots.at(-1);
-  assert.equal(last.traces[TR.filtered].visible, false); assert.equal(last.traces[TR.signal].opacity, 1);
-  const labBefore = last.traces[TR.lab].x.join();
+  assert.equal(trace(pg, 'filtered'), undefined); assert.equal(trace(pg, 'signal').opacity, 1);
+  const cozaBefore = samples(pg, 'Coza');
   // the walk fixture runs at about 100 Hz: the low-pass slider stops below 50 Hz
   assert.equal($('fLowIn').max, '20');
+  await setSource(pg, 'Coza', 'recorded');
 
   $('filterSel').value = 'cheby1'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
   await sleep(40);
-  last = pg.plots.at(-1);
   assert.match(text(pg, 'filterDesc'), /ripple in the passband/);
   assert.equal($('filterOpts').hidden, false);
   assert.equal($('fRippleIn').closest('.ctl').hidden, false, 'ripple shown');
   assert.equal($('fAttenIn').closest('.ctl').hidden, true, 'attenuation hidden');
   assert.equal(text(pg, 'fOrderOut'), '4th order'); assert.equal(text(pg, 'fHighOut'), 'off');
-  assert.equal(last.traces[TR.filtered].visible, true); assert.equal(last.traces[TR.signal].opacity, 0.35);
+  assert.ok(trace(pg, 'filtered')); assert.equal(trace(pg, 'signal').opacity, 0.35);
   assert.equal($('legFilter').hidden, false);
-  assert.equal(last.traces[TR.lab].x.join(), labBefore, 'the lab code still runs on the recorded signal');
-  const filtered = last.traces[TR.filtered].y, m = last.traces[TR.algo];
-  assert.ok(m.y.every((y, k) => y === filtered[m.customdata[k][0] - 1]), 'Coza markers sit on the filtered signal');
-  assert.equal($('labFilterNote').hidden, false);
+  assert.equal(samples(pg, 'Coza'), cozaBefore, 'Coza, set to Unfiltered, still runs on the recorded signal');
+  const filtered = trace(pg, 'filtered').y, m = markers(pg, 'Coza (modified)');
+  assert.ok(m.customdata.every(([s1, v]) => v === filtered[s1 - 1]), 'Coza (modified) runs on the filtered signal');
   assert.match(text(pg, 'valList'), /Resampled for filtering.*even \d+\.\d Hz grid/, 'the fixture has phone-like timing');
 
   const hp = $('fHighIn');
   hp.value = '0.3'; hp.dispatchEvent(new pg.w.Event('input'));
   await sleep(40);
   assert.equal(text(pg, 'fHighOut'), '0.30 Hz');
-  assert.match(text(pg, 'valList'), /h applies to the filtered signal/);
+  assert.match(text(pg, 'valList'), /h applies to the filtered signal.*Coza \(modified\) compares h with the filtered values/);
 
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  $('expMetrics').click();
-  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
-  assert.match(csv, /\nfilter,"Chebyshev I, 4th order, 0\.3–3\.0 Hz band-pass, 0\.5 dB ripple"\nfilter_resampled,yes\n/);
+  const csv = await exportCsv(pg);
+  assert.match(csv, /\nfilter,"Chebyshev I, 4th order, 0\.3–3\.0 Hz band-pass, 0\.5 dB ripple"\nfilter_resampled,true\n/);
+  assert.match(csv, /\ncoza,Coza: w 30 · h 1 \(unfiltered\)\n/);
 
   $('resetParams').click();
   assert.equal(hp.value, '0'); assert.equal(text(pg, 'fHighOut'), 'off');
@@ -374,7 +386,7 @@ test('every filter shows only its own settings, and presets set an IIR band-pass
     $('filterSel').value = id; $('filterSel').dispatchEvent(new pg.w.Event('change'));
     await sleep(30);
     assert.deepEqual(visible().sort(), params.slice().sort(), id);
-    assert.equal(pg.plots.at(-1).traces[TR.filtered].visible, true, id + ' applied with its defaults');
+    assert.ok(trace(pg, 'filtered'), id + ' applied with its defaults');
     assert.equal(pg.d.querySelector('.presets').hidden, !['butter', 'bessel', 'cheby1', 'cheby2', 'ellip'].includes(id), id + ': presets for IIR only');
     n++;
   }
@@ -387,10 +399,7 @@ test('every filter shows only its own settings, and presets set an IIR band-pass
   await sleep(40);
   assert.equal($('filterSel').value, 'bessel', 'the type stays');
   assert.equal(text(pg, 'fOrderOut'), '4th order'); assert.equal(text(pg, 'fHighOut'), '0.50 Hz'); assert.equal(text(pg, 'fLowOut'), '3.0 Hz');
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  $('expMetrics').click();
-  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
-  assert.match(csv, /\nfilter,"Bessel, 4th order, 0\.5–3\.0 Hz band-pass"\n/);
+  assert.match(await exportCsv(pg), /\nfilter,"Bessel, 4th order, 0\.5–3\.0 Hz band-pass"\n/);
 });
 
 test('impossible filter settings are reported, not applied', async () => {
@@ -404,7 +413,7 @@ test('impossible filter settings are reported, not applied', async () => {
   hp.value = '0.8'; hp.dispatchEvent(new pg.w.Event('input'));
   await sleep(40);
   assert.match(text(pg, 'valList'), /Filter not applied.*high-pass cut-off must be below the low-pass.*To fix: Change the filter settings under Advanced/);
-  assert.equal(pg.plots.at(-1).traces[TR.filtered].visible, false);
+  assert.equal(trace(pg, 'filtered'), undefined);
   assert.equal($('legFilter').hidden, true);
 });
 
@@ -413,49 +422,46 @@ test('resampling feeds everything downstream, shows the recording behind it, and
   await upload(pg, path.join(FIX, 'ptb_gforce.csv'));
   const $ = id => pg.d.getElementById(id);
   const change = async (id, v) => { if (v !== undefined) { if ($(id).type === 'checkbox') $(id).checked = v; else $(id).value = v; } $(id).dispatchEvent(new pg.w.Event('change')); await sleep(40); };
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  const exportText = async () => { $('expMetrics').click(); return new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); }); };
-  const snapshot = async () => ({ steps: pg.plots.at(-1).traces[TR.algo].x.join(), lab: pg.plots.at(-1).traces[TR.lab].x.join(),
-    metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await exportText() });
-  await change('chanSel', '2'); // gFy: carries gravity, so the lab code finds steps at h = 1
+  const snapshot = async () => ({ coza: samples(pg, 'Coza'), mod: samples(pg, 'Coza (modified)'), metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await exportCsv(pg) });
+  await change('chanSel', '2'); // gFy: carries gravity, so Coza finds steps at h = 1
   assert.equal($('rsSel').value, 'off', 'no rate is built in');
   assert.equal($('rsRateRow').hidden, true); assert.equal($('rsOpts').hidden, true);
   const off = await snapshot();
-  assert.ok(off.steps.split(',').length > 5 && off.lab.split(',').length > 5);
+  assert.ok(off.coza.split(',').length > 5 && off.mod.split(',').length > 5);
   assert.match(off.csv, /\nresample,off\n/);
-  assert.equal(pg.plots.at(-1).traces[TR.recorded].visible, false);
+  assert.equal(trace(pg, 'recorded'), undefined);
 
   await change('rsSel', 'rate');
   assert.equal($('rsRateRow').hidden, false); assert.equal($('rsRate').value, '', 'the rate starts empty');
   assert.match(text(pg, 'valList'), /Resampling not applied.*No rate is set.*Type a rate/);
-  assert.equal((await snapshot()).steps, off.steps, 'no rate: nothing changes');
+  assert.equal((await snapshot()).coza, off.coza, 'no rate: nothing changes');
 
   await change('rsRate', '50');
-  let last = pg.plots.at(-1);
-  assert.equal(last.traces[TR.recorded].visible, true); assert.equal(last.traces[TR.recorded].zorder, -1);
-  assert.equal(last.traces[TR.recorded].y.length, 1800, 'every recorded row, behind the resampled signal');
-  const sig = last.traces[TR.signal];
+  const rec = trace(pg, 'recorded');
+  assert.equal(rec.zorder, -1);
+  assert.equal(rec.y.length, 1800, 'every recorded row, behind the resampled signal');
+  const sig = trace(pg, 'signal');
   assert.ok(Math.abs(sig.x[1] - sig.x[0] - 0.02) < 1e-12, 'the signal is on a 50 Hz grid');
-  assert.ok(sig.y.length < last.traces[TR.recorded].y.length * 0.55);
+  assert.ok(sig.y.length < rec.y.length * 0.55);
   assert.equal($('legResample').hidden, false);
   assert.match(text(pg, 'valList'), /Resampled to 50\.0 Hz.*straight lines between samples \(like MATLAB interp1\)/);
-  assert.match(text(pg, 'valList'), /Lab code assumes 100 Hz.*the 50\.0 Hz it receives after resampling/);
+  assert.match(text(pg, 'valList'), /Coza assumes 100 Hz.*the 50\.0 Hz it receives after resampling/);
   assert.match(text(pg, 'valList'), /No anti-aliasing.*folds back/);
-  assert.equal(text(pg, 'wOut'), '30 samples (0.60 s)', 'the lab window is counted on the new grid');
-  let csv = await exportText();
-  assert.match(csv, /\nsampling_rate_hz,50\nrecorded_rate_hz,[\d.]+\nresample,"50\.00 Hz, linear"\n/);
-  assert.match(csv, /\ncoza_window_samples,15\n/, 'Coza counts its 0.3 s window on the new grid');
+  await act(pg, 'Coza', 'open'); await act(pg, 'Coza (modified)', 'open');
+  assert.equal(paramOut(pg, 'Coza', 'w'), '30 samples (0.60 s)', 'Coza’s window counts samples on the new grid');
+  assert.equal(paramOut(pg, 'Coza (modified)', 'cozaWindow'), '0.30 s (15 samples)', 'Coza (modified)’s stays 0.3 s');
+  assert.match(await exportCsv(pg), /\nsampling_rate_hz,50\nrecorded_rate_hz,[\d.]+\nresample,"50\.00 Hz, linear"\n/);
 
   await change('rsMethod', 'pchip'); await change('rsAA', true);
   assert.match(text(pg, 'valList'), /Resampled to 50\.0 Hz.*monotone cubic.*Low-passed at 20\.0 Hz first/);
   assert.doesNotMatch(text(pg, 'valList'), /No anti-aliasing/);
-  assert.match(await exportText(), /\nresample,"50\.00 Hz, pchip, anti-aliased"\n/);
+  assert.match(await exportCsv(pg), /\nresample,"50\.00 Hz, pchip, anti-aliased"\n/);
 
   // the preset, then a filter on top: the filter's base line is the resampled signal
   $('rsAA').checked = false; $('rsMethod').value = 'linear';
   pg.d.querySelector('[data-rs-rate="100"]').click(); await sleep(40);
   assert.equal($('rsRate').value, '100');
-  assert.doesNotMatch(text(pg, 'valList'), /Lab code assumes 100 Hz/);
+  assert.doesNotMatch(text(pg, 'valList'), /Coza assumes 100 Hz/);
   await change('filterSel', 'butter');
   assert.equal(text(pg, 'legFilterBase'), 'Resampled');
   assert.doesNotMatch(text(pg, 'valList'), /Resampled for filtering/, 'the grid is already even');
@@ -466,73 +472,66 @@ test('resampling feeds everything downstream, shows the recording behind it, and
   assert.match(text(pg, 'valList'), /Resampled to 1\d\d Hz/);
 
   await change('rsSel', 'off');
+  await act(pg, 'Coza', 'open'); await act(pg, 'Coza (modified)', 'open'); // closed again, as in the snapshot
   assert.deepEqual(await snapshot(), off, 'off again: steps, metrics and exports as before');
-  assert.equal(pg.plots.at(-1).traces[TR.recorded].visible, false); assert.equal($('legResample').hidden, true);
+  assert.equal(trace(pg, 'recorded'), undefined); assert.equal($('legResample').hidden, true);
 });
 
-test('envelopes are drawn around the signal and never change steps, metrics or exports', async () => {
+test('envelopes are drawn around the signal, several at once, and never change steps or metrics', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
-  const sel = $('envSel');
-  assert.deepEqual([...sel.options].map(o => o.textContent), ['None', 'Sliding window', 'Peak-trough', 'Dynamic threshold', 'Mean ± k·SD', 'Hilbert envelope', 'Percentile band']);
-  assert.equal(sel.value, 'none');
-  assert.ok(sel.closest('.plot-tools'), 'a view option, in the plot toolbar');
-  let last = pg.plots.at(-1);
-  assert.equal(last.traces[TR.envUpper].visible, false); assert.equal(last.traces[TR.envMid].visible, false);
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  const exportText = async () => { $('expMetrics').click(); return new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); }); };
-  const snapshot = async () => ({ steps: pg.plots.at(-1).traces[TR.algo].x.join(), lab: pg.plots.at(-1).traces[TR.lab].x.join(),
-    metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await exportText() });
+  const metricsCsv = async () => (await exportCsv(pg)).split('\n\n')[0];
+  const snapshot = async () => ({ coza: samples(pg, 'Coza'), mod: samples(pg, 'Coza (modified)'), metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, csv: await metricsCsv() });
   const before = await snapshot();
-  const n = before.steps.split(',').length;
-  for (const id of ['sliding', 'peaktrough', 'meansd', 'hilbert', 'percentile', 'dynamic']) { // dynamic last: the checks below continue from it
-    sel.value = id; sel.dispatchEvent(new pg.w.Event('change'));
-    await sleep(40);
-    last = pg.plots.at(-1);
-    const { y: lo } = last.traces[TR.envLower], { y: hi, fill } = last.traces[TR.envUpper], sig = last.traces[TR.signal].y;
-    assert.equal(fill, 'tonexty', id + ': shaded band');
-    assert.ok(Array.from(sig).every((v, i) => hi[i] >= lo[i]), id + ': upper above lower');
-    if (id === 'sliding' || id === 'dynamic') assert.ok(Array.from(sig).every((v, i) => lo[i] <= v && v <= hi[i]), id + ': the signal stays inside');
+  for (const id of ['sliding', 'peaktrough', 'meansd', 'hilbert', 'percentile', 'dynamic']) {
+    await addInd(pg, 'envelope', id);
+    const name = indNames(pg, 'envList')[0];
+    const lo = trace(pg, 'envLower').y, up = trace(pg, 'envUpper'), sig = trace(pg, 'signal').y;
+    assert.equal(up.fill, 'tonexty', id + ': shaded band');
+    assert.ok(Array.from(sig).every((v, i) => up.y[i] >= lo[i]), id + ': upper above lower');
+    if (id === 'sliding' || id === 'dynamic') assert.ok(Array.from(sig).every((v, i) => lo[i] <= v && v <= up.y[i]), id + ': the signal stays inside');
     const mid = { dynamic: 'Dynamic threshold (envelope)', meansd: 'Moving mean' }[id];
-    assert.equal(last.traces[TR.envMid].visible, !!mid, id + ': midline only where the envelope has one');
-    assert.equal($('legEnv').hidden, false); assert.equal($('legEnvMid').hidden, !mid);
-    if (mid) { assert.equal(text(pg, 'legEnvMidText'), mid); assert.equal(last.traces[TR.envMid].name, mid); }
+    assert.equal(traces(pg, 'envMid').length, mid ? 1 : 0, id + ': midline only where the envelope has one');
+    if (mid) { assert.equal(trace(pg, 'envMid').name, name + ': ' + mid); assert.match(text(pg, 'legInd'), new RegExp(name.replace(/[±·()]/g, '.') + ': ' + mid.replace(/[()]/g, '.'))); }
     assert.deepEqual(await snapshot(), before, id + ': a view only');
-    assert.equal(last.layout.shapes.length, 1, id + ': the fixed h line stays for comparison');
+    assert.equal(pg.plots.at(-1).layout.shapes.length, 2, id + ': the h lines stay');
+    await act(pg, name, 'remove');
   }
-  assert.equal(text(pg, 'legEnvText'), 'Envelope, sliding 1.0 s');
-  assert.equal(pg.d.querySelector('#envWinIn').closest('.env-opts').hidden, false);
-  assert.equal(pg.d.querySelector('.env-opts[data-env="peaktrough"]').hidden, true);
-  const win = $('envWinIn');
-  win.value = '2'; win.dispatchEvent(new pg.w.Event('input'));
-  await sleep(40);
-  assert.equal(text(pg, 'legEnvText'), 'Envelope, sliding 2.0 s');
-  assert.equal(pg.plots.at(-1).traces[TR.algo].x.length, n, 'steps unchanged by the window');
+  assert.equal($('envList').hidden, true);
 
-  // peak-trough: the smooth-joins checkbox changes the line, not the steps, and resets off
-  sel.value = 'peaktrough'; sel.dispatchEvent(new pg.w.Event('change'));
-  await sleep(40);
-  const straight = Array.from(pg.plots.at(-1).traces[TR.envUpper].y);
-  $('envSmoothIn').checked = true; $('envSmoothIn').dispatchEvent(new pg.w.Event('change'));
-  await sleep(40);
-  assert.notDeepEqual(Array.from(pg.plots.at(-1).traces[TR.envUpper].y), straight);
-  assert.equal(text(pg, 'legEnvText'), 'Envelope, peak-trough (smooth)');
-  assert.equal(pg.plots.at(-1).traces[TR.algo].x.length, n);
-  $('resetParams').click();
-  assert.equal($('envSmoothIn').checked, false, 'reset turns it off');
-  sel.value = 'sliding'; sel.dispatchEvent(new pg.w.Event('change'));
-  await sleep(40);
+  // two at once, each in its own colour, each with its settings
+  await addInd(pg, 'envelope', 'sliding'); await addInd(pg, 'envelope', 'meansd');
+  assert.deepEqual(indNames(pg, 'envList'), ['Sliding window', 'Mean ± k·SD']);
+  assert.equal(traces(pg, 'envUpper').length, 2);
+  assert.notEqual(indRow(pg, 'Sliding window').style.getPropertyValue('--ic'), indRow(pg, 'Mean ± k·SD').style.getPropertyValue('--ic'));
+  assert.match(text(pg, 'legInd'), /Sliding window \(window 1\.0 s\).*Mean ± k·SD \(window 1\.0 s · k 1\.00 SD\)/);
+  await setParam(pg, 'Sliding window', 'envWindow', 2);
+  assert.match(text(pg, 'legInd'), /Sliding window \(window 2\.0 s\)/);
+  assert.equal(samples(pg, 'Coza (modified)'), before.mod, 'steps unchanged by the window');
+  await act(pg, 'Mean ± k·SD', 'remove');
 
-  // with a filter on, the envelope follows the filtered signal the algorithm sees
+  // peak-trough: the smooth-joins checkbox changes the line, not the steps
+  await addInd(pg, 'envelope', 'peaktrough');
+  const straight = Array.from(traces(pg, 'envUpper')[1].y);
+  await setParam(pg, 'Peak-trough', 'envSmooth', true);
+  assert.notDeepEqual(Array.from(traces(pg, 'envUpper')[1].y), straight);
+  assert.equal(indRow(pg, 'Peak-trough').querySelector('.ind-sum').textContent, 'window 0.30 s · smooth');
+  await act(pg, 'Peak-trough', 'reset');
+  assert.equal(indRow(pg, 'Peak-trough').querySelector('[data-key="envSmooth"]').checked, false, 'Default settings turns it off');
+  await act(pg, 'Peak-trough', 'remove');
+
+  // with a filter on, an envelope on the filtered signal follows it; set to Unfiltered, the recording
   $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
   await sleep(40);
-  last = pg.plots.at(-1);
-  const f = last.traces[TR.filtered].y, hi = last.traces[TR.envUpper].y;
+  let f = trace(pg, 'filtered').y, hi = trace(pg, 'envUpper').y;
   assert.ok(Array.from(f).every((v, i) => v <= hi[i]));
-  assert.ok(Array.from(last.traces[TR.signal].y).some((v, i) => v > hi[i]), 'not the recorded signal');
-  sel.value = 'none'; sel.dispatchEvent(new pg.w.Event('change'));
-  assert.equal(pg.plots.at(-1).traces[TR.envUpper].visible, false); assert.equal($('legEnv').hidden, true);
+  assert.ok(Array.from(trace(pg, 'signal').y).some((v, i) => v > hi[i]), 'not the recorded signal');
+  await setSource(pg, 'Sliding window', 'recorded');
+  hi = trace(pg, 'envUpper').y;
+  assert.ok(Array.from(trace(pg, 'signal').y).every((v, i) => v <= hi[i]), 'now the recorded signal');
+  await act(pg, 'Sliding window', 'eye');
+  assert.equal(traces(pg, 'envUpper').length, 0);
 });
 
 test('the spectrum panel shows the walking rhythm, the filter gain and a cadence cross-check', async () => {
@@ -545,12 +544,9 @@ test('the spectrum panel shows the walking rhythm, the filter gain and a cadence
   assert.equal(sp.traces[2].visible, false, 'no filter gain without a filter');
   assert.match(sp.layout.annotations[0].text, /^0\.9\d Hz = 5\d\/min$/, 'the stride-rate peak of column 2');
   assert.equal(sp.layout.yaxis.type, 'linear');
-  const row = name => [...pg.d.querySelectorAll('#metricsTable tbody tr')].find(r => r.cells[0].textContent === name);
-  assert.match(row('Cadence (spectrum)').cells[2].textContent, /^5\d\.\d steps\/min$/);
-  assert.match(row('Cadence (spectrum)').querySelector('.tip').title, /resolution is about 60 ÷ the segment length/);
+  assert.match(text(pg, 'specCadNote'), /^From the spectrum, without detecting steps: 5\d\.\d steps\/min \(60 × the strongest walking frequency, resolution about [\d.]+\/min\)\.$/);
   assert.match(text(pg, 'specNote'), /strongest rhythm .* 0\.9\d Hz: 5\d per minute/);
-  assert.match(row('Harmonic ratio').cells[2].textContent, /^\d+\.\d\d$/);
-  assert.match(row('Harmonic ratio').querySelector('.tip').title, /averaged over \d+ strides/);
+  assert.ok(metric(pg, 'Harmonic ratio').every(v => /^\d+\.\d\d$/.test(v)), 'for each detector');
 
   $('specLog').checked = true; $('specLog').dispatchEvent(new pg.w.Event('change'));
   assert.equal(pg.spectra.at(-1).layout.yaxis.type, 'log');
@@ -566,50 +562,46 @@ test('the spectrum panel shows the walking rhythm, the filter gain and a cadence
   await sleep(40);
   assert.equal(pg.spectra.at(-1).traces[2].visible, false); assert.match(text(pg, 'specNote'), /isn’t linear/);
 
-  // magnitude: two bumps per stride, so the spectrum's rhythm is twice Coza's peak rate
+  // magnitude: two bumps per stride, so the spectrum's rhythm is twice the detectors' peak rate
   $('filterSel').value = 'none'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
   $('chanSel').value = '4'; $('chanSel').dispatchEvent(new pg.w.Event('change'));
   await sleep(40);
-  assert.match(text(pg, 'valList'), /Spectrum and steps differ by a factor of 2/);
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  $('expMetrics').click();
-  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
-  assert.match(csv, /\ncadence_spectrum,,1\d\d\.\d+,,steps\/min/);
-  assert.match(csv, /\nspectrum_segment_s,(7\.99|8\.00)\d*\n/, "8 s, as a whole number of samples");
-  assert.match(csv, /\nharmonic_ratio,,\d+\.\d+,,even\/odd harmonics per stride \(\d+ strides\)\n/);
+  assert.match(text(pg, 'valList'), /Spectrum and steps differ by a factor of 2.*Coza \(modified\) gives/);
+  const csv = await exportCsv(pg);
+  assert.match(csv, /\nharmonic_ratio,even\/odd harmonics per stride,[\d.]+,[\d.]+\n/);
+  assert.match(csv, /\nspectrum_segment_s,(7\.99|8\.00)\d*\n/, '8 s, as a whole number of samples');
 });
 
-test('moving h or an algorithm setting reuses the filter and spectra; their own settings recompute them', async () => {
+test('moving a detector setting reuses the filter and spectra; their own settings recompute them', async () => {
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id), C = pg.w.StepCore, calls = { spectrum: 0, rhythmOverTime: 0, applyFilter: 0 };
   for (const k of Object.keys(calls)) { const f = C[k]; C[k] = (...a) => { calls[k]++; return f(...a); }; }
-  const input = (id, v) => { $(id).value = v; $(id).dispatchEvent(new pg.w.Event('input')); };
-  input('hNum', '0.5'); await sleep(40);
-  input('cwIn', '0.4'); await sleep(40);
+  await act(pg, 'Coza (modified)', 'open');
+  await setParam(pg, 'Coza (modified)', 'h', 0.5);
+  await setParam(pg, 'Coza (modified)', 'cozaWindow', 0.4);
   assert.deepEqual(calls, { spectrum: 0, rhythmOverTime: 0, applyFilter: 0 }, 'cached');
+  const input = (id, v) => { $(id).value = v; $(id).dispatchEvent(new pg.w.Event('input')); };
   input('specSegIn', '6'); await sleep(40);
   assert.equal(calls.spectrum, 1); assert.equal(calls.rhythmOverTime, 0);
   $('filterSel').value = 'butter'; $('filterSel').dispatchEvent(new pg.w.Event('change')); await sleep(40);
   assert.equal(calls.applyFilter, 1); assert.equal(calls.spectrum, 3, 'filtered and recorded spectra'); assert.equal(calls.rhythmOverTime, 1);
 });
 
-test('the demo walk drops its start and stop bumps as weak peaks', async () => {
+test('the demo walk: Coza (modified) drops the start and stop bumps as weak peaks', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
-  assert.match(text(pg, 'valList'), /2 weak peaks dropped.*less than 40% as far above h/);
-  const last = pg.plots.at(-1);
-  assert.equal(last.traces[TR.lab].x.length - last.traces[TR.algo].x.length, 2);
+  assert.match(text(pg, 'valList'), /Coza \(modified\) drops 2 weak peaks.*less than 40% as far above h/);
+  assert.equal(markers(pg, 'Coza').x.length - markers(pg, 'Coza (modified)').x.length, 2);
 
   // Phone position: on one leg, each peak is a stride (2 steps)
   const pos = pg.d.getElementById('posSel');
   assert.equal(pos.value, 'hand');
-  const steps = () => pg.d.querySelector('#metricsTable tbody tr td:nth-child(3)').textContent;
-  assert.equal(steps(), '15');
+  assert.equal(metric(pg, 'Steps')[1], '15');
   pos.value = 'leg'; pos.dispatchEvent(new pg.w.Event('change'));
   await sleep(40);
-  assert.match(steps(), /^30\s*15 strides × 2$/);
+  assert.match(metric(pg, 'Steps')[1], /^30\s*15 strides × 2$/);
   assert.match(text(pg, 'posHint'), /stride/);
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
@@ -627,13 +619,10 @@ test('vertical and horizontal signals appear for recordings with gravity, disabl
   await sleep(40);
   assert.match(text(pg, 'plotTitle'), /, vertical \(computed\)$/);
   assert.equal(pg.plots.at(-1).layout.yaxis.title.text, 'vertical (computed) (g)');
-  assert.ok(Math.abs(C_mean(pg.plots.at(-1).traces[TR.signal].y)) < 0.05, 'gravity subtracted: centred near 0 g');
+  assert.ok(Math.abs(C_mean(trace(pg, 'signal').y)) < 0.05, 'gravity subtracted: centred near 0 g');
   $('valToggle').click();
   assert.match(text(pg, 'valList'), /Vertical acceleration from the direction of gravity/);
-  pg.w.HTMLAnchorElement.prototype.click = function () {};
-  $('expMetrics').click();
-  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
-  assert.match(csv, /\nsignal,vertical \(computed\)\n/);
+  assert.match(await exportCsv(pg), /\nsignal,vertical \(computed\)\n/);
 
   await upload(pg, path.join(FIX, 'walk.mat'));
   assert.equal(opt('vertical').disabled, true);
@@ -648,10 +637,10 @@ test('reads a MATLAB v7.3 file like the v5 one', async () => {
   pg.d.getElementById('valToggle').click();
   pg.d.getElementById('passToggle').click();
   assert.match(text(pg, 'valList'), /MATLAB v7\.3 file read.*HDF5 format, read with jsfive\. 1 variable found: Walking \(double, 1800×5\)/);
-  const v73 = pg.plots.at(-1).traces[TR.lab].x;
+  const v73 = samples(pg, 'Coza');
   const ref = makePage();
   await upload(ref, path.join(FIX, 'walk.mat'));
-  assert.deepEqual(Array.from(v73), Array.from(ref.plots.at(-1).traces[TR.lab].x), 'same lab-code steps as walk.mat');
+  assert.equal(v73, samples(ref, 'Coza'), 'the same steps as walk.mat');
 
   await upload(pg, path.join(FIX, 'walk_v73_mixed.mat'));
   assert.deepEqual([...pg.d.getElementById('varSel').options].map(o => o.textContent), ['A (25×5, double)', 'rec.acc (1800×3, int16)']);
@@ -693,7 +682,6 @@ test('reads a Physics Toolbox CSV', async () => {
 });
 
 /* ------------------------------------------------- browser recorder (#51) */
-const Core = require('../src/core.js');
 // devicemotion events: ~60 Hz with uneven timing, gravity on y, a 0.9 Hz walk
 function motionSamples(seconds) {
   const out = []; let ts = 5000.25, k = 0;
@@ -743,14 +731,14 @@ test('records a walk from motion events, loads it like a file, and downloads wha
   assert.match($('fileChip').textContent, /^recording_\d{8}-\d{6}\.csv/);
   assert.match(text(pg, 'valTitle'), /^Valid/);
   assert.match(text(pg, 'valList'), /Recorded in the browser.*about 6\d\.\d Hz, every sample at its own time.*Recorded with: 14 steps counted by hand, phone in the front trouser pocket\./);
-  assert.match(text(pg, 'valList'), /Lab code assumes 100 Hz/, 'the recording is not resampled');
+  assert.match(text(pg, 'valList'), /Coza assumes 100 Hz/, 'the recording is not resampled');
   assert.equal($('posSel').value, 'leg', 'front pocket: each peak is a stride');
   const opts = [...$('chanSel').options].map(o => o.textContent);
   assert.ok(['x (gFx)', 'y (gFy)', 'z (gFz)', 'magnitude (TgF)', 'ax (linear accelerometer)', 'wx (gyroscope)', 'vertical (along gravity, computed)'].every(o => opts.includes(o)), opts.join(' | '));
   $('chanSel').value = '2'; $('chanSel').dispatchEvent(new pg.w.Event('change')); await sleep(40); // gFy carries gravity
-  assert.ok(pg.plots.at(-1).traces[TR.algo].x.length >= 6, 'the walk is found');
-  const peaks = pg.plots.at(-1).traces[TR.algo].x.length, labPeaks = pg.plots.at(-1).traces[TR.lab].x.length;
-  assert.match(text(pg, 'valList'), new RegExp('You counted 14 steps; Coza \\(modified\\) finds ' + 2 * peaks + '.*Each peak counts as 2 steps \\(Phone position: one leg\\)\\. The lab code marks ' + labPeaks + ' peaks, each a stride, so about ' + 2 * labPeaks + ' steps\\.'));
+  assert.ok(markers(pg, 'Coza (modified)').x.length >= 6, 'the walk is found');
+  const peaks = markers(pg, 'Coza (modified)').x.length, cozaPeaks = markers(pg, 'Coza').x.length;
+  assert.match(text(pg, 'valList'), new RegExp('You counted 14 steps ?Coza finds ' + 2 * cozaPeaks + ' \\([-+]\\d+%\\); Coza \\(modified\\) finds ' + 2 * peaks + '.*Each peak counts as 2 steps \\(Phone position: one leg\\)\\.'));
 
   assert.equal($('saveRec').hidden, false);
   pg.w.HTMLAnchorElement.prototype.click = function () {};
@@ -777,7 +765,7 @@ test('records a walk from motion events, loads it like a file, and downloads wha
   await upload(pg, tmp); fs.unlinkSync(tmp);
   assert.match(text(pg, 'valList'), /iPhone axis signs not yet checked.*don’t depend on the sign/);
   await upload(pg, path.join(FIX, 'recorder.csv')); // a saved recording, uploaded again
-  assert.match(text(pg, 'valList'), /Recorded in the browser.*Recorded with: 12 steps counted by hand, phone in the hand\..*You counted 12 steps; Coza \(modified\) finds/);
+  assert.match(text(pg, 'valList'), /Recorded in the browser.*Recorded with: 12 steps counted by hand, phone in the hand\..*You counted 12 steps ?Coza finds \d+.*; Coza \(modified\) finds \d+/);
 });
 
 test('recorder: hold to stop, too short, page hidden mid-recording', async () => {
@@ -849,13 +837,17 @@ test('Export… writes zip, MATLAB, NumPy and JSON; a JSON export reopens to the
   const change = async (id, v) => { if ($(id).type === 'checkbox') $(id).checked = v; else $(id).value = v; $(id).dispatchEvent(new pg.w.Event('change')); await sleep(40); };
   pg.w.HTMLAnchorElement.prototype.click = function () {};
   // a non-default analysis: filter, Coza window, phone on one leg, an envelope, a note
-  await change('filterSel', 'butter'); await change('cwIn', '0.4'); $('cwIn').dispatchEvent(new pg.w.Event('input')); await sleep(40);
-  await change('posSel', 'leg'); await change('envSel', 'sliding');
+  await change('filterSel', 'butter');
+  await act(pg, 'Coza (modified)', 'open'); await setParam(pg, 'Coza (modified)', 'cozaWindow', 0.4);
+  await setSource(pg, 'Coza', 'recorded');
+  await addInd(pg, 'detector', 'threshold'); await act(pg, 'Threshold peaks', 'eye'); // hidden: not exported
+  await change('posSel', 'leg'); await addInd(pg, 'envelope', 'sliding');
   $('noteMode').checked = true; $('noteMode').dispatchEvent(new pg.w.Event('change'));
   pg.d.getElementById('plot')._click({ points: [{ x: 4.5 }] }); await sleep(20);
   $('noteText').value = 'turned ✓'; $('noteForm').dispatchEvent(new pg.w.Event('submit', { cancelable: true })); await sleep(60);
-  const snap = () => ({ steps: pg.plots.at(-1).traces[TR.algo].x.join(), lab: pg.plots.at(-1).traces[TR.lab].x.join(), metrics: $('metricsTable').innerHTML, stepsTable: $('stepsTable').innerHTML, notes: $('noteList').textContent });
-  const before = snap();
+  const snap = p => ({ coza: samples(p, 'Coza'), mod: samples(p, 'Coza (modified)'), metrics: p.d.getElementById('metricsTable').innerHTML,
+    stepsTable: p.d.getElementById('stepsTable').innerHTML, notes: p.d.getElementById('noteList').textContent, env: trace(p, 'envUpper').y.join() });
+  const before = snap(pg);
   assert.match(before.notes, /turned ✓/);
 
   assert.equal($('expFmt').value, 'csv'); assert.equal($('expCsv').hidden, false); assert.equal($('expParts').hidden, true);
@@ -872,13 +864,17 @@ test('Export… writes zip, MATLAB, NumPy and JSON; a JSON export reopens to the
   assert.match($('expSignalsInfo').textContent, /^\d[\d,]* rows: time, the signal, the filtered signal\. Always in JSON/);
   assert.equal($('expSignals').disabled, true, 'JSON always has the signal');
   const g = Core.parseMat(files.mat).variables[0].fields;
-  assert.deepEqual(Object.keys(g.signals.fields), ['time_s', 'signal', 'filtered', 'envelope_lower', 'envelope_upper']);
-  assert.equal(Core.parseZip(files.npz).some(e => e.name === 'steps/algorithm_status.npy'), true);
-  assert.deepEqual(Core.parseZip(files.zip).map(e => e.name), ['about.csv', 'settings.csv', 'params.csv', 'signals.csv', 'steps.csv', 'metrics.csv', 'notes.csv']);
+  assert.deepEqual(Object.keys(g.signals.fields), ['time_s', 'signal', 'filtered', 'sliding_lower', 'sliding_upper']);
+  assert.equal(Core.parseZip(files.npz).some(e => e.name === 'steps/coza_modified.npy'), true);
+  assert.deepEqual(Core.parseZip(files.zip).map(e => e.name), ['about.csv', 'settings.csv', 'params.csv', 'spectrum.csv', 'indicators.csv', 'signals.csv', 'steps.csv', 'metrics.csv', 'notes.csv']);
   const json = new TextDecoder().decode(files.json), model = Core.parseExportJson(json);
   assert.equal(model.about.file, 'walk.mat'); assert.equal(model.about.variable, 'Walking'); assert.equal(model.about.signal_name, 'Column 2');
-  assert.equal(model.settings.filter.startsWith('Butterworth'), true); assert.equal(model.settings.coza_window_s, 0.4);
-  assert.equal(model.params.cozaWindow, 0.4); assert.equal(model.params.phone_position, 'leg'); assert.equal(model.params.filter, 'butter');
+  assert.equal(model.settings.filter.startsWith('Butterworth'), true);
+  assert.equal(model.params.phone_position, 'leg'); assert.equal(model.params.filter, 'butter');
+  assert.deepEqual(Array.from(model.indicators.type), ['coza_original', 'coza', 'sliding'], 'what is shown is exported');
+  assert.deepEqual(Array.from(model.indicators.source), ['recorded', 'filtered', 'filtered']);
+  assert.equal(JSON.parse(model.indicators.params[1]).cozaWindow, 0.4);
+  assert.equal(JSON.parse(model.indicators.settings[1]).coza_window_samples, 40);
   assert.deepEqual(Array.from(model.notes.text), ['turned ✓']);
   assert.equal(model.metrics.metric[4], 'stride_time_variability');
 
@@ -887,9 +883,11 @@ test('Export… writes zip, MATLAB, NumPy and JSON; a JSON export reopens to the
   await uploadText(pg2, 'walk_gaitscope.json', json);
   const $2 = id => pg2.d.getElementById(id);
   assert.match(text(pg2, 'valList'), /gaitscope export reopened.*by the dashboard \(version 0\.1\.0\) from "walk\.mat", variable Walking, signal x \(column 2\)/);
-  assert.equal($2('filterSel').value, 'butter'); assert.equal($2('cwIn').value, '0.4'); assert.equal($2('posSel').value, 'leg'); assert.equal($2('envSel').value, 'sliding');
-  const after = { steps: pg2.plots.at(-1).traces[TR.algo].x.join(), lab: pg2.plots.at(-1).traces[TR.lab].x.join(), metrics: $2('metricsTable').innerHTML, stepsTable: $2('stepsTable').innerHTML, notes: $2('noteList').textContent };
-  assert.deepEqual(after, before, 'same steps, metrics, step table and notes');
+  assert.equal($2('filterSel').value, 'butter'); assert.equal($2('posSel').value, 'leg');
+  assert.deepEqual(indNames(pg2, 'detList'), ['Coza', 'Coza (modified)']); assert.deepEqual(indNames(pg2, 'envList'), ['Sliding window']);
+  assert.equal(indRow(pg2, 'Coza').querySelector('[data-act=source]').value, 'recorded');
+  assert.equal(indRow(pg2, 'Coza (modified)').querySelector('.ind-sum').textContent, 'h 1 · window 0.40 s · weak peaks dropped');
+  assert.deepEqual(snap(pg2), before, 'same steps, metrics, step table, notes and envelope');
 
   await uploadText(pg2, 'other.json', '{"name": "not ours"}');
   assert.match(text(pg2, 'valList'), /not a gaitscope export.*Export… → JSON/);

@@ -354,7 +354,7 @@ test('a filtered noisy walk gives the same steps as the clean walk, for every al
       got.forEach((v, k) => assert.ok(Math.abs(v - want[k]) < 0.03, filter + ', ' + a.id + ', step ' + k));
     }
   }
-  assert.notEqual(C.detectOriginal(noisy, 30, 1).length, C.detectOriginal(clean.A, 30, 1).length, 'the noise does change the unfiltered lab code');
+  assert.notEqual(C.detectOriginal(noisy, 30, 1).length, C.detectOriginal(clean.A, 30, 1).length, 'the noise does change Coza without a filter');
 });
 
 test('uneven timestamps are resampled for the filter and read back at the original times', () => {
@@ -635,7 +635,7 @@ test('vertical acceleration needs gravity, and says why when it is missing', () 
   assert.equal(r.fatal, true); assert.match(r.checks[0].fix, /G-Force Meter/);
 });
 
-test('Coza is the lab code\'s rule exactly: same steps for any w and h, tied peaks kept', () => {
+test('Coza is LabStepDet_2025.m\'s rule exactly: same steps for any w and h, tied peaks kept', () => {
   const coza = C.ALGORITHMS.find(a => a.id === 'coza_original');
   assert.equal(C.ALGORITHMS[0], coza, 'listed first'); assert.equal(coza.name, 'Coza');
   assert.equal(C.ALGORITHMS.find(a => a.id === 'coza').name, 'Coza (modified)');
@@ -900,13 +900,13 @@ test('resampling matches the Python port: linear bit for bit, pchip and anti-ali
     assert.ok(Math.abs(r.t[1] - r.t[0] - 1 / c.fs) < 1e-12 && r.t[0] === c.t[0], 'grid starts at the first sample');
   }
 });
-test('lab code on a resampled CSV export: same samples and steps as the Python port', () => {
+test('Coza on a resampled CSV export: same samples and steps as the Python port', () => {
   const { ds } = loadCsvDataset(path.join(FIX, 'ptb_gforce.csv'));
   for (const c of RS.lab) {
     const r = C.resampleChannel(C.prepareChannel(ds, 1), { mode: 'rate', rate: c.fs, method: 'linear' });
     assert.deepEqual(Array.from(r.A), c.x, c.fs + ' Hz');
     assert.deepEqual(C.detectOriginal(r.A, 30, 0.2).map(i => i + 1), c.steps_x_matlab, c.fs + ' Hz');
-    assert.equal(r.checks.some(k => k.id === 'labRate'), c.fs !== 100, 'the 100 Hz check is on what the lab code receives');
+    assert.equal(r.checks.some(k => k.id === 'cozaRate'), c.fs !== 100, 'the 100 Hz check is on what Coza receives');
   }
 });
 test('anti-aliasing removes a tone above the new Nyquist frequency; without it the tone folds back', () => {
@@ -1005,18 +1005,27 @@ test('CSV metadata lines are kept: Physics Toolbox and the recorder', () => {
 });
 
 /* ---------------------------------------------------------------- export (#53) */
-// walk.mat column 2 through the lab code and Coza, as the dashboard would export it
+// walk.mat column 2 through Coza and Coza (modified), as the dashboard would export it
 function walkExport(extra = {}) {
   const { ds } = loadMatDataset(path.join(FIX, 'walk.mat'));
-  const ch = C.prepareChannel(ds, 1), coza = C.ALGORITHMS.find(a => a.id === 'coza');
-  const fx = coza.detect(ch.A, ch.t, { h: 1, weak: true, cozaWindow: 0.3, fs: ch.fs }), origIdx = C.detectOriginal(ch.A, 30, 1);
-  return { ch, model: C.buildExport(Object.assign({
+  const ch = C.prepareChannel(ds, 1);
+  const run = type => { const def = C.ALGORITHMS.find(a => a.id === type); return def.detect(ch.A, ch.t, Object.assign({ fs: ch.fs }, C.defaultParams(def))); };
+  const o = run('coza_original'), m = run('coza');
+  const dets = [
+    { id: 'coza', type: 'coza_original', idx: o.idx, weak: [], metrics: C.timingMetrics(o.idx, ch.t, {}), hr: { ratio: 2.25, strides: 6 }, script: C.originalMetrics(o.idx, 30) },
+    { id: 'coza_modified', type: 'coza', idx: m.idx, weak: m.weakDropped, metrics: C.timingMetrics(m.idx, ch.t, {}), hr: { ratio: 2.5, strides: 6 }, script: null },
+  ];
+  return { ch, dets, model: C.buildExport(Object.assign({
     about: { file: 'walk.mat', variable: 'Walking', signal: 'x (column 2)', signal_name: 'Column 2', unit: '' },
-    settings: { algorithm: 'Coza', threshold_h: 1, note: 'naïve "quote", ✓ 😀' }, params: { w: 30, h: 1, algorithm: 'coza', weak: true },
-    t: ch.t, A: ch.A, filtered: Float64Array.from(ch.A, v => v / 2), envelope: { lower: Float64Array.from(ch.A, v => v - 1), upper: Float64Array.from(ch.A, v => v + 1) },
-    origIdx, orig: C.originalMetrics(origIdx, 30), w: 30, parts: { signals: true, envelope: true },
-    algo: { name: 'Coza', idx: fx.idx, weak: fx.weakDropped, metrics: C.timingMetrics(fx.idx, ch.t, {}), specCadence: 54.5, hr: { ratio: 2.5, strides: 6 } },
-    notes: [{ t: 3.25, text: 'turned "around", ✓' }],
+    settings: { filter: 'none', filter_resampled: false, note: 'naïve "quote", ✓ 😀' }, params: { filter: 'none', phone_position: 'hand' },
+    spectrum: { dominant_hz: 0.9, cadence_steps_min: 54.5, segment_s: 8 },
+    t: ch.t, A: ch.A, filtered: Float64Array.from(ch.A, v => v / 2),
+    indicators: [
+      { id: 'coza', kind: 'detector', type: 'coza_original', name: 'Coza', source: 'recorded', color: 'c1', params: { w: 30, h: 1 }, settings: {} },
+      { id: 'coza_modified', kind: 'detector', type: 'coza', name: 'Coza (modified)', source: 'filtered', color: 'c2', params: { h: 1, cozaWindow: 0.3, weak: true }, settings: { coza_window_samples: 30 } },
+      { id: 'sliding', kind: 'envelope', type: 'sliding', name: 'Sliding window', source: 'filtered', color: 'c3', params: { envWindow: 1 } }],
+    detectors: dets, envelopes: [{ id: 'sliding', lower: Float64Array.from(ch.A, v => v - 1), upper: Float64Array.from(ch.A, v => v + 1) }],
+    stride: false, parts: { signals: true, envelope: true }, notes: [{ t: 3.25, text: 'turned "around", ✓' }],
   }, extra)) };
 }
 // equal numbers (0 and -0 alike: JSON and CSV write -0 as 0), NaN matching NaN
@@ -1033,30 +1042,44 @@ function readNpy(u8) {
   else { const w = Number(descr.slice(2)), u = new Uint32Array(buf); values = Array.from({ length: n }, (_, i) => String.fromCodePoint(...Array.from(u.subarray(i * w, i * w + w)).filter(c => c))); }
   return { descr, shape, values };
 }
-test('export model: the parts, 1-based samples, and steps from both versions with the reason', () => {
-  const { ch, model } = walkExport();
-  assert.deepEqual(Object.keys(model), ['about', 'settings', 'params', 'signals', 'steps', 'metrics', 'notes']);
-  assert.equal(model.about.format, 'gaitscope-export'); assert.equal(model.about.format_version, 1); assert.equal(model.about.version, C.VERSION);
-  assert.deepEqual(Object.keys(model.signals), ['time_s', 'signal', 'filtered', 'envelope_lower', 'envelope_upper']);
+test('export model: the parts, 1-based samples, a step column and a metrics column per detector', () => {
+  const { ch, dets, model } = walkExport();
+  assert.deepEqual(Object.keys(model), ['about', 'settings', 'params', 'spectrum', 'indicators', 'signals', 'steps', 'metrics', 'notes']);
+  assert.equal(model.about.format, 'gaitscope-export'); assert.equal(model.about.format_version, 2); assert.equal(model.about.version, C.VERSION);
+  assert.deepEqual(model.indicators.id, ['coza', 'coza_modified', 'sliding']);
+  assert.deepEqual(JSON.parse(model.indicators.params[1]), { h: 1, cozaWindow: 0.3, weak: true }); assert.deepEqual(JSON.parse(model.indicators.settings[1]), { coza_window_samples: 30 });
+  assert.deepEqual(Object.keys(model.signals), ['time_s', 'signal', 'filtered', 'sliding_lower', 'sliding_upper']);
   const s = model.steps;
-  assert.deepEqual(Object.keys(s), ['time_s', 'sample_matlab', 'value', 'in_lab_code', 'in_algorithm', 'algorithm_status']);
+  assert.deepEqual(Object.keys(s), ['time_s', 'sample_matlab', 'value', 'coza', 'coza_modified']);
   s.sample_matlab.forEach((k, j) => { assert.equal(s.time_s[j], ch.t[k - 1]); assert.equal(s.value[j], ch.A[k - 1]); });
-  assert.deepEqual(s.sample_matlab.filter((_, j) => s.in_lab_code[j]), C.detectOriginal(ch.A, 30, 1).map(i => i + 1));
-  assert.ok(s.algorithm_status.includes('kept') && s.algorithm_status.some(v => v === 'tied peak' || v === 'weak peak'));
-  assert.deepEqual(model.metrics.metric.slice(0, 4), ['steps', 'average_step_duration', 'cadence', 'pace_lab_formula']);
-  assert.equal(model.metrics.algorithm[7], 54.5); assert.equal(model.metrics.unit_algorithm[8], 'even/odd harmonics per stride (6 strides)');
-  assert.equal(walkExport({ parts: { signals: true, envelope: false } }).model.signals.envelope_lower, undefined, 'envelope only when asked');
+  for (const d of dets) assert.deepEqual(s.sample_matlab.filter((_, j) => s[d.id][j] === 'step'), d.idx.map(i => i + 1), d.id);
+  assert.deepEqual(s.coza.filter(v => v === 'step').length, C.detectOriginal(ch.A, 30, 1).length);
+  assert.ok(s.coza_modified.includes(''), 'the tied duplicate: a step for Coza only');
+  const row = name => model.metrics.metric.indexOf(name);
+  assert.deepEqual(model.metrics.metric.slice(0, 4), ['steps', 'peaks', 'step_interval', 'cadence']);
+  assert.equal(model.metrics.coza[row('steps')], dets[0].idx.length); assert.equal(model.metrics.coza_modified[row('steps')], dets[1].idx.length);
+  assert.equal(model.metrics.coza[row('coza_pace')], dets[0].script.pace, 'Coza\'s own formulas');
+  assert.ok(Number.isNaN(model.metrics.coza_modified[row('coza_pace')]), 'only for Coza');
+  assert.equal(model.metrics.coza_modified[row('harmonic_ratio')], 2.5);
+  assert.equal(walkExport({ parts: { signals: true, envelope: false } }).model.signals.sliding_lower, undefined, 'envelopes only when asked');
   assert.equal(walkExport({ parts: { signals: false } }).model.signals, undefined, 'signals can be left out');
+});
+test('stepTable and indicatorIds', () => {
+  const st = C.stepTable([{ id: 'a', idx: [3, 10], weak: [] }, { id: 'b', idx: [10, 20], weak: [5] }]);
+  assert.deepEqual(st.rows, [3, 5, 10, 20]);
+  assert.deepEqual(st.status, { a: ['step', '', 'step', ''], b: ['', 'weak peak', 'step', 'step'] });
+  assert.deepEqual(C.indicatorIds([{ type: 'coza_original' }, { type: 'coza' }, { type: 'threshold' }, { type: 'threshold' }, { type: 'coza_original' }]),
+    ['coza', 'coza_modified', 'threshold', 'threshold_2', 'coza_2']);
 });
 test('JSON export reads back exactly, NaN included', () => {
   const { model } = walkExport();
   const back = C.parseExportJson(C.exportJson(model));
-  for (const k of ['signals', 'steps', 'metrics', 'notes']) for (const c of Object.keys(model[k])) {
+  for (const k of ['indicators', 'signals', 'steps', 'metrics', 'notes']) for (const c of Object.keys(model[k])) {
     const a = model[k][c], b = back[k][c];
     assert.ok(typeof a[0] === 'number' ? sameNum(a, b) : JSON.stringify(Array.from(a)) === JSON.stringify(Array.from(b)), k + '.' + c);
   }
-  assert.ok(Number.isNaN(back.metrics.lab_code[2]), 'cadence: no lab-code value, null in JSON, NaN again');
-  assert.deepEqual(back.settings, model.settings); assert.deepEqual(back.params, model.params);
+  assert.ok(Number.isNaN(back.metrics.coza_modified[model.metrics.metric.indexOf('coza_pace')]), 'NaN, null in JSON, NaN again');
+  assert.deepEqual(back.settings, model.settings); assert.deepEqual(back.params, model.params); assert.deepEqual(back.spectrum, model.spectrum);
   assert.throws(() => C.parseExportJson('{"a": 1}'), e => /not a gaitscope export/.test(e.message) && !!e.fix);
   assert.throws(() => C.parseExportJson('{"about": {"format": "gaitscope-export", "format_version": 99}}'), /format version 99, newer/);
   assert.throws(() => C.parseExportJson('{oops'), /could not be read/);
@@ -1068,14 +1091,13 @@ test('MAT export reads back in the page\'s own MAT reader with the same numbers'
   assert.deepEqual(parsed.variables.map(v => v.name), ['gaitscope']);
   const g = parsed.variables[0].fields;
   assert.deepEqual(Object.keys(g), Object.keys(model));
-  for (const [k, c] of [['signals', 'signal'], ['signals', 'envelope_upper'], ['steps', 'sample_matlab'], ['metrics', 'lab_code'], ['notes', 'time_s']]) {
+  for (const [k, c] of [['signals', 'signal'], ['signals', 'sliding_upper'], ['steps', 'sample_matlab'], ['metrics', 'coza'], ['metrics', 'coza_modified'], ['notes', 'time_s']]) {
     assert.deepEqual(g[k].fields[c].dims, [model[k][c].length, 1], k + '.' + c + ' is a column');
     assert.ok(sameNum(g[k].fields[c].data, model[k][c]), k + '.' + c);
   }
-  assert.equal(g.steps.fields.in_lab_code.logical, true);
-  assert.deepEqual(Array.from(g.steps.fields.in_lab_code.data, Boolean), model.steps.in_lab_code);
-  assert.equal(g.steps.fields.algorithm_status.cls, 'cell');
-  assert.equal(g.about.fields.format_version.data[0], 1);
+  assert.equal(g.steps.fields.coza.cls, 'cell'); assert.equal(g.indicators.fields.params.cls, 'cell');
+  assert.equal(g.settings.fields.filter_resampled.logical, true);
+  assert.equal(g.about.fields.format_version.data[0], 2);
 });
 test('MAT export: struct field-name lengths are small data elements, as MATLAB writes them', () => {
   const mat = C.exportMat(walkExport().model), hex = Buffer.from(mat).toString('hex');
@@ -1092,15 +1114,15 @@ test('MAT export loads in GNU Octave with the same numbers and text', { skip: !o
     const out = require('child_process').execFileSync('octave-cli', ['-q', '--eval', [
       'load x.mat; g = gaitscope;',
       "printf('%s\\n', strjoin(fieldnames(g)', ','));",
-      "printf('%s %s %s\\n', class(g.signals.signal), class(g.steps.in_lab_code), class(g.steps.algorithm_status));",
-      "printf('%.17g\\n', g.signals.signal);", "printf('STATUS %s\\n', g.steps.algorithm_status{:});",
+      "printf('%s %s %s\\n', class(g.signals.signal), class(g.settings.filter_resampled), class(g.steps.coza_modified));",
+      "printf('%.17g\\n', g.signals.signal);", "printf('STATUS %s\\n', g.steps.coza_modified{:});",
       "printf('NOTE %s\\n', g.notes.text{1});", "printf('SET %s\\n', g.settings.note);",
     ].join(' ')], { cwd: dir, encoding: 'utf8' }).split('\n');
     assert.equal(out[0], Object.keys(model).join(','));
     assert.equal(out[1], 'double logical cell');
     const sig = out.slice(2, 2 + model.signals.signal.length).map(Number);
     assert.ok(sameNum(sig, model.signals.signal), 'every sample, to 17 digits');
-    assert.deepEqual(out.filter(l => l.startsWith('STATUS ')).map(l => l.slice(7)), model.steps.algorithm_status);
+    assert.deepEqual(out.filter(l => l.startsWith('STATUS')).map(l => l.slice(7)), model.steps.coza_modified);
     assert.equal(out.find(l => l.startsWith('NOTE ')), 'NOTE turned "around", ✓');
     assert.equal(out.find(l => l.startsWith('SET ')), 'SET naïve "quote", ✓ \uFFFD', 'beyond U+FFFF becomes U+FFFD');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -1109,11 +1131,10 @@ test('NPZ export: a zip of .npy arrays, numbers, true/false and text', () => {
   const { model } = walkExport();
   const entries = C.parseZip(C.exportNpz(model));
   const names = entries.map(e => e.name);
-  assert.deepEqual(names.slice(0, 4), ['about.npy', 'settings.npy', 'params.npy', 'signals/time_s.npy']);
+  assert.deepEqual(names.slice(0, 5), ['about.npy', 'settings.npy', 'params.npy', 'spectrum.npy', 'indicators/id.npy']);
   const get = n => readNpy(entries.find(e => e.name === n + '.npy').read());
   assert.ok(sameNum(get('signals/signal').values, model.signals.signal));
-  const st = get('steps/algorithm_status'); assert.match(st.descr, /^<U\d+$/); assert.deepEqual(st.values, model.steps.algorithm_status);
-  assert.deepEqual(get('steps/in_lab_code').values, model.steps.in_lab_code);
+  const st = get('steps/coza_modified'); assert.match(st.descr, /^<U\d+$/); assert.deepEqual(st.values, model.steps.coza_modified);
   const settings = get('settings'); assert.deepEqual(settings.shape, []);
   assert.deepEqual(JSON.parse(settings.values[0]), model.settings, 'text beyond U+FFFF too');
   assert.deepEqual(get('notes/text').values, ['turned "around", ✓']);
@@ -1121,14 +1142,14 @@ test('NPZ export: a zip of .npy arrays, numbers, true/false and text', () => {
 test('CSV zip: one file per part, and the CSV reader reads it back', () => {
   const { model } = walkExport();
   const entries = C.parseZip(C.exportCsvZip(model));
-  assert.deepEqual(entries.map(e => e.name), ['about.csv', 'settings.csv', 'params.csv', 'signals.csv', 'steps.csv', 'metrics.csv', 'notes.csv']);
+  assert.deepEqual(entries.map(e => e.name), ['about.csv', 'settings.csv', 'params.csv', 'spectrum.csv', 'indicators.csv', 'signals.csv', 'steps.csv', 'metrics.csv', 'notes.csv']);
   const text = n => new TextDecoder().decode(entries.find(e => e.name === n).read());
   const sig = C.parseCsv(text('signals.csv'));
   assert.deepEqual(sig.names, Object.keys(model.signals));
   assert.ok(sameNum(sig.cols[1], model.signals.signal), 'full precision');
-  assert.match(text('steps.csv'), /^time_s,sample_matlab,value,in_lab_code,in_algorithm,algorithm_status\n[\d.]+,\d+,[-\d.]+,true,(true|false),/);
+  assert.match(text('steps.csv'), /^time_s,sample_matlab,value,coza,coza_modified\n[\d.]+,\d+,[-\d.]+,step,(step|weak peak)?\n/);
   assert.match(text('notes.csv'), /^time_s,text\n3\.25,"turned ""around"", ✓"\n$/);
-  assert.match(text('settings.csv'), /^key,value\nalgorithm,Coza\n/);
+  assert.match(text('settings.csv'), /^key,value\nfilter,none\nfilter_resampled,false\n/);
 });
 test('zip writer: CRC-32 and a central directory other tools accept', () => {
   assert.equal(C.crc32(new TextEncoder().encode('123456789')), 0xcbf43926, 'the standard check value');
@@ -1137,16 +1158,21 @@ test('zip writer: CRC-32 and a central directory other tools accept', () => {
   assert.deepEqual(e.map(x => [x.name, x.size]), [['a.txt', 5], ['dir/ü.txt', 0]]);
   assert.equal(new TextDecoder().decode(e[0].read()), 'hello');
 });
-test('the Python port\'s export and the dashboard\'s agree on the lab code (walk.mat, column 2)', () => {
+test('the Python port\'s export and the dashboard\'s agree on Coza (walk.mat, column 2)', () => {
   const py = C.parseExportJson(fs.readFileSync(path.join(FIX, 'export_python.json'), 'utf8'));
   const { model } = walkExport();
   assert.equal(py.about.generator, 'gaitscope python port'); assert.equal(py.about.version, model.about.version);
   assert.equal(py.about.format_version, model.about.format_version);
+  assert.deepEqual(py.indicators.type, ['coza_original']); assert.deepEqual(JSON.parse(py.indicators.params[0]), { w: 30, h: 1 });
   assert.ok(sameNum(py.signals.time_s, model.signals.time_s) && sameNum(py.signals.signal, model.signals.signal), 'same time base and signal');
-  const lab = model.steps.in_lab_code.map((v, j) => (v ? j : -1)).filter(j => j >= 0);
-  for (const c of ['time_s', 'sample_matlab', 'value']) assert.ok(sameNum(py.steps[c], lab.map(j => model.steps[c][j])), 'steps.' + c);
-  assert.deepEqual(py.metrics.metric, model.metrics.metric); assert.deepEqual(py.metrics.unit_lab_code, model.metrics.unit_lab_code);
-  py.metrics.lab_code.forEach((v, k) => assert.ok(Number.isNaN(v) ? Number.isNaN(model.metrics.lab_code[k]) : close(v, model.metrics.lab_code[k], 1e-12), py.metrics.metric[k]));
+  const rows = model.steps.coza.map((v, j) => (v === 'step' ? j : -1)).filter(j => j >= 0);
+  for (const c of ['time_s', 'sample_matlab', 'value']) assert.ok(sameNum(py.steps[c], rows.map(j => model.steps[c][j])), 'steps.' + c);
+  assert.deepEqual(py.metrics.metric, model.metrics.metric); assert.deepEqual(py.metrics.unit, model.metrics.unit);
+  py.metrics.coza.forEach((v, k) => {
+    const name = py.metrics.metric[k], w = model.metrics.coza[k];
+    if (name === 'harmonic_ratio') return assert.ok(Number.isNaN(v), 'not in the Python port');
+    assert.ok(Number.isNaN(v) ? Number.isNaN(w) : close(v, w, 1e-12), name);
+  });
 });
 test('VERSION matches package.json', () => {
   assert.equal(C.VERSION, require('../package.json').version);

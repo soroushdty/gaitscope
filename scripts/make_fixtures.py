@@ -454,7 +454,7 @@ def main():
     A = W[:, 1]
     model = lab_step_det.export_model(W[:, 0] - W[0, 0], A, detect_steps(A)[1],
                                       {"file": "walk.mat", "variable": "Walking", "signal": "column 2", "signal_name": "Column 2", "unit": ""},
-                                      {"algorithm": "lab code", "window_w_samples": 30, "threshold_h": 1, "resample": "off", "to_g": False})
+                                      {"resample": "off", "to_g": False})
     model["about"]["exported"] = "2026-10-07T00:00:00.000Z"  # fixed, so regenerating doesn't change the file
     lab_step_det.write_export(model, p("export_python.json"))
     with open(p("envelopes.json"), "w") as f:
@@ -462,7 +462,7 @@ def main():
     with open(p("spectral.json"), "w") as f:
         json.dump({"source": "numpy.fft, scipy.signal; inputs: fft_input(), filter_input()", **spectral_fixtures()}, f)
     with open(p("resample.json"), "w") as f:
-        # and the whole path: a CSV export through load_csv and resample, then the lab code
+        # and the whole path: a CSV export through load_csv and resample, then Coza
         D, _ = load_csv(p("ptb_gforce.csv"))
         lab = []
         for fs in (100, 50):

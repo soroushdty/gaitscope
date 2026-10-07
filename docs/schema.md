@@ -95,13 +95,13 @@ automatically, with a warning, because that is almost always a transposed record
 
 If x, y and z are known but no magnitude column exists, a computed magnitude is offered.
 MAT columns keep their MATLAB numbers in labels ("x (column 2)") so they map directly
-onto `Walking(:,2)` in the lab code.
+onto `Walking(:,2)` in Coza's `.m` file.
 
 ## 5. Units
 
-The lab threshold `h = 1` is in the signal's own units, so units matter most of all:
-in g, walking peaks can stay below 1 and the lab code would report almost no steps
-without any error.
+Coza's threshold `h = 1` is in the signal's own units, so units matter most of all:
+in g, walking peaks can stay below 1 and Coza would report almost no steps without any
+error.
 
 * **Physics Toolbox CSV:** read from the column names. `gF*` → g, including gravity;
   `a*` → m/s², gravity removed; `w*` → rad/s (gyroscope, warned as "not an acceleration
@@ -122,7 +122,7 @@ without any error.
 | Check | Level | Why |
 |---|---|---|
 | Rate measured as 1 / median interval | pass | Phone apps do not sample evenly. |
-| Rate more than 5% away from 100 Hz | warn | The lab code divides by 100, so its durations are off by that much. With Resample on, the rate checked is the one the lab code receives after resampling. |
+| Rate more than 5% away from 100 Hz | warn, while a Coza is on the plot | Coza divides by 100 and counts its window `w` in samples, so its durations are off by that much. With Resample on, the rate checked is the one Coza receives after resampling. |
 | Rate below 10 Hz | warn | Too slow to resolve steps. |
 | Repeated timestamps | warn | Common when sensors are interleaved. |
 | Gaps longer than 5× the median interval | warn | Steps inside a gap cannot be detected. |
@@ -133,7 +133,7 @@ without any error.
 ### Resample (#52)
 
 Off by default; no rate is built in. When on, the channel is put on an even grid before
-anything else (filter, lab code, algorithms, spectrum, exports), and the plot shows the
+anything else (filter, step detectors, envelopes, spectrum, exports), and the plot shows the
 recording faded behind it. All checks come from `resampleChannel` in `src/core.js`.
 
 | Check | Level | Why |
@@ -163,25 +163,27 @@ recording faded behind it. All checks come from `resampleChannel` in `src/core.j
 
 ## 8. Filter
 
-Only when a filter other than None is selected. The filter feeds the selected algorithm;
-the lab code always runs on the recorded signal.
+Only when a filter other than None is selected. The filter feeds every step detector and
+envelope whose Source is Filtered (the default); one set to Unfiltered keeps the recorded
+signal.
 
 | Check | Level | Why |
 |---|---|---|
 | Settings can't be used (cut-off or notch frequency at or above half the sampling rate, high-pass not below low-pass, ripple or attenuation ≤ 0, elliptic attenuation not above its ripple, smoothing window under 3 samples (Savitzky–Golay: order + 2) or longer than the recording) | warn + fix, filter not applied | The message gives the allowed range or the shortest usable window. The low-pass and notch sliders already stop below half the sampling rate. |
 | Timestamps vary by more than 1% | info, resampled | IIR filters need even spacing, so the signal is interpolated onto an even grid at the median rate, filtered, and read back at the original timestamps. |
 | An even grid would be over 4× the recording (long gaps) | warn + fix, filtered as if even | Resampling across long gaps would make a huge grid; the cut-off is blurred instead. |
-| High-pass on, with an algorithm that uses `h` | info | The band-pass centres the signal on zero, so `h` means something else. |
+| High-pass on, with a detector that uses `h` on the filtered signal | info | The band-pass centres the signal on zero, so `h` means something else. Names the detectors. |
 
 ## 9. After detection
 
 | Check | Level |
 |---|---|
-| No steps above `h` | warn: suggests checking units or lowering `h`. Shown only with the lab code when the selected algorithm does not use `h`. |
-| Selected algorithm finds no steps (algorithms without `h`) | warn: points to its settings under Advanced. |
-| Lab code counts tied peaks twice | warn: explains the effect on variability and asymmetry. |
+| No step detector on the plot | info: points to Add a step detector. |
+| A detector with `h` finds no steps | warn, per detector: suggests checking units or lowering its `h`. |
+| A detector without `h` finds no steps | warn, per detector: points to its settings. |
+| Coza counts tied peaks twice | warn, per Coza on the plot: explains the effect on variability and asymmetry, and that Coza (modified) counts each once. |
 | Weak peaks dropped by Coza (modified) | info: lists their times. |
 | Steps 0.85–1.6 s apart | info: suggests they may be strides rather than steps, and to set Phone position to *One leg*. |
-| The file says how many steps were counted by hand (`# steps_counted:` from the recorder) | info: the selected algorithm's step count against it, as a difference and a percentage, and the lab code's peaks; with Phone position *One leg*, each peak counts as 2 steps. The count is also in the metrics export (`steps_counted_by_hand`). |
-| No clear walking peak in the spectrum (nothing in 0.5–3.5 Hz at least 5× the band's median) | info: Cadence (spectrum) is left empty; short or irregular walks, or mostly standing, do this. |
-| Spectral cadence about 2× or ½ the algorithm's cadence | info: one of them counts strides rather than steps; explains which is usual for the phone position. |
+| The file says how many steps were counted by hand (`# steps_counted:` from the recorder) | info: each shown detector's step count against it, as a difference and a percentage; with Phone position *One leg*, each peak counts as 2 steps. The count is also in the metrics export (`steps_counted_by_hand`). |
+| No clear walking peak in the spectrum (nothing in 0.5–3.5 Hz at least 5× the band's median) | info: there is no spectral cadence to compare with; short or irregular walks, or mostly standing, do this. |
+| Spectral cadence about 2× or ½ a detector's cadence | info: names the detectors; one side counts strides rather than steps; explains which is usual for the phone position. |

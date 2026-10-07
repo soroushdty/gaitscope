@@ -4,9 +4,10 @@ A browser dashboard and a Python port of the step-detection code from Lab 1 of
 *Wearable Devices for Sport, Health, and Wellness* (ASU, Fall 2026).
 
 Upload a MATLAB `.mat` file, a [Physics Toolbox Sensor Suite](https://play.google.com/store/apps/details?id=com.chrystianvieyra.physicstoolboxsuite)
-CSV export or a [phyphox](https://phyphox.org) export zip. The dashboard checks that the file is usable, runs the lab's peak
-detector, and shows it next to a corrected version. You can then tune the settings,
-fix individual steps by hand, and export the results.
+CSV export or a [phyphox](https://phyphox.org) export zip. The dashboard checks that the file is usable, runs step detectors on it (Dr. Aurel
+Coza's Lab 1 peak detector, a corrected version, and textbook methods), and shows them
+side by side. You can then tune each one, add envelopes, pin notes, and export the
+results.
 
 ![Dashboard with a synthetic walk](docs/screenshot.png)
 
@@ -28,14 +29,15 @@ fix individual steps by hand, and export the results.
 - **Resample** to a rate you choose, or just even out a phone's uneven timing, before
   anything else runs. This is linear (like MATLAB `interp1`) or monotone cubic, with an
   optional anti-aliasing low-pass. It matches the Python port's `--resample` bit for bit,
-  so the lab code finds the same steps in both.
-- **Live sliders** for the window `w` and threshold `h`.
-- **Lab code vs an algorithm**, compared on the same plot and metrics table. The
-  Algorithm dropdown has **Coza**, the lab detector exactly as written, bugs included,
-  and **Coza (modified)**, the same detector with its bugs fixed: it counts tied peaks
-  once, drops start/stop artefacts, uses real timestamps, and reports cadence. Set Phone
-  position to *One leg* and it counts each peak as a stride. Three textbook detectors
-  follow them in the list.
+  so Coza finds the same steps in both.
+- **Step detectors and envelopes as chart indicators.** Put any number on the plot at
+  once, in any mix, like indicators on a trading chart. Each has its own settings,
+  colour, source signal (filtered or not), show/hide and remove, and gets its own metrics
+  column. The page opens with **Coza**, Dr. Aurel Coza's Lab 1 detector exactly as
+  written, bugs included, beside **Coza (modified)**, the same detector with its bugs
+  fixed: it counts tied peaks once, drops start/stop artefacts, uses real timestamps, and
+  reports cadence. Set Phone position to *One leg* and each peak counts as a stride.
+  Three textbook detectors and six envelopes and bands can be added.
   See [docs/algorithm.md](docs/algorithm.md).
 - **Notes on the plot.** Pin a short note to a moment in the recording ("turned
   around", "stairs"). Notes are listed under the plot and included in the metrics
@@ -70,9 +72,9 @@ Physics Toolbox CSV exports and phyphox export zips (or the `Raw Data.csv` insid
 time, x, y and z columns are put in the Walking.mat layout, so `--col 2/3/4` picks x/y/z.
 For a zip it also prints the phone, sensor chip, start time and length from `meta/`, and
 warns if the recording was paused (phyphox's time leaves pauses out, so the stretches are
-joined with no gap). phyphox records in m/s², while the lab's `h = 1` assumes g:
-`--to-g` divides x, y and z by 9.80665 first. It warns when the data reaching the lab code is not
-within 5% of 100 Hz, because the lab code divides by 100 to get seconds and counts its
+joined with no gap). phyphox records in m/s², while Coza's `h = 1` assumes g:
+`--to-g` divides x, y and z by 9.80665 first. It warns when the data reaching Coza's algorithm is not
+within 5% of 100 Hz, because it divides by 100 to get seconds and counts its
 window `w` in samples. The rate comes from the time column of CSV exports and of `.mat`
 files in the Walking.mat layout, after any `--resample` (so `--resample 50` warns too).
 Physics Toolbox only lets you choose the rate in the paid version, and the free version
@@ -82,7 +84,7 @@ uses a monotone cubic instead, and `--antialias` low-passes below the new Nyquis
 first when going down in rate.
 The detector itself is unchanged. `--export FILE` saves the result in the dashboard's
 export layout ([docs/export.md](docs/export.md)) as `.json`, `.mat`, `.npz` or a `.zip` of
-CSV files, with the lab code's steps and metrics. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
+CSV files, with Coza's steps and metrics. `.mat` files can be any version: v5–v7 are read with scipy, v7.3 (HDF5) with
 h5py. A missing or non-numeric `--var` says which variables the file has.
 
 ```bash

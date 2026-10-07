@@ -1,8 +1,14 @@
-# Step detection: the lab code and our algorithms
+# Step detection: Coza, Coza (modified) and textbook detectors
 
-## Original (lab code)
+Every step detector is an entry in `ALGORITHMS` in `src/core.js`, put on the plot like a
+chart's indicator: any number, in any mix, each with its own settings, colour and source
+signal (the filtered or the recorded one). Envelopes and bands (`ENVELOPES`) work the
+same way. The page opens with Coza and Coza (modified) side by side.
 
-`LabStepDet_2025.m` marks sample `i` as a step when
+## Coza (`coza_original`)
+
+Dr. Aurel Coza's step detector from Lab 1 of *Wearable Devices for Sport, Health, and
+Wellness* (ASU), `LabStepDet_2025.m`. It marks sample `i` as a step when
 
 ```
 A(i) == max(A(i-w : i+w))   and   max(A(i-w : i+w)) > h
@@ -17,7 +23,7 @@ for `i = w+1 … length(A)-w`, with `w = 30` and `h = 1`. From the step indices 
 | `VariabilitySteps` | `std(diff(Step1))` | In samples, N−1 normalisation. |
 | `GaitAsymmetry` | `mean(d(2:2:end)) / mean(d(1:2:end))` | Even over odd intervals. |
 
-Both ports reproduce this exactly:
+Both ports reproduce it exactly, nothing fixed:
 
 * `python/lab_step_det.py` (`detect_steps`, `gait_metrics`)
 * `src/core.js` (`detectOriginal`, `originalMetrics`)
@@ -26,7 +32,13 @@ On the course `Walking.mat`, both give the same step indices and metrics as the
 original script run in GNU Octave, for columns 2, 3 and 4
 (`tests/core.test.js`, `tests/test_python_port.py`, `scripts/octave_parity.sh`).
 
-## Issues found in the original
+In the dashboard, Coza's steps come from `detectOriginal` with its own `w` (samples) and
+`h`. Like every detector, it runs on the signal its Source setting picks, and its metrics
+column comes from `timingMetrics` (timestamps, cadence in steps/min). The metrics rows
+marked "Coza's formula" are the `.m` file's own outputs above. The tests that check
+detectors resist noise and tilt leave Coza out: failing them is what its bugs look like.
+
+### Issues found in Coza's code
 
 1. **Tied peaks are counted twice.** Values are rounded to 0.01, so two samples near a
    peak can share the maximum. Both pass `A(i) == max(...)`, which creates intervals of
@@ -41,40 +53,16 @@ original script run in GNU Octave, for columns 2, 3 and 4
    1.14 s, which is slow for single steps (normally 0.45–0.7 s). If the phone rode
    on one leg, each peak is a left plus a right step.
 
-## Coza (`coza_original`)
+## Coza (modified) (`coza`, `detectCoza`)
 
-The lab code's rule exactly as `LabStepDet_2025.m` has it, bugs included, as an entry in the
-**Algorithm** dropdown. It calls `detectOriginal` with the lab code's `w` (in samples) and
-`h`, so its steps are the lab code's: tied peaks count twice, the stop bump counts, and the
-window means ±0.3 s only at 100 Hz. Nothing is fixed. It is there so the original can be
-picked and compared like any algorithm, for example against Coza (modified) in an export,
-or with a filter in front of it.
-
-Two differences from the always-shown **Lab code** column, both from how the dashboard
-treats every algorithm:
-
-* It runs on the signal the algorithms get. With a filter on, that is the filtered signal,
-  while the lab code always uses the recorded one.
-* Its metrics come from `timingMetrics` (timestamps, cadence in steps/min), like every
-  algorithm's. The Lab code column keeps the `.m` file's formulas (`/100`, `Pace`).
-
-The tests that check algorithms resist noise and tilt leave it out: failing them is what
-the original's bugs look like.
-
-## Coza (modified) (`detectCoza`)
-
-Coza (modified) is the lab code with the problems above fixed. It is picked from the **Algorithm** dropdown; later algorithms are added as
-entries in `ALGORITHMS` in `src/core.js`, and the lab code stays alongside each of them
-as the MATLAB reference.
-
-Tied peaks are always counted once; the lab code, drawn alongside, shows the double
-count. Weak-peak removal can be switched off under Advanced.
-Threshold `h` is shared with the original. The window is not: the lab code keeps `w` in
-samples, as in MATLAB, and Coza (modified) has its own window in seconds.
+Coza's detector with the issues above fixed, by Dr. Soroush Dianaty. Tied peaks are
+always counted once; Coza, drawn beside it, shows the double count. Weak-peak removal can
+be switched off in its settings. Its window is in seconds, where Coza's `w` counts
+samples.
 
 | Fix | Rule |
 |---|---|
-| Window in seconds | Default 0.3 s, which is the lab's `w = 30` at 100 Hz. It is turned into `round(seconds × fs)` samples, so the window covers the same time at any sampling rate. In samples, `w = 30` is only ±0.065 s at 460 Hz (free Physics Toolbox), where the lab code finds many noise peaks. |
+| Window in seconds | Default 0.3 s, which is Coza's `w = 30` at 100 Hz. It is turned into `round(seconds × fs)` samples, so the window covers the same time at any sampling rate. In samples, `w = 30` is only ±0.065 s at 460 Hz (free Physics Toolbox), where Coza finds many noise peaks. |
 | Tied peaks once | A sample must also be strictly greater than every earlier sample in its window, so on a plateau only the first sample counts. |
 | Weak peaks | Peak strength is `A(i) − h`. A peak is dropped when its strength is below 40% of the median strength. The cut-off is fixed, not a setting: it keeps the real first step in `Walking.mat` (strength 0.83) and drops the stop bump (0.13), with a wide margin on both sides. |
 | Real timing | Intervals come from the timestamps, not `samples / 100`. |
@@ -84,9 +72,9 @@ samples, as in MATLAB, and Coza (modified) has its own window in seconds.
 Variability is reported as the standard deviation of intervals in ms, plus the
 coefficient of variation.
 
-Every algorithm's metrics come from the same function, `timingMetrics`, which works
-only from the step times. Algorithms differ in which samples they call steps, never in
-how the metrics are computed, so their results compare directly.
+Every detector's metrics come from the same function, `timingMetrics`, which works only
+from the step times. Detectors differ in which samples they call steps, never in how the
+metrics are computed, so their columns compare directly.
 
 ## Shared building blocks
 
@@ -105,7 +93,7 @@ offers two signals computed from x, y and z that don't depend on the tilt:
 1. **Gravity's direction:** x, y and z low-passed at 0.3 Hz (2nd-order Butterworth, run
    both ways). Slow enough to ignore the steps, fast enough to follow the phone tilting.
 2. **Vertical** = each sample projected onto that direction, minus the size of gravity.
-   Standing still reads 0 whatever the tilt, so `h` for Coza (modified) and the lab code belongs a
+   Standing still reads 0 whatever the tilt, so `h` for Coza and Coza (modified) belongs a
    little above 0 (about 0.1 g or 1 m/s²), not at 1.
 3. **Horizontal** = the size of what is left after the vertical part is removed: forward
    and sideways sway.
@@ -122,17 +110,17 @@ algorithm finds the same steps as on the bounce itself (`tests/core.test.js`).
 
 ## Resampling (`resampleChannel`, `resample()`, #52)
 
-The lab code counts in samples: its window `w = 30` and its `/100` for seconds only mean
+Coza counts in samples: its window `w = 30` and its `/100` for seconds only mean
 ±0.3 s and seconds at 100 Hz. Phones record at other rates (free Physics Toolbox and
 phyphox at about 460 Hz, Physics Toolbox's Linear Accelerometer at about 57 Hz), with
 uneven timing. Resampling puts the signal on an even grid `t0, t0 + 1/fs, …` at a rate
 the user picks. No rate is built in. In the dashboard everything after it uses that
-grid: the filter, the lab code, the algorithms and the spectrum. The lab code itself is
+grid: the filter, every step detector and envelope, and the spectrum. Coza itself is
 unchanged and gets the resampled samples, exactly as with the Python port's `--resample`.
 
 * **Linear** (the default) draws straight lines between samples, like MATLAB `interp1`.
   The dashboard's version repeats `numpy.interp` operation for operation, so it matches the
-  Python port bit for bit, and the lab code finds the same steps in both
+  Python port bit for bit, and Coza finds the same steps in both
   (`tests/fixtures/resample.json`).
 * **pchip** is a monotone cubic (MATLAB `interp1(…, 'pchip')`, scipy
   `PchipInterpolator`). It is smoother but never overshoots between samples.
@@ -147,7 +135,7 @@ unchanged and gets the resampled samples, exactly as with the Python port's `--r
   bridged with made-up values, and a check says so.
 
 **Why anti-aliasing is off by default.** Measured on the owner's recordings, resampled to
-100 Hz, with the lab code (`w = 30`, `h = 1`, in g):
+100 Hz, with Coza (`w = 30`, `h = 1`, in g):
 
 | Recording | Power above 50 Hz | Steps: linear / pchip / anti-aliased | Other differences |
 |---|---|---|---|
@@ -156,15 +144,16 @@ unchanged and gets the resampled samples, exactly as with the Python port's `--r
 | phyphox, 460 Hz, 17.3 s (z, `--to-g`) | 0.01% | 25 / 25 / 25 | anti-aliasing moved one peak 0.23 s, so variability went from 10.3 to 6.8 samples |
 
 Walking puts almost nothing above 50 Hz, so there is little to alias. The low-pass mostly
-rounds off sharp peaks, which can move a peak within the lab code's window. Linear without
+rounds off sharp peaks, which can move a peak within Coza's window. Linear without
 the filter is what a student would do in MATLAB, and it keeps the Python port's earlier
 `--resample` output unchanged.
 
 ## Signal filters (`FILTERS`, `applyFilter`)
 
-A **Filter** dropdown, above Algorithm, picks a filter for the signal the selected
-algorithm runs on. The default is None. The lab code always runs on the recorded
-signal, so it stays exact. The plot draws the recorded signal faded and the filtered
+A **Filter** dropdown, above the step detectors, picks one filter for the whole page. The
+default is None. Each detector and envelope has a Source setting: Filtered (the default)
+runs it on the filtered signal, Unfiltered on the recorded one, so Coza can stay exact
+beside a filtered detector. The plot draws the recorded signal faded and the filtered
 one over it.
 
 | Filter | Passband | Stopband | Trade-off |
@@ -222,10 +211,11 @@ apply their own low-pass on top of the filter.
 
 ## Envelopes (`ENVELOPES`)
 
-An **Envelope** select in the plot toolbar draws curves around the signal the algorithm
-sees: the filtered signal when a filter is on, the recorded signal otherwise. Envelopes
-are a view, like notes: they never change the detected steps, the metrics or the
-exports. The fixed `h` line stays, so the two kinds of threshold can be compared.
+**Envelopes and bands**, under Detection, add curves around the signal: any number at
+once, each in its own colour, with its own settings and Source (the filtered or the
+recorded signal). Envelopes are a view, like notes: they never change the detected steps
+or the metrics, and the exports include them only when asked. The detectors' `h` lines
+stay, so the two kinds of threshold can be compared.
 Windows are in seconds, so an envelope looks the same at 57 Hz and 460 Hz.
 
 | Envelope | How it is computed | What it shows |
@@ -362,7 +352,7 @@ timestamps, for every column). `Walking.mat` is the course file; the CSVs are th
 owner's Physics Toolbox recordings from 2026-09-23 (G-Force Meter at ~460 Hz, 6.6 s;
 Linear Accelerometer at ~57 Hz, 7.6 s). None of these files is committed.
 
-| Signal | Lab code | Coza (modified) | Threshold peaks | Peak-to-valley | Zero-crossing |
+| Signal | Coza | Coza (modified) | Threshold peaks | Peak-to-valley | Zero-crossing |
 |---|---:|---:|---:|---:|---:|
 | `Walking.mat` x (column 2) | 15 (0.95 s) | 12 (1.15 s) | 12 (1.15 s) | 12 (1.15 s) | 12 (1.15 s) |
 | `Walking.mat` y (column 3) | 12 (1.14 s) | 12 (1.14 s) | 17 (0.98 s) | 13 (1.13 s) | 13 (1.13 s) |
@@ -398,10 +388,10 @@ step; it says little on recordings that short.
 
 What this shows, and what it doesn't:
 
-* **On the lab's own channel (column 2) all four algorithms agree:** 12 steps,
+* **On the course's own channel (column 2) all four detectors agree:** 12 steps,
   1.15 s apart. The peak-based detectors put them at Coza (modified)'s times to within 0.05 s.
   Zero-crossing's are about 0.4 s earlier, because it marks the rise through the
-  baseline rather than the peak. The lab code's 15 is these
+  baseline rather than the peak. Coza's 15 is these
   12 plus two tied duplicates and the stop bump.
 * **Column 3** rests well away from its walking mean. Threshold peaks' global
   threshold (mean + 0.5 SD) then falls below the resting level, and it counts 5 peaks of
@@ -411,11 +401,11 @@ What this shows, and what it doesn't:
 * **Columns 4 and 5 and the magnitudes** have several bumps per stride, and the
   algorithms disagree by up to 6 steps. Without a known count, none of them can be
   called right.
-* **G-Force vertical** rests at 0 g, so with `h = 1` Coza (modified) and the lab code find nothing.
+* **G-Force vertical** rests at 0 g, so with `h = 1` Coza and Coza (modified) find nothing.
   At `h = 0.1`, Coza (modified) finds the same 7 steps on it as on the magnitude (TgF), and
   Threshold peaks and Zero-crossing agree at 8.
 * **The phone recordings are too short** (fewer than 10 steps) and have no known count,
-  so they only show that every algorithm except the lab code gives a plausible rate at
+  so they only show that every detector except Coza gives a plausible rate at
   460 Hz. Their windows and cut-offs are in seconds and Hz, not samples.
 
 To say which algorithm is best needs recordings with a known step count, for example

@@ -160,7 +160,7 @@ def test_resample_refuses_backwards_time():
         resample(W, 100)
 
 
-# --- the 100 Hz check runs on whatever reaches the lab code (#47)
+# --- the 100 Hz check runs on whatever reaches Coza's algorithm (#47)
 def walk_at(fs, seconds=12):
     """Walking.mat layout (time, x, y, z) at fs Hz, one peak per second."""
     t = np.arange(0, seconds, 1 / fs)
@@ -193,7 +193,7 @@ def test_cli_warns_for_mat_files_and_any_resample_rate(tmp_path, monkeypatch, ca
     f = tmp_path / "walk.mat"
     savemat(f, {"Walking": walk_at(fs)})
     out = run_cli(monkeypatch, capsys, "--file", str(f), *extra)
-    assert ("lab code assumes 100 Hz" in out) == warned, out
+    assert ("Coza's algorithm assumes 100 Hz" in out) == warned, out
     assert f"AverageStepDuration: {duration:.4f} s" in out, out
 
 
@@ -267,7 +267,7 @@ def test_cli_reads_phyphox_zip(monkeypatch, capsys):
     assert "Sensor:              Test Accelerometer (Test Vendor)" in out
     assert "paused 1 time" in out and "joined with no gap at 9.0 s" in out
     assert "Converted:           m/s^2 -> g" in out
-    # y carries gravity (9.81 m/s^2 = 1.0003 g): the lab code now sees g, like a G-Force Meter export
+    # y carries gravity (9.81 m/s^2 = 1.0003 g): Coza now sees g, like a G-Force Meter export
     W, _, _ = lab_step_det.load_phyphox(os.path.join(FIX, "phyphox.zip"))
     _, idx = detect_steps(lab_step_det.to_g(W)[:, 2])
     assert f"Step indices:        {idx.tolist()}" in out
@@ -318,13 +318,13 @@ def test_csv_from_the_browser_recorder():
     assert np.allclose(D[:, 1:] * 9.80665, W[:, 1:] + [0, 9.80665, 0])
 
 
-# --- export (#53): the dashboard's content model, lab code only
+# --- export (#53): the dashboard's content model, Coza only
 
 def _walk_model():
     W = _walk()
     A = W[:, 1]
     return lab_step_det.export_model(W[:, 0], A, detect_steps(A)[1], {"file": "walk.mat", "signal": "column 2"},
-                                     {"algorithm": "lab code", "threshold_h": 1, "note": "naïve, ✓"})
+                                     {"resample": "off", "note": "naïve, ✓"})
 
 
 @pytest.mark.parametrize("ext", ["json", "mat", "npz", "zip"])
@@ -345,19 +345,19 @@ def test_export_formats_read_back_with_the_same_numbers(tmp_path, ext):
         z = np.load(f, allow_pickle=False)
         col = lambda t, c: z[f"{t}/{c}"]
         settings = json.loads(str(z["settings"]))
-        assert z["steps/in_lab_code"].dtype == bool and z["metrics/metric"].dtype.kind == "U"
+        assert z["steps/coza"].dtype.kind == "U" and z["metrics/metric"].dtype.kind == "U"
     else:
         zf = zipfile.ZipFile(f)
-        assert zf.namelist() == ["about.csv", "settings.csv", "params.csv", "signals.csv", "steps.csv", "metrics.csv", "notes.csv"]
+        assert zf.namelist() == ["about.csv", "settings.csv", "params.csv", "indicators.csv", "signals.csv", "steps.csv", "metrics.csv", "notes.csv"]
         import csv
         import io
         table = lambda t: list(csv.reader(io.StringIO(zf.read(f"{t}.csv").decode())))
         col = lambda t, c: np.array([np.nan if r[table(t)[0].index(c)] == "" else r[table(t)[0].index(c)] for r in table(t)[1:]],
                                     dtype=str if c == "metric" else float)
         settings = dict(table("settings")[1:])
-        assert table("steps")[1][3] == "true" and table("metrics")[1][:2] == ["steps", "14"], "numbers and true/false as the dashboard writes them"
+        assert table("steps")[1][3] == "step" and table("metrics")[1] == ["steps", "count", "14"], "numbers as the dashboard writes them"
     assert settings["note"] == "naïve, ✓"
-    for t, c in [("signals", "time_s"), ("signals", "signal"), ("steps", "sample_matlab"), ("steps", "value"), ("metrics", "lab_code")]:
+    for t, c in [("signals", "time_s"), ("signals", "signal"), ("steps", "sample_matlab"), ("steps", "value"), ("metrics", "coza")]:
         assert np.array_equal(col(t, c), model[t][c], equal_nan=True), (ext, t, c)
     assert list(col("metrics", "metric")) == model["metrics"]["metric"]
 
