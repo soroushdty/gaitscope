@@ -1371,21 +1371,31 @@
       return Object.assign(none, { checks: [{ level: 'warn', title: 'Filter not applied', detail: e.message + ' Detection runs on the recorded signal.', fix: 'Change the filter settings under Advanced.' }] });
     }
   }
-  function filterEvenly(A, t, fs, run) {
+  /* The signal on an even time grid at the median sampling rate, for methods that assume even
+     spacing (IIR and smoothing filters, FFT). Returns {A, t, fs, resampled, jitter, gaps}:
+     the input itself when the timestamps vary by under 1%, or when long gaps would make the
+     grid over 4 times the recording (gaps: true); otherwise A interpolated onto the grid. */
+  function evenGrid(A, t) {
     const n = A.length, dts = [];
     for (let i = 1; i < n; i++) { const d = t[i] - t[i - 1]; if (d > 0) dts.push(d); }
     const md = median(dts), jitter = std(dts) / md;
-    if (!(jitter > RESAMPLE_JITTER)) return { A: run(A), applied: true, resampled: false, checks: [] };
+    const same = { A, t, fs: 1 / md, resampled: false, jitter, gaps: false };
+    if (!(jitter > RESAMPLE_JITTER)) return same;
     const m = Math.floor((t[n - 1] - t[0]) / md) + 1;
-    if (m > 4 * n) {
+    if (m > 4 * n) return Object.assign(same, { gaps: true });
+    const tg = Float64Array.from({ length: m }, (_, k) => t[0] + k * md);
+    return { A: interpAt(t, A, tg), t: tg, fs: 1 / md, resampled: true, jitter, gaps: false };
+  }
+  function filterEvenly(A, t, fs, run) {
+    const g = evenGrid(A, t);
+    if (g.gaps) {
       return { A: run(A), applied: true, resampled: false, checks: [{ level: 'warn', title: 'Filtered as if evenly sampled',
         detail: 'The recording has long gaps, so an even grid would be over 4 times its length. The filter treats the samples as evenly spaced, which blurs its cut-off.',
         fix: 'Trim the gaps or split the recording.' }] };
     }
-    const tg = Float64Array.from({ length: m }, (_, k) => t[0] + k * md);
-    const yg = run(interpAt(t, A, tg));
-    return { A: interpAt(tg, yg, t), applied: true, resampled: true, checks: [{ level: 'info', title: 'Resampled for filtering',
-      detail: 'Timing varies by ' + Math.round(jitter * 100) + '% between samples and the filter needs even spacing, so the signal was interpolated onto an even ' + fmt(1 / md, 1) + ' Hz grid, filtered, and read back at the original timestamps.' }] };
+    if (!g.resampled) return { A: run(A), applied: true, resampled: false, checks: [] };
+    return { A: interpAt(g.t, run(g.A), t), applied: true, resampled: true, checks: [{ level: 'info', title: 'Resampled for filtering',
+      detail: 'Timing varies by ' + Math.round(g.jitter * 100) + '% between samples and the filter needs even spacing, so the signal was interpolated onto an even ' + fmt(g.fs, 1) + ' Hz grid, filtered, and read back at the original timestamps.' }] };
   }
 
 
@@ -1544,7 +1554,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;
