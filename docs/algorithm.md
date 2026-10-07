@@ -129,7 +129,9 @@ against scipy, edges included, on a signal with spikes (`other` in
 | Notch | Removes a band frequency ÷ Q wide around one frequency (default 50 Hz, Q 30), as scipy `iirnotch`, run forwards and backwards | Same odd padding as the other IIR filters | For mains hum or a known vibration. A narrow notch (high Q) rings for a few hundred milliseconds at each end of the recording. Only reachable at high sampling rates: the frequency stays below half the sampling rate (28.5 Hz on the Linear Accelerometer export). |
 
 Settings, under Advanced: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
-kept below half the sampling rate), and an optional high-pass cut-off (default off). A
+kept below half the sampling rate), and an optional high-pass cut-off (default off).
+Two presets set order 4 and a band-pass common in gait papers, walking 0.5–3 Hz and
+running 1–5 Hz, and keep the selected filter type. A
 high-pass removes gravity and drift and turns the filter into a band-pass of twice the
 order, as in scipy. The centred signal then needs a different `h` for Coza.
 

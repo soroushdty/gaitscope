@@ -323,6 +323,38 @@ test('a filter feeds the algorithm, not the lab code, and is drawn over the fade
   assert.equal(hp.value, '0'); assert.equal(text(pg, 'fHighOut'), 'off');
 });
 
+test('every filter shows only its own settings, and presets set an IIR band-pass', async () => {
+  const pg = makePage();
+  await upload(pg, path.join(FIX, 'ptb_gforce.csv'));
+  const $ = id => pg.d.getElementById(id);
+  const visible = () => [...$('filterOpts').querySelectorAll('input[data-param]')].filter(el => !el.closest('[data-only]').hidden).map(el => el.dataset.param);
+  const want = { butter: ['fOrder', 'fLow', 'fHigh'], bessel: ['fOrder', 'fLow', 'fHigh'], cheby1: ['fOrder', 'fLow', 'fHigh', 'fRipple'],
+    cheby2: ['fOrder', 'fLow', 'fHigh', 'fAtten'], ellip: ['fOrder', 'fLow', 'fHigh', 'fRipple', 'fAtten'], movavg: ['maWindow'], median: ['medWindow'],
+    savgol: ['sgWindow', 'sgOrder'], notch: ['notchFreq', 'notchQ'] };
+  let n = 0;
+  for (const [id, params] of Object.entries(want)) {
+    $('filterSel').value = id; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+    await sleep(30);
+    assert.deepEqual(visible().sort(), params.slice().sort(), id);
+    assert.equal(pg.plots.at(-1).traces[TR.filtered].visible, true, id + ' applied with its defaults');
+    assert.equal(pg.d.querySelector('.presets').hidden, !['butter', 'bessel', 'cheby1', 'cheby2', 'ellip'].includes(id), id + ': presets for IIR only');
+    n++;
+  }
+  assert.equal(n, $('filterSel').options.length - 1, 'every filter but None checked');
+  assert.equal(text(pg, 'sgOrderOut'), '3', 'no trailing unit');
+
+  $('filterSel').value = 'bessel'; $('filterSel').dispatchEvent(new pg.w.Event('change'));
+  $('fOrderIn').value = '2'; $('fOrderIn').dispatchEvent(new pg.w.Event('input'));
+  pg.d.querySelector('[data-preset="0.5 3"]').click();
+  await sleep(40);
+  assert.equal($('filterSel').value, 'bessel', 'the type stays');
+  assert.equal(text(pg, 'fOrderOut'), '4th order'); assert.equal(text(pg, 'fHighOut'), '0.50 Hz'); assert.equal(text(pg, 'fLowOut'), '3.0 Hz');
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('expMetrics').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  assert.match(csv, /\nfilter,"Bessel, 4th order, 0\.5–3\.0 Hz band-pass"\n/);
+});
+
 test('impossible filter settings are reported, not applied', async () => {
   const pg = makePage();
   pg.d.getElementById('demoBtn').click();
