@@ -417,8 +417,9 @@ without gravity.
 ## Credits (#63)
 
 Who made each method. The page shows the same credit under each detector's and envelope's
-settings and under the filter's description (`credit` in `ALGORITHMS`, `ENVELOPES` and
-`FILTERS` in `src/core.js`). The page shows names only, never email addresses.
+settings and under the filter's description, and exports put it in the indicators table
+(`credit` in `ALGORITHMS`, `ENVELOPES` and `FILTERS`; `creditText` in `src/core.js`). The
+page shows names only, never email addresses.
 
 How the references were checked, on 2026-10-07:
 - **Every DOI** against Crossref: title, first author and year.
