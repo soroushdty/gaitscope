@@ -193,6 +193,9 @@
         (said.length ? ' Recorded with: ' + said.join(', ') + '.' : '') });
     }
     S.counted = /^\d+$/.test(m.steps_counted || '') && Number(m.steps_counted) > 0 ? Number(m.steps_counted) : null;
+    if (/^gaitscope/.test(m.recorder || '') && /iPhone|iPad/.test(m.device || '')) {
+      pre.push({ level: 'info', title: 'iPhone axis signs not yet checked', detail: 'Safari on iPhone has been reported to give acceleration with the opposite sign from Android and Physics Toolbox: a phone lying face up reads \u22121 g on z instead of +1. The magnitude, vertical and horizontal signals don\u2019t depend on the sign. For a single axis, compare with a Physics Toolbox recording before trusting h.' });
+    }
     if (m.phone_position === 'front pocket') $('posSel').value = 'leg';
     else if (m.phone_position === 'hand') $('posSel').value = 'hand';
     updatePosHint();

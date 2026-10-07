@@ -744,6 +744,12 @@ test('records a walk from motion events, loads it like a file, and downloads wha
   await upload(pg, path.join(FIX, 'walk.mat'));
   assert.equal($('saveRec').hidden, true, 'only for a recording');
   assert.doesNotMatch(text(pg, 'valList'), /You counted/);
+  assert.doesNotMatch(text(pg, 'valList'), /iPhone/);
+  const iphone = fs.readFileSync(path.join(FIX, 'recorder.csv'), 'utf8').replace(/# device: .*/, '# device: Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) Safari/604.1');
+  const tmp = path.join(require('os').tmpdir(), 'gaitscope_iphone_recording.csv');
+  fs.writeFileSync(tmp, iphone);
+  await upload(pg, tmp); fs.unlinkSync(tmp);
+  assert.match(text(pg, 'valList'), /iPhone axis signs not yet checked.*don’t depend on the sign/);
   await upload(pg, path.join(FIX, 'recorder.csv')); // a saved recording, uploaded again
   assert.match(text(pg, 'valList'), /Recorded in the browser.*Recorded with: 12 steps counted by hand, phone in the hand\..*You counted 12 steps; Coza finds/);
 });
