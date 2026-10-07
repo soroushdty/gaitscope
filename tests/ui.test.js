@@ -283,7 +283,7 @@ test('a filter feeds the algorithm, not the lab code, and is drawn over the fade
   const pg = makePage();
   await upload(pg, path.join(FIX, 'walk.mat'));
   const $ = id => pg.d.getElementById(id);
-  assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II']);
+  assert.deepEqual([...$('filterSel').options].map(o => o.textContent), ['None', 'Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II', 'Elliptic']);
   assert.equal($('filterSel').value, 'none', 'off by default');
   assert.equal($('filterOpts').hidden, true);
   let last = pg.plots.at(-1);
@@ -297,8 +297,8 @@ test('a filter feeds the algorithm, not the lab code, and is drawn over the fade
   last = pg.plots.at(-1);
   assert.match(text(pg, 'filterDesc'), /ripple in the passband/);
   assert.equal($('filterOpts').hidden, false);
-  assert.equal($('filterOpts').querySelector('[data-only="cheby1"]').hidden, false, 'ripple shown');
-  assert.equal($('filterOpts').querySelector('[data-only="cheby2"]').hidden, true, 'attenuation hidden');
+  assert.equal($('fRippleIn').closest('.ctl').hidden, false, 'ripple shown');
+  assert.equal($('fAttenIn').closest('.ctl').hidden, true, 'attenuation hidden');
   assert.equal(text(pg, 'fOrderOut'), '4th order'); assert.equal(text(pg, 'fHighOut'), 'off');
   assert.equal(last.traces[TR.filtered].visible, true); assert.equal(last.traces[TR.signal].opacity, 0.35);
   assert.equal($('legFilter').hidden, false);

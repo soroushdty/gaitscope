@@ -114,6 +114,7 @@ one over it.
 | Bessel | Flat, gently falling | Gentlest roll-off | The most even delay across frequencies, so steps keep their shape best (least overshoot). The cut-off is where the phase is half delayed (scipy's `norm='phase'`), so the gain there is above ½. |
 | Chebyshev I | Ripple (default 0.5 dB) | Steeper roll-off | Ripple slightly reshapes peaks. The cut-off is where the ripple band ends. |
 | Chebyshev II | Flat | Ripple, at least the set attenuation (default 40 dB) | The cut-off is where the stopband starts, so the passband ends lower. |
+| Elliptic | Ripple (default 0.5 dB) | Ripple, at least the set attenuation (default 40 dB) | The steepest roll-off for its order. The cut-off is where the passband ripple ends. |
 
 Settings, under Advanced: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
 kept below half the sampling rate), and an optional high-pass cut-off (default off). A
@@ -123,7 +124,7 @@ order, as in scipy. The centred signal then needs a different `h` for Coza.
 How it is built (`designFilter`, `sosfiltfilt`):
 
 * The design follows scipy's `iirfilter`: analog prototype poles and zeros (`buttap`,
-  `besselap` (roots of the reverse Bessel polynomial, by Aberth iteration), `cheb1ap`, `cheb2ap`), pre-warped low-pass or band-pass transform, bilinear transform,
+  `besselap` (roots of the reverse Bessel polynomial, by Aberth iteration), `cheb1ap`, `cheb2ap`, `ellipap` (Jacobi elliptic functions as cephes `ellpj`, the degree equation by nomes, `K` by the arithmetic-geometric mean and `F` by Carlson's `RF`)), pre-warped low-pass or band-pass transform, bilinear transform,
   and second-order sections. Sections stay numerically stable at the low cut-off to
   sampling-rate ratios of phone data (0.3 Hz at 460 Hz).
 * Filtering runs forwards and backwards like scipy's `sosfiltfilt`, with the same odd

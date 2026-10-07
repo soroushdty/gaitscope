@@ -56,7 +56,7 @@ def filter_fixtures():
     Section pairing differs between scipy and the JS design, so each case stores the
     frequency response of the whole cascade and sosfiltfilt's output (every 8th sample)."""
     cases = []
-    for ftype in ("butter", "bessel", "cheby1", "cheby2"):
+    for ftype in ("butter", "bessel", "cheby1", "cheby2", "ellip"):
         for order in range(2, 7):
             for fs in (57, 100, 460):
                 for hp in (0, 0.3):
