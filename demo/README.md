@@ -3,9 +3,9 @@
 Three real walks the dashboard offers under **Try a demo walk**, next to the synthetic one
 (#91). The page fetches them from this folder when they are picked. All three were recorded
 by the owner, Dr. Soroush Dianaty, on 2026-10-07 with the dashboard's own recorder (#51), on
-a Pixel 9a in Firefox 157 (Android 17), at about 57.4 Hz. The files are byte for byte what
-the recorder saved, metadata lines included, so they load exactly like a downloaded
-recording.
+a Pixel 9a in Firefox 157 (Android 17), at about 57.4 Hz. The files are what the recorder
+saved, metadata lines included, so they load like a downloaded recording, with one fix: the
+rotation columns (below).
 
 | File | Phone | Steps counted | Length | What else is in it |
 |---|---|---|---|---|
@@ -29,9 +29,11 @@ the same steps for each detector whose window is in seconds, so the disagreement
 the walk, not from the recorder (#51).
 
 On the up-and-down signal (vertical, or the total TgF), every detector finds the hand and
-pocket walks' steps to within one.
+pocket walks' steps to within one. The extra steps come from the ends. The walks were
+recorded before the recorder learned to cut the Stop press out (#87), and the press is kept.
 
-All three were recorded before the recorder's rotation columns were put in the right order
-(#93). In these files `wx` holds the rotation rate about y, `wy` about z and `wz` about x,
-in rad/s. The acceleration columns are right. The extra steps come from the ends. They were recorded before
-the recorder learned to cut the Stop press out (#87), and are kept as recorded.
+**The one change to the recordings.** They were made before the recorder's rotation columns
+were put in the right order (#93): it wrote the rates about y, z and x as `wx`, `wy`, `wz`.
+On 2026-10-07 the three columns were moved back into place in every row, so `wx`, `wy`, `wz`
+are now the rates about x, y and z, and a `# rotation_columns:` line says so (owner's
+decision). Every other column and line is as recorded.

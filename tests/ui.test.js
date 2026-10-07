@@ -727,7 +727,7 @@ test('demo walks: the hand, pocket and noisy recordings, the synthetic walk, and
   $('demoMenu').open = true;
   await pick('hand', '#demoMenu');
   assert.equal($('demoMenu').open, false);
-  assert.equal($('fileChip').textContent, 'Hand walk (demo)168.5 KB');
+  assert.equal($('fileChip').textContent, 'Hand walk (demo)168.6 KB');
   assert.equal($('chanSel').selectedOptions[0].textContent, 'magnitude (TgF)');
   assert.equal(text(pg, 'plotTitle'), 'Hand walk, magnitude (TgF)');
   assert.match(text(pg, 'valList'), /Demo recordingRecorded with this page on a Pixel 9a.*exactly 10 steps.*Recorded with: 10 steps counted by hand, phone in the hand\./);
@@ -737,14 +737,14 @@ test('demo walks: the hand, pocket and noisy recordings, the synthetic walk, and
   assert.equal($('saveRec').hidden, true, 'it is a file already');
 
   await pick('pocket', 'aside'); // the sidebar's links
-  assert.equal($('fileChip').textContent, 'Pocket walk (demo)348.7 KB');
+  assert.equal($('fileChip').textContent, 'Pocket walk (demo)348.9 KB');
   assert.equal($('chanSel').selectedOptions[0].textContent, 'magnitude (TgF)');
   assert.match(text(pg, 'valList'), /exactly 28 steps\. The first 2 s are the phone going into the pocket.*Recorded with: 28 steps counted by hand, phone in the front trouser pocket\./);
   assert.deepEqual([markers(pg, 'Coza').x.length, markers(pg, 'Coza (modified)').x.length], [32, 35]);
 
   $('demoMenu').open = true;
   await pick('noisy', '#demoMenu'); // no count: nothing to score against (#91)
-  assert.equal($('fileChip').textContent, 'Noisy walk (demo)527.2 KB');
+  assert.equal($('fileChip').textContent, 'Noisy walk (demo)527.3 KB');
   assert.equal($('chanSel').selectedOptions[0].textContent, 'magnitude (TgF)');
   assert.equal(text(pg, 'plotTitle'), 'Noisy walk, magnitude (TgF)');
   assert.match(text(pg, 'valList'), /Demo recordingRecorded with this page on a Pixel 9a.*changing how the phone was held.*The steps weren’t counted, so there is nothing to score them against/);
