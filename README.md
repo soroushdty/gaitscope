@@ -39,7 +39,7 @@ fix individual steps by hand, and export the results.
   around", "stairs"). Notes are listed under the plot and included in the metrics
   export; they never change the detected steps.
 - **Export** in the format each tool wants: the two CSV files as before, a zip with one CSV
-  per table, MATLAB `.mat` (a struct; `struct2table` makes tables), NumPy `.npz` (no
+  per table, MATLAB `.mat` (a struct, for MATLAB or Octave), NumPy `.npz` (no
   pickle), or JSON, which reopens the whole analysis in the dashboard. Each holds the
   signals, both versions' steps and metrics, the settings and the notes, with 1-based
   sample numbers ([docs/export.md](docs/export.md)).
@@ -101,6 +101,12 @@ uv run pytest                    # Python port
 uv run python scripts/make_fixtures.py  # regenerate tests/fixtures after changing the port
 bash scripts/octave_parity.sh    # original .m in GNU Octave vs the Python port
 ```
+
+GNU Octave is only for these developer checks: the parity script, and a test that loads a
+`.mat` export in Octave (skipped when Octave is missing, as in CI). Nobody needs it to use
+the dashboard or the Python port, which write `.mat` files themselves. It isn't a Python
+package, so it isn't in `pyproject.toml`; on Ubuntu or Debian, install the command-line
+version (about 80 MB) with `sudo apt install --no-install-recommends octave`.
 
 All fixtures are generated from a synthetic walk. The course files (`Walking.mat`,
 `LabStepDet_2025.m`) are **not** committed. If you put them in `data/`, the

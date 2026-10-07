@@ -851,7 +851,7 @@
   const EXPORT_FORMATS = {
     csv: 'Metrics and steps as two CSV files, as before. Opens in Excel.',
     zip: 'Every table as its own CSV file (signals, steps, metrics, notes, settings), in one zip.',
-    mat: 'One struct, gaitscope, for MATLAB or Octave: load the file, then struct2table(gaitscope.steps).',
+    mat: 'One struct, gaitscope, for MATLAB or Octave: load the file, then use gaitscope.steps.time_s and so on. In MATLAB, struct2table(gaitscope.steps) makes a table.',
     npz: 'For Python: np.load(file, allow_pickle=False); each column is an array, e.g. z["steps/sample_matlab"].',
     json: 'Everything, including the settings. Drop it on the dashboard to reopen this analysis.',
   };
