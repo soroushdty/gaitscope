@@ -85,9 +85,13 @@ unless the course file is present in `data/`.
   as Coza on `Walking.mat` column 2. They disagree on the other channels and on the phone
   recordings, which have no known step count (table in `docs/algorithm.md`).
   `lowpass` matches scipy's `filtfilt(butter(2, …))` to 1e-13.
-- The signal filters (#12) match scipy's `iirfilter` + `sosfiltfilt` within 1e-9 for
-  Butterworth, Chebyshev I and II, orders 2–6, at 57, 100 and 460 Hz
-  (`tests/fixtures/filters.json`). The lab code never sees the filtered signal.
+- The signal filters (#12, #37) match scipy within 1e-9 (`tests/fixtures/filters.json`):
+  Butterworth, Bessel, Chebyshev I and II and elliptic (`iirfilter` + `sosfiltfilt`,
+  orders 2–6, at 57, 100 and 460 Hz), moving average and median (`scipy.ndimage`,
+  `mode='nearest'`), Savitzky–Golay (`savgol_filter`, `mode='interp'`) and notch
+  (`iirnotch`). scipy's own Savitzky–Golay weights lose precision on long, high-order
+  windows (1.5e-10 at 231 samples, order 5), so that case is checked against exact rational
+  weights instead. The lab code never sees the filtered signal.
 - Vertical / horizontal acceleration (#35) works on the G-Force export (gravity 0.98 g,
   steady); `Walking.mat` and Linear Accelerometer files have gravity removed, so the
   options are disabled there. Vertical rests at 0, so `h` needs to be about 0.1 g.
@@ -111,9 +115,8 @@ unless the course file is present in `data/`.
 - [ ] #36: frequency domain (spectrum, cadence from the spectrum, spectrogram, Hilbert
       envelope, wavelet denoising, harmonic ratio). The spectrum would also settle
       steps vs. strides.
-- [ ] #37: more filters (presets, Bessel, elliptic, Savitzky–Golay, moving average,
-      median, notch). #38: more envelopes (RMS / SD, mean ± k·SD, percentile, smooth
-      peak-trough).
+- [ ] #38: more envelopes (RMS / SD, mean ± k·SD, percentile, smooth peak-trough).
+- [ ] Maybe: a median "despike" step before another filter (#37 kept one filter at a time).
 - [ ] #15: phyphox exports.
 - [x] GitHub Pages is enabled (main / root).
 - [ ] Maybe: support MAT v7.3 via h5wasm (large WebAssembly download; probably not
@@ -123,6 +126,6 @@ unless the course file is present in `data/`.
 
 | File | Key parts |
 |---|---|
-| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks; also takes 'computed', 'vertical', 'horizontal'), `gravitySplit` (vertical/horizontal from x, y, z by gravity's direction, #35), `datasetRate`, `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `designFilter` (Butterworth / Chebyshev I / II as second-order sections, like scipy `iirfilter`), `sosfiltfilt` (zero-phase, like scipy), `lowpass` (algorithms' internal 2nd-order Butterworth), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, usesH, detect → idx/markY/guides, settings for the export), `FILTERS` + `applyFilter` (filter for the algorithm only; resamples uneven timing onto an even grid), `filterLabel`, `interpAt`, `ENVELOPES` (sliding, peak-trough, dynamic threshold; view only), `localExtrema`, `halfWindow`, `demoWalk` |
+| `src/core.js` | `parseMat` (MAT v5 reader), `matCandidates`, `matToColumns`, `parseCsv`, `buildDataset` (roles and units), `prepareChannel` (cleaning and sampling checks; also takes 'computed', 'vertical', 'horizontal'), `gravitySplit` (vertical/horizontal from x, y, z by gravity's direction, #35), `datasetRate`, `windowExtreme` (O(n) sliding max/min), `detectOriginal`, `originalMetrics`, `designFilter` (Butterworth / Bessel / Chebyshev I / II / elliptic as second-order sections, like scipy `iirfilter`; prototypes `besselPoles` (Aberth `polyRoots`), `ellipPrototype` (cephes-style `ellipj`, AGM `ellipK`, Carlson `carlsonRF`)), `sosfiltfilt` (zero-phase, like scipy), `lowpass` (algorithms' internal 2nd-order Butterworth), `dynamicThreshold`, `detectCoza`, `detectThresholdPeaks`, `detectPeakToValley`, `detectZeroCrossing`, `timingMetrics` (metrics for every algorithm), `WEAK_RATIO`, `windowSamples` (seconds → samples), `ALGORITHMS` (algorithm registry: tagline, summary, usesH, detect → idx/markY/guides, settings for the export), `FILTERS` (each entry: apply on even samples, label; settings rows under Advanced list it in `data-only`) + `applyFilter` (filter for the algorithm only; resamples uneven timing onto an even grid), `oddWindow` (seconds → odd samples), `movingAverage`, `movingMedian`, `savgol`, `notchSos`, `filterLabel`, `interpAt`, `ENVELOPES` (sliding, peak-trough, dynamic threshold; view only), `localExtrema`, `halfWindow`, `demoWalk` |
 | `src/app.js` | state `S`, loading (`handleFile`, `loadMat`, `loadCsv`, `setDataset`, `selectChannel`), `COMPUTED` + `chanInfo()` (labels and units of computed signals), `recompute`, `derivedChecks`, `renderValidation`, `renderPlot` (traces: 0–1 envelope band, 2 recorded signal (faded when filtered), 3 filtered signal, 4 envelope midline, 5–6 algorithm guide lines, 7 lab markers, 8 algorithm markers, 9–10 interval strip; hidden traces use `visible: false` so indices stay fixed; notes are shapes + annotations), `showLab()` (checks with `lab: true` hide with it), `hUsed()` (h control and line only for the lab code or algorithms with `usesH`), options under Advanced (`#advSec input[data-param]` → `params()`, reset to their HTML `value`), `showFilter()`, `showEnv()` (envelopes are a view: they redraw the plot, never recompute steps), notes (`onPlotClick`, `addNote`, `renderNotes`), export |
 | `python/lab_step_det.py` | `detect_steps`, `gait_metrics`, `load_csv` (Physics Toolbox CSV → Walking.mat layout), `sampling_rate`, `resample`, CLI |
