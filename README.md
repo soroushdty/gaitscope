@@ -176,6 +176,9 @@ data/                 local course files (git-ignored)
 - **Coza** and the Lab 1 sample walk: Dr. Aurel Coza. The page's sample is a synthetic walk
   of our own; the course files stay out of this repository.
 - **Coza (modified):** Dr. Soroush Dianaty.
+- **Everything else:** each detector, filter and envelope credits its authors on the page,
+  with a DOI link, and in exports. The full list, including the spectrum and features, is
+  under Credits in [docs/algorithm.md](docs/algorithm.md).
 
 MIT License; see [LICENSE](LICENSE).
 
