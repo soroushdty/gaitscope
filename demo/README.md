@@ -29,5 +29,9 @@ the same steps for each detector whose window is in seconds, so the disagreement
 the walk, not from the recorder (#51).
 
 On the up-and-down signal (vertical, or the total TgF), every detector finds the hand and
-pocket walks' steps to within one. The extra steps come from the ends. They were recorded before
+pocket walks' steps to within one.
+
+All three were recorded before the recorder's rotation columns were put in the right order
+(#93). In these files `wx` holds the rotation rate about y, `wy` about z and `wz` about x,
+in rad/s. The acceleration columns are right. The extra steps come from the ends. They were recorded before
 the recorder learned to cut the Stop press out (#87), and are kept as recorded.
