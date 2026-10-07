@@ -72,6 +72,9 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
 - **Spectrum** (Welch's method, like scipy). Walking shows as a peak, which gives a cadence
   with no step detection at all, to cross-check the detectors. With a filter on, it also
   shows what the filter removes.
+- **Spectrogram:** how strongly each rhythm shows along the recording, with the main
+  rhythm drawn on top. A steady walk is one bright band; swinging the phone brings out a
+  second band at half the height (the stride).
 - **Step intervals** under the plot: the time between steps for each detector, next to the
   spectrum's main rhythm over time.
 - **Steps table:** every step any detector marked, and the weak peaks Coza (modified)

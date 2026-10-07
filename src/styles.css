@@ -167,6 +167,9 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .card h2 { font-size: 15px; margin-bottom: 8px; }
 .spectrum-card { margin-top: 18px; }
 #specPlot { height: 280px; }
+.spectro-card { margin-top: 18px; }
+#spectroPlot { height: 240px; }
+#spectroPlot image { image-rendering: pixelated; } /* one block per window and row, not smeared between them */
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
 .card-head h2 { margin-bottom: 0; }
 .card-head .stack { margin-top: 0; }

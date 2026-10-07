@@ -354,6 +354,21 @@ values over time. Walking repeats, so its rhythm shows as a tall peak.
   estimate. The synthetic walk gives 15.4 of 17: its
   first and last steps are faint, under half size. It is an estimate: best on a steady walk,
   rougher when the phone is handled at the ends.
+
+* **Spectrogram** (`spectrogramImage`, #98): the same short-time spectra as a picture, in
+  its own card under the spectrum. Time runs across, lined up with the signal plot;
+  frequency goes up to 5 Hz in rows of 0.05 Hz; the colour's strength is the power, from
+  20 dB below the strongest power in the walking band (blank) up to it, squared so faint
+  power fades quickly. A 30 dB straight scale washed out the owner's pocket walk, whose heel
+  strikes spread power across the band. The main rhythm is drawn on top as a line.
+  - Plotly's basic bundle, the only one the page loads, has no heatmap. So the picture is
+    an RGBA image the page writes itself as a PNG (`pngBytes`: uncompressed zlib blocks,
+    no deflate library needed), placed on Plotly's axes as a layout image and shown as crisp
+    blocks (`image-rendering: pixelated`). Recordings over 1200 windows (10 minutes) have
+    neighbouring windows averaged.
+  - On the owner's noisy walk the step band runs right through at about 1.6 Hz, and a
+    stride band at about 0.8 Hz appears exactly while the arm swings (6.5–14 s and
+    23–27 s). On the pocket walk the step band (1.3 Hz) has a harmonic at 2.6 Hz.
 * The filter, spectra and rhythm are cached, and recomputed only when the channel or their own
   settings change, so moving h or an algorithm's settings stays quick.
 

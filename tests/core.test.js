@@ -1299,3 +1299,36 @@ test('steps from the rhythm, without detecting steps (#98): still, walking, stil
   const noise = walk(20, 99, 99, () => 1); // no walking at all
   assert.equal(C.spectralSteps(noise.A, noise.t, { specWin: 4 }), null);
 });
+
+test('the spectrogram picture (#98): a PNG that decodes back to its pixels, the bright row at the rhythm', () => {
+  const zlib = require('zlib');
+  // PNG: signature, IHDR, IDAT (zlib, stored blocks) and IEND, every CRC right; pixels round-trip
+  const w = 300, h = 120, rgba = Uint8Array.from({ length: w * h * 4 }, (_, i) => (i * 37 + (i >> 9)) & 255); // over one 65535-byte block
+  const png = C.pngBytes(w, h, rgba), b = Buffer.from(png);
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  const chunks = []; let o = 8;
+  while (o < b.length) { const n = b.readUInt32BE(o), type = b.toString('latin1', o + 4, o + 8); chunks.push({ type, data: b.subarray(o + 8, o + 8 + n) }); assert.equal(b.readUInt32BE(o + 8 + n), C.crc32(png.subarray(o + 4, o + 8 + n)), type + ' CRC'); o += 12 + n; }
+  assert.deepEqual(chunks.map(c => c.type), ['IHDR', 'IDAT', 'IEND']);
+  assert.deepEqual([chunks[0].data.readUInt32BE(0), chunks[0].data.readUInt32BE(4), ...chunks[0].data.subarray(8)], [w, h, 8, 6, 0, 0, 0]);
+  const raw = zlib.inflateSync(chunks[1].data); // checks the Adler-32 too
+  for (let y = 0; y < h; y++) { assert.equal(raw[y * (w * 4 + 1)], 0, 'filter byte'); assert.deepEqual(raw.subarray(y * (w * 4 + 1) + 1, (y + 1) * (w * 4 + 1)), Buffer.from(rgba.subarray(y * w * 4, (y + 1) * w * 4))); }
+  assert.equal(C.base64(png), b.toString('base64'));
+  for (const n of [0, 1, 2, 3, 4]) assert.equal(C.base64(Uint8Array.from({ length: n }, (_, i) => 250 + i)), Buffer.from(Uint8Array.from({ length: n }, (_, i) => 250 + i)).toString('base64'));
+
+  // a 1.6 Hz walk for 20 s: in every column the most opaque row holds 1.6 Hz
+  const fs = 60, t = Float64Array.from({ length: 20 * fs }, (_, i) => i / fs), A = t.map(v => 1 + 0.3 * Math.sin(2 * Math.PI * 1.6 * v) + 0.05 * Math.sin(2 * Math.PI * 3.2 * v));
+  const r = C.rhythmOverTime(A, t, { specWin: 4 }), im = C.spectrogramImage(r, [10, 20, 30]);
+  assert.equal(im.height, 100); assert.equal(im.width, r.S.length); assert.equal(im.fMax, 5);
+  assert.ok(Math.abs(im.x0 - (r.t[0] - r.hop / 2)) < 1e-9 && Math.abs(im.x1 - (r.t.at(-1) + r.hop / 2)) < 1e-9);
+  for (let c = 0; c < im.width; c++) {
+    let best = 0, row = -1;
+    for (let y = 0; y < im.height; y++) { const a = im.rgba[(y * im.width + c) * 4 + 3]; if (a > best) { best = a; row = y; } }
+    const f = (im.height - 1 - row + 0.5) * 0.05;
+    assert.ok(Math.abs(f - 1.6) <= 0.05 && best === 255, c + ': ' + f + ' Hz, alpha ' + best);
+    assert.deepEqual([...im.rgba.subarray((row * im.width + c) * 4, (row * im.width + c) * 4 + 3)], [10, 20, 30]);
+  }
+  // long recordings: at most maxCols columns, neighbours averaged
+  const many = C.spectrogramImage(r, [0, 0, 0], { maxCols: 10 });
+  assert.ok(many.width <= 10 && Math.abs(many.x0 - im.x0) < 1e-9);
+  assert.equal(C.spectrogramImage({ t: new Float64Array(0), S: [], f: new Float64Array(0), hop: 0.5 }, [0, 0, 0]), null);
+});

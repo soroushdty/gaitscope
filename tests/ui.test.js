@@ -23,7 +23,7 @@ function makePage(opts = {}) {
     .replace('<script src="src/core.js"></script>', inline('core.js'))
     .replace('<script src="src/record.js"></script>', inline('record.js'))
     .replace('<script src="src/app.js"></script>', inline('app.js'));
-  const plots = [], spectra = [], blobs = [];
+  const plots = [], spectra = [], spectros = [], blobs = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', e => pageErrors.push((e.detail && e.detail.stack) || e.message));
   const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, url: opts.url, beforeParse(w) {
@@ -45,7 +45,7 @@ function makePage(opts = {}) {
       if (opts.permission) w.DeviceMotionEvent.requestPermission = async () => opts.permission;
     }
     // the main plot and the spectrum are recorded separately
-    w.Plotly = { react(el, traces, layout, config) { (el.id === 'specPlot' ? spectra : plots).push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
+    w.Plotly = { react(el, traces, layout, config) { (el.id === 'specPlot' ? spectra : el.id === 'spectroPlot' ? spectros : plots).push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
     w.URL.createObjectURL = b => { blobs.push(b); return 'blob:x'; }; w.URL.revokeObjectURL = () => {};
     // the demo walks are fetched from demo/; opts.fetch stands in for a download that fails or is slow
     w.fetch = opts.fetch || (async url => {
@@ -53,7 +53,7 @@ function makePage(opts = {}) {
       return fs.existsSync(f) ? { ok: true, status: 200, text: async () => fs.readFileSync(f, 'utf8') } : { ok: false, status: 404 };
     });
   } });
-  return { w: dom.window, d: dom.window.document, plots, spectra, blobs };
+  return { w: dom.window, d: dom.window.document, plots, spectra, spectros, blobs };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function upload(pg, file) {
@@ -729,6 +729,30 @@ test('a phone export opens on its total; a MAT file on column 2; the synthetic w
   assert.deepEqual(seen, { 'ptb_gforce.csv': 'magnitude (TgF)', 'ptb_linacc_semicolon.csv': 'magnitude (aT)', 'recorder.csv': 'magnitude (TgF)',
     'phyphox.zip': 'magnitude (Absolute acceleration)', 'walk.mat': 'x (column 2)', 'plain_noheader.csv': seen['plain_noheader.csv'], synthetic: 'x' });
   assert.doesNotMatch(seen['plain_noheader.csv'], /magnitude/, 'no sensor named: the first signal, as before');
+});
+
+test('the spectrogram (#98): a picture on Plotly\u2019s axes, with the main rhythm drawn over it', async () => {
+  const pg = makePage(), $ = id => pg.d.getElementById(id);
+  pg.d.getElementById('demoBtn').click(); await sleep(40);
+  const sg = pg.spectros.at(-1);
+  assert.ok(sg, 'drawn with the other plots');
+  const img = sg.layout.images[0], t = traces(pg, 'signal')[0].x;
+  assert.match(img.source, /^data:image\/png;base64,iVBORw0KGgo/, 'a PNG, made by the page itself');
+  assert.deepEqual([img.xref, img.yref, img.sizing, img.layer, img.y, img.sizey], ['x', 'y', 'stretch', 'below', 5, 5]);
+  assert.deepEqual([...sg.layout.xaxis.range], [t[0], t.at(-1)], 'lined up with the signal plot');
+  const line = [...sg.traces].find(tr => tr.meta && tr.meta.role === 'rhythmLine');
+  assert.ok(line.y.filter(v => v !== null).every(v => v > 0.8 && v < 1.0), 'the synthetic walk\u2019s rhythm, about 0.9 Hz');
+  assert.equal($('spectroPlot').hidden, false);
+  assert.match(text(pg, 'spectroNote'), /^How strongly each rhythm shows along the recording, in 4 s windows every 0\.5 s .*blank at 20 dB below the strongest walking rhythm/);
+  // a longer window under Advanced: fewer, wider windows
+  const win = $('specWinIn'); win.value = '8'; win.dispatchEvent(new pg.w.Event('input', { bubbles: true })); await sleep(60);
+  assert.match(text(pg, 'spectroNote'), /in 8 s windows/);
+  // shorter than one window: no picture, and says why (a new file starts from the default 4 s)
+  const tmp = path.join(require('os').tmpdir(), 'gaitscope_short.csv');
+  fs.writeFileSync(tmp, 'time,ax\n' + Array.from({ length: 300 }, (_, i) => (i / 100) + ',' + Math.sin(i / 10).toFixed(3)).join('\n'));
+  await upload(pg, tmp); fs.unlinkSync(tmp);
+  assert.equal($('spectroPlot').hidden, true);
+  assert.match(text(pg, 'spectroNote'), /^The recording is shorter than one 4 s window \(Rhythm-over-time window, under Advanced\), so there is no spectrogram\.$/);
 });
 
 /* ------------------------------------------------------------ demo walks */
