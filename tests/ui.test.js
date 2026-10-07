@@ -687,6 +687,17 @@ test('reads a Physics Toolbox CSV', async () => {
   assert.ok(opts.includes('x (gFx)') && opts.includes('wx (gyroscope)'));
 });
 
+test('a phone export opens on its total; a MAT file on column 2; the synthetic walk on x', async () => {
+  const pg = makePage();
+  const opened = () => pg.d.getElementById('chanSel').selectedOptions[0].textContent;
+  const seen = {};
+  for (const f of ['ptb_gforce.csv', 'ptb_linacc_semicolon.csv', 'recorder.csv', 'phyphox.zip', 'walk.mat', 'plain_noheader.csv']) { await upload(pg, path.join(FIX, f)); seen[f] = opened(); }
+  pg.d.getElementById('demoBtn').click(); await sleep(40); seen.synthetic = opened();
+  assert.deepEqual(seen, { 'ptb_gforce.csv': 'magnitude (TgF)', 'ptb_linacc_semicolon.csv': 'magnitude (aT)', 'recorder.csv': 'magnitude (TgF)',
+    'phyphox.zip': 'magnitude (Absolute acceleration)', 'walk.mat': 'x (column 2)', 'plain_noheader.csv': seen['plain_noheader.csv'], synthetic: 'x' });
+  assert.doesNotMatch(seen['plain_noheader.csv'], /magnitude/, 'no sensor named: the first signal, as before');
+});
+
 /* ------------------------------------------------- browser recorder (#51) */
 // devicemotion events: ~60 Hz with uneven timing, gravity on y, a 0.9 Hz walk
 function motionSamples(seconds) {
