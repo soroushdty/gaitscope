@@ -719,6 +719,7 @@
   function prototype(type, N, rp, rs) {
     const m = Array.from({ length: N }, (_, i) => -N + 1 + 2 * i);
     if (type === 'butter') return { z: [], p: m.map(v => cx(-Math.cos(Math.PI * v / (2 * N)), -Math.sin(Math.PI * v / (2 * N)))), k: 1 };
+    if (type === 'bessel') return { z: [], p: besselPoles(N), k: 1 };
     if (type === 'cheby1') {
       const eps = Math.sqrt(Math.pow(10, 0.1 * rp) - 1), mu = Math.asinh(1 / eps) / N;
       const p = m.map(v => { const th = Math.PI * v / (2 * N); return cx(-Math.sinh(mu) * Math.cos(th), -Math.cosh(mu) * Math.sin(th)); });
@@ -735,8 +736,40 @@
     return { z, p, k };
   }
 
+  // Roots of a polynomial with real coefficients c[0] + c[1] s + ... + c[N] s^N (c[N] = 1),
+  // by Aberth–Ehrlich iteration from points on a circle of the roots' geometric-mean size.
+  function polyRoots(c) {
+    const N = c.length - 1, R = Math.pow(Math.abs(c[0]), 1 / N);
+    let z = Array.from({ length: N }, (_, i) => cx(R * Math.cos(2 * Math.PI * (i + 0.25) / N), R * Math.sin(2 * Math.PI * (i + 0.25) / N)));
+    for (let iter = 0; iter < 500; iter++) {
+      let moved = 0;
+      z = z.map((zi, i) => {
+        let P = cx(c[N]), dP = cx(0);
+        for (let k = N - 1; k >= 0; k--) { dP = cAdd(cMul(dP, zi), P); P = cAdd(cMul(P, zi), cx(c[k])); }
+        const ratio = cDiv(P, dP);
+        let sum = cx(0);
+        z.forEach((zj, j) => { if (j !== i) sum = cAdd(sum, cDiv(cx(1), cSub(zi, zj))); });
+        const w = cDiv(ratio, cSub(cx(1), cMul(ratio, sum)));
+        moved = Math.max(moved, cAbs(w) / Math.max(1, cAbs(zi)));
+        return cSub(zi, w);
+      });
+      if (moved < 1e-16) break;
+    }
+    return z;
+  }
+  // Bessel prototype normalised for phase, like scipy's besselap(N, norm='phase'): the roots of
+  // the reverse Bessel polynomial θ_N(s) = Σ (2N−k)! / (2^(N−k) k! (N−k)!) s^k, scaled by
+  // θ_N(0)^(−1/N) so the response has the same asymptotes as a Butterworth.
+  function besselPoles(N) {
+    const c = new Array(N + 1);
+    c[N] = 1;
+    for (let k = N; k >= 1; k--) c[k - 1] = c[k] * (2 * N - k + 1) * k / (2 * (N - k + 1));
+    const scale = Math.pow(c[0], -1 / N);
+    return polyRoots(c).map(r => cScale(r, scale));
+  }
+
   /* Digital filter as second-order sections [b0, b1, b2, 1, a1, a2].
-     spec: {type: 'butter'|'cheby1'|'cheby2', order, fs, lowpass (Hz), highpass (Hz, 0 = none),
+     spec: {type: 'butter'|'bessel'|'cheby1'|'cheby2', order, fs, lowpass (Hz), highpass (Hz, 0 = none),
      rp (dB passband ripple, cheby1), rs (dB stopband attenuation, cheby2)}. With a high-pass
      cut-off it is a band-pass of twice the order, as in scipy. For Chebyshev I the cut-off is where
      the ripple band ends; for Chebyshev II it is where the stopband starts. Throws a
@@ -1111,6 +1144,7 @@
   const FILTERS = [
     { id: 'none', name: 'None', tagline: 'Detection runs on the recorded signal.' },
     iirEntry('butter', 'Butterworth', 'Flat passband and the gentlest roll-off: the least change to the shape of each step.'),
+    iirEntry('bessel', 'Bessel', 'The most even delay across frequencies: steps keep their shape best, with the gentlest roll-off. The cut-off is where the phase is half delayed, not the -3 dB point.'),
     iirEntry('cheby1', 'Chebyshev I', 'A steeper roll-off, paid for with ripple in the passband that slightly reshapes peaks.', p => ', ' + fmt(p.fRipple, 1) + ' dB ripple'),
     iirEntry('cheby2', 'Chebyshev II', 'A steep roll-off with a flat passband; the ripple is in the stopband. The cut-off is where the stopband starts.', p => ', ' + fmt(p.fAtten, 0) + ' dB stopband'),
   ];
