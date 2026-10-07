@@ -47,6 +47,11 @@ function makePage(opts = {}) {
     // the main plot and the spectrum are recorded separately
     w.Plotly = { react(el, traces, layout, config) { (el.id === 'specPlot' ? spectra : plots).push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
     w.URL.createObjectURL = b => { blobs.push(b); return 'blob:x'; }; w.URL.revokeObjectURL = () => {};
+    // the demo walks are fetched from demo/; opts.fetch stands in for a download that fails or is slow
+    w.fetch = opts.fetch || (async url => {
+      const f = path.join(ROOT, String(url));
+      return fs.existsSync(f) ? { ok: true, status: 200, text: async () => fs.readFileSync(f, 'utf8') } : { ok: false, status: 404 };
+    });
   } });
   return { w: dom.window, d: dom.window.document, plots, spectra, blobs };
 }
@@ -712,6 +717,50 @@ test('a phone export opens on its total; a MAT file on column 2; the synthetic w
   assert.deepEqual(seen, { 'ptb_gforce.csv': 'magnitude (TgF)', 'ptb_linacc_semicolon.csv': 'magnitude (aT)', 'recorder.csv': 'magnitude (TgF)',
     'phyphox.zip': 'magnitude (Absolute acceleration)', 'walk.mat': 'x (column 2)', 'plain_noheader.csv': seen['plain_noheader.csv'], synthetic: 'x' });
   assert.doesNotMatch(seen['plain_noheader.csv'], /magnitude/, 'no sensor named: the first signal, as before');
+});
+
+/* ------------------------------------------------------------ demo walks */
+test('demo walks: the hand and pocket recordings, the synthetic walk, and a download that fails', async () => {
+  const pg = makePage();
+  const $ = id => pg.d.getElementById(id);
+  const pick = async (id, where) => { pg.d.querySelector(where + ' [data-demo="' + id + '"]').click(); await sleep(150); };
+  $('demoMenu').open = true;
+  await pick('hand', '#demoMenu');
+  assert.equal($('demoMenu').open, false);
+  assert.equal($('fileChip').textContent, 'Hand walk (demo)168.5 KB');
+  assert.equal($('chanSel').selectedOptions[0].textContent, 'magnitude (TgF)');
+  assert.equal(text(pg, 'plotTitle'), 'Hand walk, magnitude (TgF)');
+  assert.match(text(pg, 'valList'), /Demo recordingRecorded with this page on a Pixel 9a.*exactly 10 steps.*Recorded with: 10 steps counted by hand, phone in the hand\./);
+  // every detector finds the 10 steps; the extras are settling after the stop and the press on Stop,
+  // and for Coza (modified) a second bump inside one step (9.66 s)
+  assert.match(text(pg, 'valList'), /You counted 10 steps ?Coza finds 12 \(\+20%\); Coza \(modified\) finds 13 \(\+30%\)\./);
+  assert.equal($('saveRec').hidden, true, 'it is a file already');
+
+  await pick('pocket', 'aside'); // the sidebar's links
+  assert.equal($('fileChip').textContent, 'Pocket walk (demo)348.7 KB');
+  assert.equal($('chanSel').selectedOptions[0].textContent, 'magnitude (TgF)');
+  assert.match(text(pg, 'valList'), /exactly 28 steps\. The first 2 s are the phone going into the pocket.*Recorded with: 28 steps counted by hand, phone in the front trouser pocket\./);
+  assert.deepEqual([markers(pg, 'Coza').x.length, markers(pg, 'Coza (modified)').x.length], [32, 35]);
+
+  await pick('synthetic', 'aside');
+  assert.equal($('fileChip').textContent, 'Synthetic walk (demo)');
+  assert.equal(text(pg, 'plotTitle'), 'Synthetic walk, x');
+  assert.match(text(pg, 'valList'), /The synthetic walk has 17 steps/);
+
+  // picked again before the first one arrives: the later pick wins
+  let release;
+  const slow = makePage({ fetch: url => new Promise(res => { release = () => res({ ok: true, status: 200, text: async () => fs.readFileSync(path.join(ROOT, url), 'utf8') }); }) });
+  slow.d.querySelector('#demoMenu [data-demo="pocket"]').click(); await sleep(20);
+  slow.d.getElementById('emptyDemo').click(); await sleep(40);
+  release(); await sleep(100);
+  assert.equal(slow.d.getElementById('fileChip').textContent, 'Synthetic walk (demo)');
+  assert.match(text(slow, 'valList'), /The synthetic walk has 17 steps/);
+
+  // opened from a file on disk, or offline: says why and how to fix it
+  const off = makePage({ fetch: async () => { throw new TypeError('Failed to fetch'); } });
+  off.d.querySelector('#demoMenu [data-demo="hand"]').click(); await sleep(80);
+  assert.match(text(off, 'valList'), /The demo recording could not be loaded \(Failed to fetch\)\..*serve its folder instead \(python3 -m http\.server\)/);
+  assert.equal(off.d.getElementById('analysis').hidden, true);
 });
 
 /* ------------------------------------------------- browser recorder (#51) */

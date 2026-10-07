@@ -54,6 +54,7 @@
     S.recording = null; $('saveRec').hidden = true; S.counted = null; S.countedBy = null; // 'hand' or 'demo'
     dropPlainUndo();
     S.recordingSaved = false; S.clean = null; // see Home
+    demoSeq++; // a demo still being fetched is no longer wanted
   }
 
   async function handleFile(file) {
@@ -93,9 +94,49 @@
     }
   }
 
-  function loadDemo() {
+  /* Demo walks: two of the owner's phone recordings, bundled in demo/ and fetched when picked,
+     and the synthetic walk (core.js demoWalk). A recording loads like an uploaded file, with the
+     steps counted by hand; the synthetic walk carries its true count. */
+  const DEMOS = {
+    hand: { file: 'demo/walk-hand.csv', title: 'Hand walk',
+      about: 'Recorded with this page on a Pixel 9a (Firefox) on 2026-10-07 by Dr. Soroush Dianaty: the phone held flat, in portrait, at the chest just below the breastbone, for exactly 10 steps. The last step brings the feet together, then comes a pause while Stop is held. The plot opens on the total (TgF), which doesn’t depend on how the phone is held.' },
+    pocket: { file: 'demo/walk-pocket.csv', title: 'Pocket walk',
+      about: 'Recorded with this page on a Pixel 9a (Firefox) on 2026-10-07 by Dr. Soroush Dianaty: the phone in the right front trouser pocket for exactly 28 steps. The first 2 s are the phone going into the pocket, and the last 4 s taking it out and holding Stop; detectors count some of that as steps. The plot opens on the total (TgF), which doesn’t depend on how the phone sits in the pocket.' },
+  };
+  let demoSeq = 0;
+  function loadDemo(id) {
+    for (const m of document.querySelectorAll('.demo-menu')) m.open = false;
+    return DEMOS[id] ? loadRecordedDemo(DEMOS[id]) : loadSynthetic();
+  }
+  async function loadRecordedDemo(demo) {
     resetAll();
-    S.file = { name: 'Synthetic walk (demo)', size: 0, demo: true };
+    const seq = demoSeq;
+    S.file = { name: demo.title + ' (demo)', size: 0, demo: true, title: demo.title };
+    showFileChip();
+    $('empty').hidden = true; $('work').hidden = false;
+    revealWork();
+    let text;
+    try {
+      const r = await fetch(demo.file);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      text = await r.text();
+    } catch (e) {
+      if (seq === demoSeq) fatal('The demo recording could not be loaded (' + e.message + ').', 'Check the internet connection and pick it again. If the page was opened as a file on this computer, serve its folder instead (python3 -m http.server) and open it from there.');
+      return;
+    }
+    if (seq !== demoSeq) return; // another file or demo was opened meanwhile
+    S.file.size = text.length; showFileChip();
+    S.fileChecks = [{ level: 'info', title: 'Demo recording', detail: demo.about }];
+    try { loadCsv(text); } catch (e) {
+      if (e instanceof C.InputError) return fatal(e.message, e.fix);
+      throw e;
+    }
+    if (S.ch) markClean();
+  }
+
+  function loadSynthetic() {
+    resetAll();
+    S.file = { name: 'Synthetic walk (demo)', size: 0, demo: true, title: 'Synthetic walk' };
     showFileChip();
     $('empty').hidden = true; $('work').hidden = false;
     revealWork();
@@ -824,7 +865,7 @@
     el.setAttribute('aria-label', 'Signal with detected steps' + (iv ? ' and the time between steps' : ''));
     Plotly.react(el, traces, layout, config);
     if (!el.__bound) { el.on('plotly_click', ev => onNoteClick('signal', ev)); el.__bound = true; }
-    const name = S.file.demo ? 'Synthetic walk' : (S.varName ? S.varName : S.file.name);
+    const name = S.file.demo ? S.file.title : (S.varName ? S.varName : S.file.name);
     $('plotTitle').textContent = name + ', ' + chLabel;
   }
 
@@ -1198,7 +1239,7 @@
   ['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement) drop.classList.remove('over'); }));
   document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) handleFile(f); });
-  $('demoBtn').addEventListener('click', loadDemo);
+  for (const b of document.querySelectorAll('[data-demo]')) b.addEventListener('click', () => loadDemo(b.dataset.demo));
   window.StepRecorder.init(loadRecording);
   $('saveRec').addEventListener('click', () => { if (S.recording) { save(S.recording.name, S.recording.csv); S.recordingSaved = true; } });
   $('homeBtn').addEventListener('click', onHome);
@@ -1206,7 +1247,6 @@
   $('homeDiscard').addEventListener('click', goHome);
   $('homeCancel').addEventListener('click', cancelHome);
   $('homeDialog').addEventListener('keydown', e => { if (e.key === 'Escape') cancelHome(); });
-  $('emptyDemo').addEventListener('click', loadDemo);
   $('emptyPick').addEventListener('click', () => $('fileIn').click());
   $('varSel').addEventListener('change', e => selectMatVar(Number(e.target.value)));
   $('chanSel').addEventListener('change', e => selectChannel(e.target.value));

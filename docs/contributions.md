@@ -23,7 +23,7 @@ Roles follow the [CRediT taxonomy](https://credit.niso.org/).
 | Decisions | Every "decisions needed" item, the licence and naming (#42), accepting or rejecting recommendations | None. Its recommendations are proposals until the owner decides |
 | Methodology | The rules every change follows (`CLAUDE.md`, `CONTRIBUTING.md`), set or approved by the owner | Technical design: the details of the algorithms, file formats, the cross-checks against scipy, numpy and Octave |
 | Software | Review of every pull request before merging | Nearly all code, tests and fixtures |
-| Data | All real recordings besides the course's `Walking.mat` (Physics Toolbox and phyphox exports from the owner's phone) | Synthetic fixtures (`scripts/make_fixtures.py`) |
+| Data | All real recordings besides the course's `Walking.mat` (Physics Toolbox and phyphox exports from the owner's phone; the demo walks in `demo/`, recorded with the dashboard) | Synthetic fixtures (`scripts/make_fixtures.py`) |
 | Validation | Real-device checks, recordings with hand-counted steps (#68), the instructor's answers (#67) | Automated tests, reference-implementation fixtures, headless-browser checks |
 | Investigation | Questions to research and verdicts accepted (e.g. the five ideas in PR #59) | Literature and tool research, benchmarks, research write-ups (PR #59) |
 | Writing | Review and final approval of all text | Drafts of the documentation, issue analyses and pull request descriptions |
