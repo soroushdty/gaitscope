@@ -18,6 +18,7 @@ function makePage(opts = {}) {
     .replace(/<script src="https:[^>]+><\/script>/g, '')
     .replace(/<link[^>]+>/g, '')
     .replace('<script src="src/core.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/core.js'), 'utf8') + '</script>')
+    .replace('<script src="src/record.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/record.js'), 'utf8') + '</script>')
     .replace('<script src="src/app.js"></script>', '<script>' + fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8') + '</script>');
   const plots = [], spectra = [], blobs = [];
   const vc = new VirtualConsole();
@@ -25,7 +26,11 @@ function makePage(opts = {}) {
   const dom = new JSDOM(html, { virtualConsole: vc, runScripts: 'dangerously', pretendToBeVisual: true, beforeParse(w) {
     w.pako = pako; w.TextDecoder = TextDecoder;
     if (opts.hdf5 !== false) w.hdf5 = require('jsfive'); // the page loads it from jsDelivr when a v7.3 file arrives
-    w.matchMedia = () => ({ matches: false, addEventListener() {} });
+    w.matchMedia = q => ({ matches: !!(opts.coarse && /pointer: coarse/.test(q)), addEventListener() {} }); // coarse: a phone
+    if (opts.motion) { // the devicemotion API; permission: iPhone's prompt answer
+      w.DeviceMotionEvent = function () {};
+      if (opts.permission) w.DeviceMotionEvent.requestPermission = async () => opts.permission;
+    }
     // the main plot and the spectrum are recorded separately
     w.Plotly = { react(el, traces, layout, config) { (el.id === 'specPlot' ? spectra : plots).push({ traces, layout, config }); el.on = (ev, fn) => { el._click = fn; }; } };
     w.URL.createObjectURL = b => { blobs.push(b); return 'blob:x'; }; w.URL.revokeObjectURL = () => {};
@@ -659,4 +664,117 @@ test('reads a Physics Toolbox CSV', async () => {
   assert.match(text(pg, 'valTitle'), /^Valid/);
   const opts = [...pg.d.getElementById('chanSel').options].map(o => o.textContent);
   assert.ok(opts.includes('x (gFx)') && opts.includes('wx (gyroscope)'));
+});
+
+/* ------------------------------------------------- browser recorder (#51) */
+const Core = require('../src/core.js');
+// devicemotion events: ~60 Hz with uneven timing, gravity on y, a 0.9 Hz walk
+function motionSamples(seconds) {
+  const out = []; let ts = 5000.25, k = 0;
+  while ((ts - 5000.25) / 1000 < seconds) {
+    const t = (ts - 5000.25) / 1000, walk = t > 2 && t < seconds - 2 ? 1 : 0;
+    const a = [walk * 3 * Math.sin(2 * Math.PI * 0.9 * t), walk * 9 * Math.max(0, Math.sin(2 * Math.PI * 0.9 * t)) ** 3, walk * Math.cos(2 * Math.PI * 1.8 * t)];
+    out.push({ ts, g: [a[0], a[1] + 9.81, a[2]], a, r: [10, 20, 30] });
+    ts += 1000 / 60 * (1 + 0.3 * Math.sin(k++ * 1.7));
+  }
+  return out;
+}
+function sendMotion(pg, samples) {
+  for (const s of samples) {
+    const e = new pg.w.Event('devicemotion');
+    Object.defineProperty(e, 'timeStamp', { value: s.ts });
+    e.accelerationIncludingGravity = { x: s.g[0], y: s.g[1], z: s.g[2] };
+    e.acceleration = { x: s.a[0], y: s.a[1], z: s.a[2] };
+    e.rotationRate = { alpha: s.r[0], beta: s.r[1], gamma: s.r[2] };
+    pg.w.dispatchEvent(e);
+  }
+}
+async function startRecording(pg) {
+  pg.d.getElementById('recBtn').click(); await sleep(20);
+  assert.equal(pg.d.getElementById('recOverlay').dataset.phase, 'countdown');
+  pg.d.getElementById('recBox').click(); await sleep(20); // tap to start now
+  assert.equal(pg.d.getElementById('recOverlay').dataset.phase, 'recording');
+}
+const submitRecording = async pg => { pg.d.getElementById('recForm').dispatchEvent(new pg.w.Event('submit', { cancelable: true })); await sleep(80); };
+
+test('records a walk from motion events, loads it like a file, and downloads what was captured', async () => {
+  const pg = makePage({ coarse: true, motion: true });
+  const $ = id => pg.d.getElementById(id);
+  assert.equal($('recBtn').hidden, false); assert.equal($('emptyRec').hidden, false); assert.equal($('recHint').hidden, true);
+  await startRecording(pg);
+  assert.equal($('recStop').hidden, false);
+  const samples = motionSamples(20);
+  sendMotion(pg, samples);
+  await sleep(300);
+  assert.match(text(pg, 'recInfo'), new RegExp('^' + samples.length + ' samples, about 6\\d Hz\\. This browser can’t keep the screen on'));
+  $('recStop').dispatchEvent(new pg.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal($('recOverlay').dataset.phase, 'done');
+  assert.equal($('recForm').hidden, false); assert.equal(text(pg, 'recBig'), '0:19');
+  $('recSteps').value = '14'; $('recPos').value = 'front pocket';
+  await submitRecording(pg);
+
+  assert.equal($('recOverlay').hidden, true);
+  assert.match($('fileChip').textContent, /^recording_\d{8}-\d{6}\.csv/);
+  assert.match(text(pg, 'valTitle'), /^Valid/);
+  assert.match(text(pg, 'valList'), /Recorded in the browser.*about 6\d\.\d Hz, every sample at its own time.*Recorded with: 14 steps counted by hand, phone in the front trouser pocket\./);
+  assert.match(text(pg, 'valList'), /Lab code assumes 100 Hz/, 'the recording is not resampled');
+  assert.equal($('posSel').value, 'leg', 'front pocket: each peak is a stride');
+  const opts = [...$('chanSel').options].map(o => o.textContent);
+  assert.ok(['x (gFx)', 'y (gFy)', 'z (gFz)', 'magnitude (TgF)', 'ax (linear accelerometer)', 'wx (gyroscope)', 'vertical (along gravity, computed)'].every(o => opts.includes(o)), opts.join(' | '));
+  $('chanSel').value = '2'; $('chanSel').dispatchEvent(new pg.w.Event('change')); await sleep(40); // gFy carries gravity
+  assert.ok(pg.plots.at(-1).traces[TR.algo].x.length >= 6, 'the walk is found');
+
+  assert.equal($('saveRec').hidden, false);
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  $('saveRec').click();
+  const csv = await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); });
+  const p = Core.parseCsv(csv);
+  assert.equal(p.meta.steps_counted, '14'); assert.equal(p.meta.phone_position, 'front pocket'); assert.equal(p.meta.stopped, 'user');
+  assert.equal(p.meta.samples, String(samples.length));
+  samples.forEach((s, i) => { assert.equal(p.cols[0][i], (s.ts - samples[0].ts) / 1000); assert.equal(p.cols[2][i], s.g[1] / Core.STANDARD_GRAVITY); });
+
+  await upload(pg, path.join(FIX, 'walk.mat'));
+  assert.equal($('saveRec').hidden, true, 'only for a recording');
+});
+
+test('recorder: hold to stop, too short, page hidden mid-recording', async () => {
+  const pg = makePage({ coarse: true, motion: true });
+  const $ = id => pg.d.getElementById(id);
+  await startRecording(pg);
+  sendMotion(pg, motionSamples(1));
+  $('recStop').dispatchEvent(new pg.w.Event('pointerdown')); await sleep(300); $('recStop').dispatchEvent(new pg.w.Event('pointerup'));
+  await sleep(900);
+  assert.equal($('recOverlay').dataset.phase, 'recording', 'a short touch does not stop it');
+  $('recStop').dispatchEvent(new pg.w.Event('pointerdown')); await sleep(1100);
+  assert.equal($('recOverlay').dataset.phase, 'error');
+  assert.match(text(pg, 'recErrText'), /^Only \d+ samples over [01]\.\d s were captured\.$/);
+  assert.match(text(pg, 'recErrFix'), /at least 10 s/);
+  $('recClose').click();
+  assert.equal($('recOverlay').hidden, true);
+
+  await startRecording(pg);
+  sendMotion(pg, motionSamples(8));
+  Object.defineProperty(pg.d, 'hidden', { value: true, configurable: true });
+  pg.d.dispatchEvent(new pg.w.Event('visibilitychange'));
+  assert.equal($('recOverlay').dataset.phase, 'done');
+  assert.match(text(pg, 'recInfo'), /stopped early because the screen locked/);
+  await submitRecording(pg);
+  assert.match(text(pg, 'valList'), /Recording stopped early.*after [78]\.\d s/);
+});
+
+test('recorder: iPhone permission refused, and a computer without a sensor', async () => {
+  const pg = makePage({ coarse: true, motion: true, permission: 'denied' });
+  const $ = id => pg.d.getElementById(id);
+  $('recBtn').click(); await sleep(20);
+  assert.equal($('recOverlay').dataset.phase, 'error');
+  assert.match(text(pg, 'recErrText'), /Motion access was not allowed/);
+  assert.match(text(pg, 'recErrFix'), /close this tab, open the page again and tap Allow/);
+
+  const desk = makePage({ motion: true });
+  assert.equal(desk.d.getElementById('recBtn').hidden, true, 'no touch screen: no button');
+  assert.equal(desk.d.getElementById('recHint').hidden, false);
+  const quiet = makePage({ coarse: true, motion: true });
+  quiet.d.getElementById('recBtn').click(); await sleep(2600);
+  assert.equal(quiet.d.getElementById('recOverlay').dataset.phase, 'error');
+  assert.match(text(quiet, 'recErrText'), /No motion sensor is sending data/);
 });

@@ -38,6 +38,29 @@ All checks live in `src/core.js` (`parseMat`, `matCandidates`, `parseCsv`, `read
 | Zip with no CSV (e.g. an Excel export), damaged or truncated, password-protected, ZIP64, or an unknown compression method | error | Fix: export again as CSV (comma, decimal point), or unzip and upload the CSV. |
 | File named `.zip` that isn't a zip | error | Fix: export again, or upload the CSV or MAT file itself. |
 
+### Recording in the browser (#51)
+
+On a phone, **Record a walk** captures the motion sensors through the browser's
+`devicemotion` event (`src/record.js`). The samples become CSV text (`recordingCsv` in
+`src/core.js`) and load through the same path as an uploaded file, so every check below
+runs unchanged. Nothing is resampled; the dashboard's Resample step does that afterwards.
+Columns: `gFx`, `gFy`, `gFz`, `TgF` in g with gravity (accelerationIncludingGravity ÷
+9.80665, like Physics Toolbox's G-Force Meter), `ax`…`aT` in m/s² without gravity, and
+`wx`…`wz` in rad/s, when the browser gives them. Metadata lines record the start time,
+device, rate, how it stopped, and the two optional answers (`steps_counted`,
+`phone_position`).
+
+| Check | Level | Why / fix |
+|---|---|---|
+| Page not on https | error | Browsers only give motion data to secure pages. Fix: open the GitHub Pages address. |
+| No motion API | error | Fix: Chrome on Android or Safari on iPhone. On computers (no touch screen) the button is hidden and a hint says to use a phone. |
+| iPhone: motion access refused | error | Safari asks once per visit. Fix: close the tab, reopen and tap Allow; or clear Safari's website data. On Android: Chrome's Site settings → Motion sensors. |
+| No data within 2.5 s | error | No sensor (a computer). Fix: open the page on a phone. |
+| Recording under 3 s or 20 samples | error | Too short to analyse. Fix: record at least 10 s with the screen on. |
+| Screen locked or page hidden while recording | warn + fix | The phone stops sending data; what was captured is kept and loaded. A full-screen overlay (hold for a second to stop) keeps pocket touches from changing anything, and the Screen Wake Lock keeps the screen on where the browser allows it. |
+| Recorded in the browser | info | Says when, at what rate, and the counted steps and phone position if given. A front-pocket recording sets Phone position to *One leg*. |
+| Stopped at the 30-minute limit | info | |
+
 ## 2. Variables (MAT)
 
 Variable names are never hard-coded. Every numeric variable is a candidate; one-level

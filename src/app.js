@@ -51,6 +51,7 @@
     showPass = false;
     S.fileChecks = []; S.mat = null; S.ds = null; S.dsChecks = []; S.ch = null; S.chRaw = null; S.rs = null; S.res = null;
     S.notes = []; closeNoteForm();
+    S.recording = null; $('saveRec').hidden = true;
   }
 
   async function handleFile(file) {
@@ -159,6 +160,22 @@
     loadCsv(z.text);
   }
 
+  // a walk recorded in the browser (#51): loaded through the CSV path, like an upload
+  function loadRecording(r) {
+    resetAll();
+    S.file = { name: r.name, size: r.csv.length };
+    showFileChip();
+    $('empty').hidden = true; $('work').hidden = false;
+    revealWork();
+    S.fileChecks = r.checks.slice();
+    try { loadCsv(r.csv); } catch (e) {
+      if (e instanceof C.InputError) return fatal(e.message, e.fix);
+      throw e;
+    }
+    S.recording = r;
+    $('saveRec').hidden = false;
+  }
+
   function loadCsv(text, wasMat) {
     const p = C.parseCsv(text);
     S.varName = null;
@@ -167,6 +184,17 @@
     pre.push({ level: 'pass', title: 'CSV read', detail: (p.hasHeader ? 'Header row found. ' : 'No header row. ') + 'Separated by ' + ({ ',': 'commas', ';': 'semicolons', '\t': 'tabs' }[p.delim] || 'commas') + (p.decimalComma ? ' with decimal commas' : '') + (p.clockTime ? '; clock times converted to seconds' : '') + '.' });
     if (p.dropped.length) pre.push({ level: 'info', title: 'Text columns skipped', detail: p.dropped.join(', ') + ' contain mostly non-numeric values.' });
     if (!p.cols.length) throw new C.InputError('No numeric columns found in the CSV.', 'Export the sensor data as numbers, one column per channel.');
+    // a recording made in the browser says how it was made, and may say where the phone was
+    const m = p.meta;
+    if (/^gaitscope/.test(m.recorder || '')) {
+      const said = [m.steps_counted ? m.steps_counted + ' steps counted by hand' : '', m.phone_position ? 'phone in the ' + m.phone_position.replace('front pocket', 'front trouser pocket').replace('back pocket', 'back trouser pocket').replace('other', 'phone somewhere else').replace(/^phone in the phone /, '') : ''].filter(Boolean);
+      pre.push({ level: 'info', title: 'Recorded in the browser', detail: 'From the phone\u2019s motion sensors (devicemotion)' + (m.started ? ', started ' + m.started.replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : '') +
+        (m.sample_rate_hz ? ', about ' + m.sample_rate_hz + ' Hz, every sample at its own time' : '') + '. x, y, z are in g with gravity, like Physics Toolbox\u2019s G-Force Meter; the ax and wx columns are linear acceleration (m/s²) and rotation (rad/s).' +
+        (said.length ? ' Recorded with: ' + said.join(', ') + '.' : '') });
+    }
+    if (m.phone_position === 'front pocket') $('posSel').value = 'leg';
+    else if (m.phone_position === 'hand') $('posSel').value = 'hand';
+    updatePosHint();
     $('varRow').hidden = true;
     S.fileChecks = S.fileChecks.concat(pre);
     setDataset(p.names, p.cols, 'csv');
@@ -800,6 +828,8 @@
   ['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement) drop.classList.remove('over'); }));
   document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) handleFile(f); });
   $('demoBtn').addEventListener('click', loadDemo);
+  window.StepRecorder.init(loadRecording);
+  $('saveRec').addEventListener('click', () => { if (S.recording) save(S.recording.name, S.recording.csv); });
   $('emptyDemo').addEventListener('click', loadDemo);
   $('emptyPick').addEventListener('click', () => $('fileIn').click());
   $('varSel').addEventListener('change', e => selectMatVar(Number(e.target.value)));
