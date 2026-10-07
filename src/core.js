@@ -1227,6 +1227,19 @@
     return out;
   }
 
+  // Sliding median, as scipy.ndimage.median_filter(A, w, mode='nearest'): a sorted copy of the
+  // window is kept, one sample in and one out per step.
+  function movingMedian(A, w) {
+    const h = (w - 1) / 2, x = padNearest(A, h), out = new Float64Array(A.length);
+    const win = Array.from(x.subarray(0, w)).sort((a, b) => a - b);
+    const find = v => { let lo = 0, hi = win.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (win[mid] < v) lo = mid + 1; else hi = mid; } return lo; };
+    for (let i = 0; i < A.length; i++) {
+      out[i] = win[h];
+      if (i + 1 < A.length) { win.splice(find(x[i]), 1); win.splice(find(x[i + w]), 0, x[i + w]); }
+    }
+    return out;
+  }
+
   /* Signal filters offered in the dashboard. A filter changes the signal the selected
      algorithm runs on; the lab code always runs on the recorded signal so it stays exact.
      Each entry: tagline (one line under the dropdown), apply(A, fs, p) -> filtered copy of
@@ -1254,6 +1267,12 @@
       tagline: 'The mean over a sliding window: the simplest smoother. It also lowers peaks.',
       apply: (A, fs, p) => movingAverage(A, oddWindow(p.maWindow, fs, A.length, 3)),
       label: p => 'Moving average, ' + fmt(p.maWindow, 2) + ' s window',
+    },
+    {
+      id: 'median', name: 'Median',
+      tagline: 'The median over a sliding window: removes short spikes (a tap or knock) without rounding off real peaks.',
+      apply: (A, fs, p) => movingMedian(A, oddWindow(p.medWindow, fs, A.length, 3)),
+      label: p => 'Median, ' + fmt(p.medWindow, 2) + ' s window',
     },
   ];
   function filterLabel(p) {
@@ -1383,7 +1402,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
+    FILTERS, filterLabel, applyFilter, interpAt, oddWindow, movingAverage, movingMedian, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

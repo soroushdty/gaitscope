@@ -74,6 +74,9 @@ def smoothing_fixtures():
         for sec in (0.1, 0.25):
             y = ndimage.uniform_filter1d(x, odd_window(sec, fs), mode="nearest")
             cases.append({"filter": "movavg", "fs": fs, "p": {"maWindow": sec}, "idx": idx, "y": y[idx].tolist()})
+        for sec in (0.05, 0.15):
+            y = ndimage.median_filter(x, odd_window(sec, fs), mode="nearest")
+            cases.append({"filter": "median", "fs": fs, "p": {"medWindow": sec}, "idx": idx, "y": y[idx].tolist()})
     return cases
 
 

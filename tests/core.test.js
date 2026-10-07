@@ -160,6 +160,19 @@ test('smoothing filters match scipy, edges included', () => {
   }
 });
 
+test('the median filter removes short spikes and keeps real peaks at their height', () => {
+  const fs = 460, t = Float64Array.from({ length: 2300 }, (_, i) => i / fs);
+  const walk = t.map(v => Math.sin(2 * Math.PI * 1.8 * v));
+  const A = walk.slice();
+  for (let i = 100; i < A.length; i += 230) for (let k = 0; k < 5; k++) A[i + k] += 3; // 11 ms knocks
+  const med = C.FILTERS.find(f => f.id === 'median').apply(A, fs, { medWindow: 0.05 });
+  // spikes of 3 are gone; what is left is the median of a steep slope shifting by a sample or two
+  assert.ok(Math.max(...Array.from(med, (v, i) => Math.abs(v - walk[i]))) < 0.2, 'spikes gone');
+  assert.ok(Math.max(...med) > 0.99, 'peak height kept');
+  const avg = C.FILTERS.find(f => f.id === 'movavg').apply(A, fs, { maWindow: 0.05 });
+  assert.ok(Math.max(...Array.from(avg, (v, i) => Math.abs(v - walk[i]))) > 0.5, 'an average only spreads them');
+});
+
 test('smoothing windows are odd, in seconds, and refuse sizes that do not fit', () => {
   assert.equal(C.oddWindow(0.1, 100, 1000, 3), 11); assert.equal(C.oddWindow(0.1, 460, 1000, 3), 47); assert.equal(C.oddWindow(0.05, 100, 1000, 3), 7, 'halves round up');
   assert.throws(() => C.oddWindow(0.01, 57, 1000, 3), /needs at least 3\. Lengthen it to 0\.053 s/);
