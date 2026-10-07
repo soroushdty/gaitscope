@@ -2271,7 +2271,8 @@
     },
     {
       id: 'dwt', kind: 'time', name: 'Wavelet bands (DWT)', params: [],
-      credit: [{ text: 'Daubechies, 1988', doi: '10.1002/cpa.3160410705', note: 'db4 wavelet' }, { text: 'Lee et al., 2019', doi: '10.21105/joss.01237', note: 'PyWavelets, which this matches' }],
+      credit: [{ text: 'Mallat, 1989', doi: '10.1109/34.192463', note: 'multiresolution analysis: one octave band per level' }, { text: 'Daubechies, 1988', doi: '10.1002/cpa.3160410705', note: 'db4 wavelet' },
+        { text: 'Lee et al., 2019', doi: '10.21105/joss.01237', note: 'PyWavelets, which this matches' }],
       tagline: 'The signal split into octave bands (each half the frequency of the one above) with the same db4 wavelet as the wavelet filter; brightness is each band\u2019s power over time. Coarse: one band can hold both the step and the stride.',
       compute: (A, t) => dwtGrid(A, t),
     },
