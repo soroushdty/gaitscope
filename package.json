@@ -8,9 +8,12 @@
     "fixtures": "uv run --locked python scripts/make_fixtures.py",
     "serve": "python3 -m http.server 8000"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
     "jsdom": "^24.1.0",
+    "jsfive": "0.4.2",
     "pako": "^2.1.0"
   }
 }

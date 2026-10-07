@@ -14,10 +14,12 @@ Run from the repo root:
 """
 import json
 import math
+import struct
 from fractions import Fraction
 import os
 import sys
 
+import h5py
 import numpy as np
 import pywt
 import scipy.io as sio
@@ -201,6 +203,62 @@ def filter_fixtures():
     return cases
 
 
+MAT73_HEADER = b"MATLAB 7.3 MAT-file, Platform: GLNXA64, Created on: Tue Oct  6 12:00:00 2026 HDF5 schema 1.00 ."
+
+
+def save_v73(path, write):
+    """Write an HDF5 file in MATLAB's v7.3 layout: a 512-byte userblock holding the MAT header
+    (116 text bytes, subsystem offset, version 0x0200, 'IM'), then HDF5. write(f) adds the
+    variables with mat_var / mat_compact."""
+    with h5py.File(path, "w", userblock_size=512) as f:
+        write(f)
+    with open(path, "r+b") as fh:
+        fh.write((MAT73_HEADER.ljust(116, b" ") + b"\0" * 8 + struct.pack("<H", 0x0200) + b"IM").ljust(512, b"\0"))
+
+
+def mat_class(obj, cls, **extra):
+    obj.attrs.create("MATLAB_class", np.bytes_(cls))
+    for k, v in extra.items():
+        obj.attrs.create(k, v)
+    return obj
+
+
+def mat_var(group, name, arr, cls):
+    """A matrix as MATLAB stores it: transposed (MATLAB is column-major), chunked and gzip-compressed."""
+    return mat_class(group.create_dataset(name, data=np.asarray(arr).T, chunks=True, compression="gzip"), cls)
+
+
+def mat_compact(group, name, arr, cls, **extra):
+    """A small matrix in compact storage (data inside the object header), as MATLAB writes small arrays."""
+    a = np.ascontiguousarray(np.asarray(arr).T)
+    dcpl = h5py.h5p.create(h5py.h5p.DATASET_CREATE)
+    dcpl.set_layout(h5py.h5d.COMPACT)
+    dsid = h5py.h5d.create(group.id, name.encode(), h5py.h5t.py_create(a.dtype), h5py.h5s.create_simple(a.shape), dcpl=dcpl)
+    dsid.write(h5py.h5s.ALL, h5py.h5s.ALL, a)
+    return mat_class(group[name], cls, **extra)
+
+
+def v73_fixtures(W):
+    """MATLAB v7.3 files (HDF5) for the dashboard and the Python port."""
+    save_v73(os.path.join(OUT, "walk_v73.mat"), lambda f: mat_var(f, "Walking", W, "double"))
+
+    def mixed(f):
+        mat_compact(f, "A", W[:25], "double")                                  # small: compact storage
+        rec = mat_class(f.create_group("rec"), "struct")
+        mat_var(rec, "acc", (W[:, 1:4] * 100).astype(np.int16), "int16")
+        mat_compact(rec, "fs", np.array([[100.0]]), "double")
+        mat_compact(f, "subject", np.array([[ord(c) for c in "S1"]], dtype=np.uint16), "char")
+        mat_compact(f, "flags", (W[:30, 1:3] > 0).astype(np.uint8), "logical")
+        refs = f.create_group("#refs#")
+        cells = [mat_compact(refs, "a", np.array([[1.0, 2.0]]), "double"), mat_compact(refs, "b", np.array([[3.0]]), "double")]
+        ref_arr = np.array([[c.ref for c in cells]], dtype=h5py.ref_dtype)
+        mat_compact(f, "labels", ref_arr, "cell")
+        mat_compact(f, "nothing", np.array([0, 0], dtype=np.uint64), "double", MATLAB_empty=np.uint8(1))
+        cplx = np.zeros((30, 2), dtype=[("real", "<f8"), ("imag", "<f8")])
+        mat_compact(f, "z", cplx, "double")
+    save_v73(os.path.join(OUT, "walk_v73_mixed.mat"), mixed)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     W = synthetic_walk()
@@ -215,6 +273,9 @@ def main():
     sio.savemat(p("walk_multi.mat"), {"Walking": W, "fs": 100.0, "labels": np.array(["a", "b"]), "flags": W[:, 1] > 0})
     Wn = W[:, 2].copy(); Wn[[100, 500]] = np.nan
     sio.savemat(p("walk_nan.mat"), {"A": Wn})
+
+    # --- MATLAB v7.3 (HDF5): read in the dashboard through jsfive, in Python through h5py
+    v73_fixtures(W)
 
     # --- MAT files the dashboard should reject (with a fix)
     sio.savemat(p("bad_complex.mat"), {"z": W[:, 1] + 1j * W[:, 2]})
