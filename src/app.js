@@ -74,7 +74,10 @@
       if (!isText && C.isZip(buf)) loadZip(buf);
       else if (!isText && C.isMat73(buf)) loadMat(buf, await loadHdf5().catch(() => null));
       else if (ext === 'mat' && !isText) loadMat(buf);
-      else if (isText) loadCsv(new TextDecoder('utf-8').decode(buf), ext === 'mat');
+      else if (isText) {
+        const text = new TextDecoder('utf-8').decode(buf);
+        if (ext === 'json' || /^\s*\{/.test(text)) loadExportJson(text); else loadCsv(text, ext === 'mat');
+      }
       else if (ext === 'csv' || ext === 'txt' || ext === 'tsv') {
         return fatal('This file has a text extension but contains binary data.', 'If it is a MATLAB file, rename it to .mat.');
       } else if (ext === 'zip') {
@@ -174,6 +177,40 @@
     }
     S.recording = r;
     $('saveRec').hidden = false;
+  }
+
+  /* A JSON export (#53) reopened: its signal at its times, then every control and the notes
+     as they were, so the same steps and metrics come out. */
+  function loadExportJson(text) {
+    const m = C.parseExportJson(text), a = m.about, st = m.settings || {};
+    S.varName = null;
+    $('varRow').hidden = true;
+    $('rsSel').value = 'off'; showRs(); // the exported signal is the analysed one, already resampled if it was
+    S.fileChecks.push({ level: 'info', title: 'gaitscope export reopened', detail: 'Exported ' + (a.exported || '').replace('T', ' ').replace(/\.\d+Z$/, ' UTC') + ' by the ' + a.generator.replace('gaitscope ', '') + ' (version ' + a.version + ') from "' + a.file + '"' +
+      (a.variable ? ', variable ' + a.variable : '') + ', signal ' + a.signal + '. The signal is loaded as it was analysed' + (/Hz/.test(st.resample || '') ? ' (already resampled: ' + st.resample + ')' : '') + ', and the settings and notes are restored.' });
+    S.counted = Number(st.steps_counted_by_hand) > 0 ? Number(st.steps_counted_by_hand) : null;
+    setDataset(['time', a.signal_name || a.signal || 'signal'], [m.signals.time_s, m.signals.signal], 'csv');
+    if (!S.ch) return;
+    S.notes = Array.from(m.notes ? m.notes.time_s : [], (t, k) => ({ t, text: String(m.notes.text[k]) }));
+    restoreParams(m.params || {});
+  }
+  function restoreParams(pr) {
+    const pick = (id, v) => { if (v !== undefined && [...$(id).options].some(o => o.value === String(v))) $(id).value = String(v); };
+    pick('algoSel', pr.algorithm); pick('filterSel', pr.filter); pick('envSel', pr.envelope); pick('posSel', pr.phone_position);
+    if (pr.show_lab !== undefined) $('showLab').checked = !!pr.show_lab;
+    if (pr.weak !== undefined) $('fxWeak').checked = !!pr.weak;
+    for (const el of optionInputs()) {
+      const v = pr[el.dataset.param];
+      if (v === undefined || v === null) continue;
+      if (el.type === 'checkbox') el.checked = !!v; else el.value = String(v);
+      updateOptionOut(el);
+    }
+    if (Number.isFinite(pr.w)) $('wIn').value = String(pr.w);
+    if (Number.isFinite(pr.h)) syncH(pr.h);
+    $('legLab').hidden = $('wCtl').hidden = !showLab();
+    showAlgo(); showFilter(); showEnv(); updatePosHint();
+    configureSliders();
+    recompute();
   }
 
   function loadCsv(text, wasMat) {
@@ -744,20 +781,7 @@
   }
 
   function stepRows() {
-    const { origIdx, finalSet, weakSet } = S.res;
-    const origSet = new Set(origIdx);
-    const all = Array.from(new Set(origIdx.concat(Array.from(finalSet)))).sort((a, b) => a - b);
-    let prevOrig = -10;
-    return all.map(i => {
-      const inO = origSet.has(i), inF = finalSet.has(i);
-      let why;
-      if (inF) why = 'kept';
-      else if (weakSet.has(i)) why = 'weak peak';
-      else if (inO && i - prevOrig <= S.res.p.w) why = 'tied peak';
-      else why = 'not found by ' + S.res.algo.name;
-      if (inO) prevOrig = i;
-      return { i, inO, inF, why };
-    });
+    return C.stepStatus(S.res.origIdx, S.res.finalIdx, S.res.fx.weakDropped, S.res.p.w, S.res.algo.name);
   }
 
   function renderSteps() {
@@ -774,7 +798,7 @@
   /* ------------------------------------------------------------- export */
   function updateExportButtons() {
     const can = !!(S.ch && S.res);
-    $('expSteps').disabled = !can; $('expMetrics').disabled = !can;
+    $('expSteps').disabled = !can; $('expMetrics').disabled = !can; $('expGo').disabled = !can;
   }
   const csvCell = v => { const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const csvRow = arr => arr.map(csvCell).join(',');
@@ -823,8 +847,62 @@
     if (S.notes.length) L.push('', csvRow(['note_time_s', 'note']), ...S.notes.map(n => csvRow([n.t.toFixed(3), n.text])));
     save(baseName() + '_metrics.csv', L.join('\n') + '\n');
   }
-  function save(filename, text) {
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  /* Export… (#53): one model (C.buildExport) in the chosen format; docs/export.md */
+  const EXPORT_FORMATS = {
+    csv: 'Metrics and steps as two CSV files, as before. Opens in Excel.',
+    zip: 'Every table as its own CSV file (signals, steps, metrics, notes, settings), in one zip.',
+    mat: 'One struct, gaitscope, for MATLAB or Octave: load the file, then struct2table(gaitscope.steps).',
+    npz: 'For Python: np.load(file, allow_pickle=False); each column is an array, e.g. z["steps/sample_matlab"].',
+    json: 'Everything, including the settings. Drop it on the dashboard to reopen this analysis.',
+  };
+  function showExport() {
+    const f = $('expFmt').value;
+    $('expDesc').textContent = EXPORT_FORMATS[f];
+    $('expCsv').hidden = f !== 'csv'; $('expParts').hidden = f === 'csv';
+    // JSON needs the signal to reopen
+    $('expSignals').disabled = f === 'json' || !S.ch; if (f === 'json') $('expSignals').checked = true;
+    if (S.ch) $('expSignalsInfo').textContent = S.ch.A.length.toLocaleString('en-US') + ' rows: time, the signal' + (S.res && S.res.filt.applied ? ', the filtered signal' : '') +
+      (S.rs && S.rs.applied ? ', and the recording before resampling (' + S.chRaw.A.length.toLocaleString('en-US') + ' rows)' : '') + '.' + (f === 'json' ? ' Always in JSON, which needs it to reopen.' : '');
+  }
+  function exportSettings() {
+    const { p, filt, fx, algo } = S.res;
+    const envDef = C.ENVELOPES.find(e => e.id === $('envSel').value);
+    const s = { algorithm: algo.name, algorithm_id: algo.id, window_w_samples: p.w, threshold_h: p.h,
+      sampling_rate_hz: S.ch.fs, recorded_rate_hz: S.chRaw.fs,
+      resample: !S.rs ? 'off' : !S.rs.applied ? 'off (not applied)' : fmt(S.rs.fs, 2) + ' Hz, ' + S.rs.method + (S.rs.antialias ? ', anti-aliased' : ''),
+      filter: C.filterLabel(p) + (filt.applied ? '' : p.filter !== 'none' ? ' (not applied)' : ''), filter_resampled: !!filt.resampled,
+      envelope: envDef && envDef.compute ? envDef.label(p) : 'none', spectrum_segment_s: S.res.spec.segment };
+    for (const [k, v] of algo.settings(p, fx)) s[k] = v;
+    s.phone_position = p.stride ? 'one leg (each peak is a stride)' : 'hand or waist (each peak is a step)';
+    if (S.counted) s.steps_counted_by_hand = S.counted;
+    return s;
+  }
+  function exportModel(parts) {
+    const { p, orig, origIdx, algM, fx, filt } = S.res, info = chanInfo();
+    const envDef = C.ENVELOPES.find(e => e.id === $('envSel').value);
+    const env = parts.envelope && envDef && envDef.compute ? envDef.compute(filt.A, S.ch.t, p) : null;
+    const params = Object.assign({}, p, { algorithm: $('algoSel').value, envelope: $('envSel').value, show_lab: showLab(), phone_position: $('posSel').value });
+    delete params.fs; delete params.stride; // derived from the signal and from phone_position
+    return C.buildExport({
+      about: { file: S.file.name, variable: S.varName || '', signal: info.label, signal_name: COMPUTED[S.chanKey] ? '' : S.ds.columns[Number(S.chanKey)].name, unit: info.unit },
+      settings: exportSettings(), params, t: S.ch.t, A: S.ch.A, filtered: filt.applied ? filt.A : null, envelope: env,
+      recorded: S.rs && S.rs.applied ? { t: S.chRaw.t, A: S.chRaw.A } : null,
+      origIdx, orig, w: p.w, stride: p.stride, notes: S.notes, parts,
+      algo: { name: S.res.algo.name, idx: S.res.finalIdx, weak: fx.weakDropped, metrics: algM, specCadence: S.res.specCadence, hr: S.res.hr },
+    });
+  }
+  function exportAs(fmt) {
+    const model = exportModel({ signals: fmt === 'json' || $('expSignals').checked, envelope: $('expEnvelope').checked });
+    const name = baseName() + '_gaitscope.' + fmt;
+    if (fmt === 'json') save(name, C.exportJson(model), 'application/json');
+    else if (fmt === 'mat') save(name, C.exportMat(model), 'application/octet-stream');
+    else if (fmt === 'npz') save(name, C.exportNpz(model), 'application/octet-stream');
+    else save(name, C.exportCsvZip(model), 'application/zip');
+    $('expMenu').open = false;
+  }
+
+  function save(filename, data, type) {
+    const url = URL.createObjectURL(new Blob([data], { type: type || 'text/csv' }));
     const a = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
@@ -885,6 +963,10 @@
   $('noteList').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) deleteNote(Number(b.dataset.i)); });
   $('resetParams').addEventListener('click', () => resetParams(true));
   $('expSteps').addEventListener('click', exportSteps);
+  $('expFmt').addEventListener('change', showExport);
+  $('expMenu').addEventListener('toggle', showExport);
+  $('expGo').addEventListener('click', () => exportAs($('expFmt').value));
+  showExport();
   $('expMetrics').addEventListener('click', exportMetrics);
   $('valToggle').addEventListener('click', () => { const open = $('valToggle').getAttribute('aria-expanded') !== 'true'; valOpenedByUser = open; setValOpen(open); });
   const mq = window.matchMedia('(prefers-color-scheme: dark)');

@@ -38,8 +38,11 @@ fix individual steps by hand, and export the results.
 - **Notes on the plot.** Pin a short note to a moment in the recording ("turned
   around", "stairs"). Notes are listed under the plot and included in the metrics
   export; they never change the detected steps.
-- **CSV export** of the steps (lab code and Coza, with the reason each step was dropped)
-  and of the metrics (with all settings used).
+- **Export** in the format each tool wants: the two CSV files as before, a zip with one CSV
+  per table, MATLAB `.mat` (a struct; `struct2table` makes tables), NumPy `.npz` (no
+  pickle), or JSON, which reopens the whole analysis in the dashboard. Each holds the
+  signals, both versions' steps and metrics, the settings and the notes, with 1-based
+  sample numbers ([docs/export.md](docs/export.md)).
 - **Private.** Files are processed in the browser and never uploaded.
 
 ## Run it
