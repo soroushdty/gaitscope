@@ -637,10 +637,15 @@
     if (!S.cache || S.cache.ch !== S.ch || S.cache.filtKey !== filtKey) S.cache = { ch: S.ch, filtKey, filt: C.applyFilter(A, t, S.ch.fs, g), det: new Map() };
     const filt = S.cache.filt;
     if (S.cache.specSeg !== g.specSeg) Object.assign(S.cache, { specSeg: g.specSeg, spec: C.spectrum(filt.A, t, g), specRaw: filt.applied ? C.spectrum(A, t, g) : null });
-    if (S.cache.specWin !== g.specWin) Object.assign(S.cache, { specWin: g.specWin, rhythm: C.rhythmOverTime(filt.A, t, g) });
-    const { spec, specRaw, rhythm } = S.cache;
+    if (S.cache.specWin !== g.specWin) {
+      const rhythm = C.rhythmOverTime(filt.A, t, g);
+      Object.assign(S.cache, { specWin: g.specWin, rhythm, rhythmSteps: C.spectralSteps(filt.A, t, g, rhythm) });
+    }
+    const { spec, specRaw, rhythm, rhythmSteps } = S.cache;
     const specCadence = spec.peak.clear ? spec.peak.freq * 60 * (g.stride ? 2 : 1) : NaN;
-    S.res = { g, filt, spec, specRaw, rhythm, specCadence, dets: [], envs: [] };
+    // steps from the rhythm, without detecting any (#98); a cycle is a stride with One leg, as for specCadence
+    const specSteps = rhythmSteps && Object.assign({}, rhythmSteps, { steps: rhythmSteps.steps * (g.stride ? 2 : 1) });
+    S.res = { g, filt, spec, specRaw, rhythm, specCadence, specSteps, dets: [], envs: [] };
     // every detector, shown or not, so hiding one keeps its results for the export
     for (const ind of detectors()) {
       const p = indParams(ind, g), src = sourceOf(ind), key = JSON.stringify([ind.type, ind.p, ind.source, g.stride]);
@@ -703,12 +708,13 @@
       if (off.length) out.push({ level: 'info', title: 'Spectrum and steps differ by a factor of 2', detail: 'The spectrum’s main rhythm gives ' + fmt(specCadence, 0) + ' steps/min; ' + off.map(d => d.label + ' gives ' + fmt(d.metrics.cadence, 0)).join(', ') + '. One of them is counting strides (left plus right step) rather than steps. With the phone on one leg the strongest rhythm is usually the stride; at the waist, the step.' });
     }
     // a known step count (counted by hand, or the synthetic walk's own): how close each detector comes
+    const pct = (f, n) => { const off = (f - n) / n * 100; return (off > 0 ? '+' : off < 0 ? '\u2212' : '\u00b1') + fmt(Math.abs(off), 0) + '%'; };
     if (S.counted && dets.length) {
       const n = S.counted, demo = S.countedBy === 'demo';
       out.push({ level: 'info', title: demo ? 'The synthetic walk has ' + n + ' steps' : 'You counted ' + n + ' steps', detail: dets.map(d => {
         const f = d.metrics.steps, off = (f - n) / n * 100;
         return d.label + ' finds ' + f + (f === n ? ' (exactly right)' : ' (' + (off > 0 ? '+' : '') + fmt(off, 0) + '%)');
-      }).join('; ') + '.' + (g.stride ? ' Each peak counts as 2 steps (Phone position: one leg).' : '') + (demo
+      }).join('; ') + (S.res.specSteps ? '; from the rhythm, without detecting steps, about ' + Math.round(S.res.specSteps.steps) + ' (' + pct(S.res.specSteps.steps, n) + ')' : '') + '.' + (g.stride ? ' Each peak counts as 2 steps (Phone position: one leg).' : '') + (demo
         ? ' One peak of x per step, with the phone in the hand. The walk fades in and out, so its first and last steps are faint; on y, z and the magnitude a step can make several bumps.'
         : ' Hand counts usually include the first and last step, which detectors can miss at the start and stop.') });
     }
@@ -1056,16 +1062,19 @@
   function renderMetrics() {
     const dets = shownDets(), g = S.res.g;
     const f = (v, d, u) => Number.isFinite(v) ? v.toFixed(d) + (u ? ' ' + u : '') : '—';
+    // the last column: steps from the rhythm, without detecting any (#98)
+    const sp = S.res.specSteps, spDur = sp ? sp.end - sp.start : NaN;
     const rows = [
       { name: 'Steps', tip: 'Steps detected. With Phone position set to One leg, each peak counts as two steps (a stride).',
-        v: d => (g.stride ? d.metrics.steps + '<small>' + d.metrics.peaks + ' strides × 2</small>' : String(d.metrics.steps)) },
-      { name: 'Average step duration', tip: 'Mean time between detected steps, from the timestamps.', v: d => f(d.metrics.stepInterval, 3, 's') },
-      { name: 'Cadence', tip: 'Steps per minute: 60 ÷ average step duration.', v: d => f(d.metrics.cadence, 1, 'steps/min') },
+        v: d => (g.stride ? d.metrics.steps + '<small>' + d.metrics.peaks + ' strides × 2</small>' : String(d.metrics.steps)),
+        s: () => (sp ? '≈ ' + Math.round(sp.steps) + '<small>' + fmt(sp.steps, 1) + ' over ' + fmt(sp.start, 1) + '–' + fmt(sp.end, 1) + ' s</small>' : '—') },
+      { name: 'Average step duration', tip: 'Mean time between detected steps, from the timestamps.', v: d => f(d.metrics.stepInterval, 3, 's'), s: () => f(spDur / (sp && sp.steps), 3, 's') },
+      { name: 'Cadence', tip: 'Steps per minute: 60 ÷ average step duration.', v: d => f(d.metrics.cadence, 1, 'steps/min'), s: () => f(60 * (sp && sp.steps) / spDur, 1, 'steps/min') },
       { name: g.stride ? 'Stride-time variability' : 'Step-time variability', tip: 'Standard deviation of the intervals between detected steps (N−1, like MATLAB), in ms, with the coefficient of variation (CV = SD ÷ mean interval).',
         v: d => f(d.metrics.variabilityMs, 0, 'ms') + (Number.isFinite(d.metrics.cv) ? ', CV ' + d.metrics.cv.toFixed(1) + '%' : '') },
       { name: 'Gait asymmetry', tip: 'Mean of the even intervals ÷ mean of the odd intervals; 1.000 is symmetric.' + (g.stride ? ' Not reported for strides, because it needs single steps.' : ''),
         v: d => (g.stride ? '—' : f(d.metrics.asymmetry, 3)) },
-      { name: 'Walking span', tip: 'Time from the first to the last step.', v: d => f(d.metrics.span, 1, 's') },
+      { name: 'Walking span', tip: 'Time from the first to the last step.', v: d => f(d.metrics.span, 1, 's'), s: () => f(spDur, 1, 's') },
       { name: 'Harmonic ratio', tip: 'Gait symmetry from the shape of each stride (two steps, or one peak-to-peak on One leg): the amplitudes of harmonics 1–20 of the stride frequency, even over odd, averaged over the strides. Identical left and right steps make only even harmonics, so higher means more alike (for the vertical or forward direction; side to side it inverts). Computed on the recorded signal, since a low-pass filter would remove the harmonics.',
         v: d => f(d.hr.ratio, 2) },
     ];
@@ -1078,10 +1087,14 @@
         { name: 'Gait asymmetry (Coza’s formula)', tip: 'mean(d(2:2:end)) / mean(d(1:2:end)) on the intervals in samples.', v: d => (d.script ? f(d.script.asymmetry, 3) : '—') });
     }
     $('cozaNote').hidden = !coza;
-    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th>' + dets.map(d => '<th class="num" style="color: var(' + d.ind.color + ')">' + esc(d.label) + '</th>').join('') + '</tr></thead><tbody>' +
-      rows.map(r => '<tr><td><span class="tip" tabindex="0" title="' + esc(r.tip) + '">' + r.name + '</span></td>' + dets.map(d => '<td class="num">' + r.v(d) + '</td>').join('') + '</tr>').join('') + '</tbody>';
+    const spTip = 'Without detecting any steps: the walking rhythm in windows of ' + fmt(g.specWin || 4, 0) + ' s (Rhythm-over-time window, under Advanced) added up over the walk, one cycle per step' + (g.stride ? ' (× 2 with One leg)' : '') + '. The walk is the stretch where the rhythm is clear, its ends moved to where the walking swing starts and stops. An estimate: best on a steady walk, rougher when the phone is handled at the ends.';
+    $('metricsTable').innerHTML = '<thead><tr><th>Metric</th>' + dets.map(d => '<th class="num" style="color: var(' + d.ind.color + ')">' + esc(d.label) + '</th>').join('') +
+      '<th class="num spec-col"><span class="tip" tabindex="0" title="' + esc(spTip) + '">From the rhythm</span></th></tr></thead><tbody>' +
+      rows.map(r => '<tr><td><span class="tip" tabindex="0" title="' + esc(r.tip) + '">' + r.name + '</span></td>' + dets.map(d => '<td class="num">' + r.v(d) + '</td>').join('') +
+        '<td class="num spec-col">' + (r.s ? r.s() : '—') + '</td></tr>').join('') + '</tbody>';
     const pk = S.res.spec.peak;
-    $('specCadNote').textContent = pk.clear ? 'From the spectrum, without detecting steps: ' + fmt(S.res.specCadence, 1) + ' steps/min (60 × the strongest walking frequency' + (g.stride ? ', × 2 for strides' : '') + ', resolution about ' + fmt(60 / S.res.spec.segment, 1) + '/min).' : 'The spectrum has no clear walking rhythm to compare with.';
+    $('specCadNote').textContent = (pk.clear ? 'From the spectrum, without detecting steps: ' + fmt(S.res.specCadence, 1) + ' steps/min (60 × the strongest walking frequency' + (g.stride ? ', × 2 for strides' : '') + ', resolution about ' + fmt(60 / S.res.spec.segment, 1) + '/min).' : 'The spectrum has no clear walking rhythm to compare with.') +
+      (sp ? ' “From the rhythm” adds the rhythm up window by window over ' + fmt(sp.start, 1) + '–' + fmt(sp.end, 1) + ' s, so it follows changes of pace: about ' + Math.round(sp.steps) + ' steps.' : ' The rhythm is clear in too little of the recording to count steps from it.');
   }
 
   function stepRows() { return C.stepTable(shownDets().map(d => ({ id: d.ind.uid, idx: d.idx, weak: d.weak }))); }
@@ -1158,7 +1171,8 @@
     return C.buildExport({
       about: { file: S.file.name, variable: S.varName || '', signal: info.label, signal_name: COMPUTED[S.chanKey] ? '' : S.ds.columns[Number(S.chanKey)].name, unit: info.unit },
       settings: exportSettings(), params,
-      spectrum: { dominant_hz: S.res.spec.peak.clear ? S.res.spec.peak.freq : NaN, cadence_steps_min: S.res.specCadence, segment_s: S.res.spec.segment },
+      spectrum: { dominant_hz: S.res.spec.peak.clear ? S.res.spec.peak.freq : NaN, cadence_steps_min: S.res.specCadence, segment_s: S.res.spec.segment,
+        rhythm_steps: S.res.specSteps ? S.res.specSteps.steps : NaN, rhythm_from_s: S.res.specSteps ? S.res.specSteps.start : NaN, rhythm_to_s: S.res.specSteps ? S.res.specSteps.end : NaN },
       t: S.ch.t, A: S.ch.A, filtered: filt.applied ? filt.A : null, recorded: S.rs && S.rs.applied ? { t: S.chRaw.t, A: S.chRaw.A } : null,
       indicators: inds.map(ind => ({ id: idOf.get(ind.uid), kind: ind.kind, type: ind.type, name: labelOf(ind), source: ind.source, color: ind.color.slice(2), params: ind.p, settings: settingsOf(ind) })),
       detectors: dets.map(d => ({ id: idOf.get(d.ind.uid), type: d.ind.type, idx: d.idx, weak: d.weak, metrics: d.metrics, hr: d.hr, script: d.script })),

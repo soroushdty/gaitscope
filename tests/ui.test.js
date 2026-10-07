@@ -132,12 +132,15 @@ test('loads a MAT file and compares Coza with Coza (modified), side by side', as
   assert.equal(pg.plots.at(-1).layout.shapes.length, 2, 'an h line for each');
   assert.deepEqual([...$('legInd').children].map(c => c.textContent), ['Coza', 'Coza h = 1', 'Coza (modified)', 'Coza (modified) h = 1']);
   assert.match(text(pg, 'valList'), /Coza counts 1 peak twice.*Coza \(modified\) counts each once/);
-  assert.deepEqual(heads(pg), ['Metric', 'Coza', 'Coza (modified)']);
+  assert.deepEqual(heads(pg), ['Metric', 'Coza', 'Coza (modified)', 'From the rhythm']);
   const names = [...pg.d.querySelectorAll('#metricsTable td .tip')];
   assert.equal(names.length, 11, '7 shared rows and Coza’s 4');
   assert.ok(names.every(n => n.title.length > 20), 'every metric explains itself in a tooltip');
-  assert.deepEqual(metric(pg, 'Steps'), [String(lab), String(fixed)]);
-  assert.deepEqual(metric(pg, 'Pace (Coza’s formula)').slice(1), ['—'], 'Coza’s formulas are Coza’s');
+  assert.deepEqual(metric(pg, 'Steps').slice(0, 2), [String(lab), String(fixed)]);
+  // the last column counts from the rhythm, with no detector (#98); column 2 repeats once per stride here
+  assert.match(metric(pg, 'Steps')[2], /^≈ 13\s*12\.6 over 1\.9–15\.8 s$/);
+  assert.deepEqual(metric(pg, 'Pace (Coza’s formula)').slice(1), ['—', '—'], 'Coza’s formulas are Coza’s');
+  assert.deepEqual(metric(pg, 'Gait asymmetry').at(-1), '—', 'needs single steps');
   assert.equal($('cozaNote').hidden, false);
   assert.equal($('stepsDetails').open, false, 'steps table starts collapsed');
   assert.equal(text(pg, 'stepsTitle'), 'All steps (' + lab + ' Coza, ' + fixed + ' Coza (modified))');
@@ -243,20 +246,20 @@ test('indicators can be hidden, removed, added again and repeated with their own
   await act(pg, 'Coza', 'eye');
   assert.equal(markers(pg, 'Coza'), undefined, 'hidden: off the plot');
   assert.ok(indRow(pg, 'Coza').classList.contains('off')); assert.equal(indRow(pg, 'Coza').querySelector('[data-act=eye]').getAttribute('aria-pressed'), 'true');
-  assert.deepEqual(heads(pg), ['Metric', 'Coza (modified)'], 'and out of the metrics');
+  assert.deepEqual(heads(pg), ['Metric', 'Coza (modified)', 'From the rhythm'], 'and out of the metrics');
   assert.equal(metric(pg, 'Pace (Coza’s formula)'), null, 'Coza’s own rows go with it');
   assert.equal($('cozaNote').hidden, true);
   assert.doesNotMatch(text(pg, 'valList'), /counts 1 peak twice/, 'checks about it go too');
   assert.equal(pg.plots.at(-1).layout.shapes.length, 1);
   await act(pg, 'Coza', 'eye');
-  assert.deepEqual(heads(pg), ['Metric', 'Coza', 'Coza (modified)']);
+  assert.deepEqual(heads(pg), ['Metric', 'Coza', 'Coza (modified)', 'From the rhythm']);
 
   await act(pg, 'Coza', 'remove');
   await act(pg, 'Coza (modified)', 'remove');
   assert.deepEqual(indNames(pg, 'detList'), []);
   assert.equal($('detNone').hidden, false);
   assert.match(text(pg, 'valList'), /No step detector on the plot/);
-  assert.deepEqual(heads(pg), ['Metric']);
+  assert.deepEqual(heads(pg), ['Metric', 'From the rhythm'], 'the rhythm needs no detector');
   assert.equal(traces(pg, 'markers').length, 0);
 
   // the same detector twice, with different settings: numbered, coloured apart
@@ -267,7 +270,7 @@ test('indicators can be hidden, removed, added again and repeated with their own
   await setParam(pg, 'Coza 2', 'w', 150);
   assert.notEqual(samples(pg, 'Coza 1'), samples(pg, 'Coza 2'));
   assert.notEqual(indRow(pg, 'Coza 1').style.getPropertyValue('--ic'), indRow(pg, 'Coza 2').style.getPropertyValue('--ic'));
-  assert.deepEqual(heads(pg), ['Metric', 'Coza 1', 'Coza 2']);
+  assert.deepEqual(heads(pg), ['Metric', 'Coza 1', 'Coza 2', 'From the rhythm']);
   const csv = await exportCsv(pg, 'expSteps');
   assert.match(csv, /^time_s,sample_matlab,value,coza,coza_2\n/);
 });
@@ -559,9 +562,9 @@ test('the spectrum panel shows the walking rhythm, the filter gain and a cadence
   assert.equal(sp.traces[2].visible, false, 'no filter gain without a filter');
   assert.match(sp.layout.annotations[0].text, /^0\.9\d Hz = 5\d\/min$/, 'the stride-rate peak of column 2');
   assert.equal(sp.layout.yaxis.type, 'linear');
-  assert.match(text(pg, 'specCadNote'), /^From the spectrum, without detecting steps: 5\d\.\d steps\/min \(60 × the strongest walking frequency, resolution about [\d.]+\/min\)\.$/);
+  assert.match(text(pg, 'specCadNote'), /^From the spectrum, without detecting steps: 5\d\.\d steps\/min \(60 × the strongest walking frequency, resolution about [\d.]+\/min\)\. “From the rhythm” adds the rhythm up window by window over [\d.]+–[\d.]+ s, so it follows changes of pace: about \d+ steps\.$/);
   assert.match(text(pg, 'specNote'), /strongest rhythm .* 0\.9\d Hz: 5\d per minute/);
-  assert.ok(metric(pg, 'Harmonic ratio').every(v => /^\d+\.\d\d$/.test(v)), 'for each detector');
+  assert.ok(metric(pg, 'Harmonic ratio').slice(0, -1).every(v => /^\d+\.\d\d$/.test(v)), 'for each detector');
 
   $('specLog').checked = true; $('specLog').dispatchEvent(new pg.w.Event('change'));
   assert.equal(pg.spectra.at(-1).layout.yaxis.type, 'log');
@@ -609,7 +612,7 @@ test('the demo walk: its 17 steps, faint first and last ones included, and each 
   await sleep(40);
   assert.equal(markers(pg, 'Coza').x.length, 17); assert.equal(markers(pg, 'Coza (modified)').x.length, 17, 'faint steps on the rhythm are kept');
   assert.doesNotMatch(text(pg, 'valList'), /drops \d+ weak peak/);
-  assert.match(text(pg, 'valList'), /The synthetic walk has 17 steps ?Coza finds 17 \(exactly right\); Coza \(modified\) finds 17 \(exactly right\)\..*first and last steps are faint/);
+  assert.match(text(pg, 'valList'), /The synthetic walk has 17 steps ?Coza finds 17 \(exactly right\); Coza \(modified\) finds 17 \(exactly right\); from the rhythm, without detecting steps, about 15 \(−9%\)\..*first and last steps are faint/);
   // its true count goes into the export's settings, not as a hand count
   const st = await exportCsv(pg);
   assert.match(st, /steps_in_synthetic_walk,17/); assert.doesNotMatch(st, /counted_by_hand/);
@@ -618,9 +621,18 @@ test('the demo walk: its 17 steps, faint first and last ones included, and each 
   const pos = pg.d.getElementById('posSel');
   assert.equal(pos.value, 'hand');
   assert.equal(metric(pg, 'Steps')[1], '17');
+  assert.match(metric(pg, 'Steps').at(-1), /^≈ 15\s*15\.4 over 2\.5–19\.3 s$/, 'from the rhythm, with no detector (#98); the faint first and last steps fall outside');
+  assert.match(metric(pg, 'Cadence').at(-1), /^5\d\.\d steps\/min$/);
+  // the JSON export carries it in the spectrum record
+  pg.w.HTMLAnchorElement.prototype.click = function () {};
+  const $e = id => pg.d.getElementById(id);
+  $e('expFmt').value = 'json'; $e('expFmt').dispatchEvent(new pg.w.Event('change')); $e('expGo').click(); await sleep(20);
+  const js = JSON.parse(await new Promise(res => { const r = new pg.w.FileReader(); r.onload = () => res(r.result); r.readAsText(pg.blobs.at(-1)); }));
+  assert.ok(Math.abs(js.spectrum.rhythm_steps - 15.43) < 0.01 && Math.abs(js.spectrum.rhythm_from_s - 2.5) < 0.05 && Math.abs(js.spectrum.rhythm_to_s - 19.32) < 0.05, JSON.stringify(js.spectrum));
   pos.value = 'leg'; pos.dispatchEvent(new pg.w.Event('change'));
   await sleep(40);
   assert.match(metric(pg, 'Steps')[1], /^34\s*17 strides × 2$/);
+  assert.match(metric(pg, 'Steps').at(-1), /^≈ 31/, 'a cycle is a stride with One leg, as for the spectral cadence');
   assert.match(text(pg, 'posHint'), /stride/);
   pg.d.getElementById('demoBtn').click();
   await sleep(40);
@@ -733,7 +745,7 @@ test('demo walks: the hand, pocket and noisy recordings, the synthetic walk, and
   assert.match(text(pg, 'valList'), /Demo recordingRecorded with this page on a Pixel 9a.*exactly 10 steps.*Recorded with: 10 steps counted by hand, phone in the hand\./);
   // every detector finds the 10 steps; the extras are settling after the stop and the press on Stop,
   // and for Coza (modified) a second bump inside one step (9.66 s)
-  assert.match(text(pg, 'valList'), /You counted 10 steps ?Coza finds 12 \(\+20%\); Coza \(modified\) finds 13 \(\+30%\)\./);
+  assert.match(text(pg, 'valList'), /You counted 10 steps ?Coza finds 12 \(\+20%\); Coza \(modified\) finds 13 \(\+30%\); from the rhythm, without detecting steps, about 10 \(\+1%\)\./);
   assert.equal($('saveRec').hidden, true, 'it is a file already');
 
   await pick('pocket', 'aside'); // the sidebar's links

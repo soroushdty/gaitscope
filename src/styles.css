@@ -96,6 +96,7 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .empty h2 { font-size: 20px; margin-bottom: 8px; }
 .empty p { color: var(--muted); margin: 0 0 18px; }
 .empty .stack { justify-content: center; }
+.metrics .spec-col { color: var(--muted); }
 .demo-menu .exp-panel { left: 50%; right: auto; transform: translateX(-50%); display: grid; gap: 6px; text-align: left; }
 .demo-pick { display: block; width: 100%; padding: 8px 10px; background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .demo-pick:hover, .demo-pick:focus-visible { border-color: var(--signal); }

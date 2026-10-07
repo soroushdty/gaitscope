@@ -1934,6 +1934,61 @@
     return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / fs };
   }
 
+  /* A step count from the rhythm, without detecting any steps (#98): the local walking rhythm
+     (rhythmOverTime's windows) added up over the walk, one cycle of it per step. The walk runs
+     from the first to the last window with a clear, repeating rhythm (below); each end then
+     moves, by at most half a window either way, to where the walking swing (the 1 s RMS of the
+     signal band-passed to 0.5-3.5 Hz) first or last reaches half its median inside that
+     stretch. On a phone a window only reads as clear once most of it is walking, so without
+     that the first and last second or so go uncounted; on a very clean signal a window can read
+     as clear before the walk starts. Between clear windows the rhythm is interpolated, and held
+     beyond the first and last. On the owner's four counted walks (10, 24, 28 and 60 steps,
+     2026-10-07) the total gives 10.1, 23.8, 26.2 and 60.2, the vertical 10.1, 23.9, 28.0 and
+     59.8. Returns {steps, start, end (s), clear (windows)}, or null with fewer than two clear
+     windows. rhythm: rhythmOverTime(A, t, p) when already computed. */
+  const RHYTHM_REGULAR = 0.5;
+  function spectralSteps(A, t, p, rhythm) {
+    const r = rhythm || rhythmOverTime(A, t, p), kt = [], kf = [];
+    const g = evenGrid(A, t), n = g.A.length, lo = lowpass(g.A, g.fs, GAIT_BAND[0]), hi = lowpass(g.A, g.fs, GAIT_BAND[1]);
+    const x = Float64Array.from(hi, (v, i) => v - lo[i]); // the walking band, 0.5-3.5 Hz
+    // A window's peak can stand out by chance: a still phone's noise passes the 5x test in about
+    // half its windows. Walking also repeats: the window matches itself one cycle later (the
+    // autocorrelation at that lag). The owner's walks give a median of 0.6-0.93 and noise at
+    // most 0.44, so windows under 0.5 are left out.
+    r.freq.forEach((f, k) => {
+      if (!Number.isFinite(f)) return;
+      const a = Math.max(0, Math.round((r.t[k] - r.window / 2 - g.t[0]) * g.fs)), b = Math.min(n, Math.round((r.t[k] + r.window / 2 - g.t[0]) * g.fs));
+      const lag = Math.round(g.fs / f);
+      let sxy = 0, sxx = 0, syy = 0;
+      for (let i = a; i + lag < b; i++) { sxy += x[i] * x[i + lag]; sxx += x[i] * x[i]; syy += x[i + lag] * x[i + lag]; }
+      if (sxy / Math.sqrt(sxx * syy) >= RHYTHM_REGULAR) { kt.push(r.t[k]); kf.push(f); }
+    });
+    if (kt.length < 2) return null;
+    const cs = new Float64Array(n + 1); // running sum of squares of the band-passed signal
+    for (let i = 0; i < n; i++) cs[i + 1] = cs[i] + x[i] * x[i];
+    const h = Math.max(1, Math.round(0.5 * g.fs));
+    const rms = i => { const a = Math.max(0, i - h), b = Math.min(n - 1, i + h); return Math.sqrt((cs[b + 1] - cs[a]) / (b - a + 1)); };
+    const c1 = kt[0], cN = kt[kt.length - 1], half = r.window / 2, core = [];
+    for (let i = 0; i < n; i++) if (g.t[i] >= c1 && g.t[i] <= cN) core.push(rms(i));
+    const level = 0.5 * median(core);
+    // each end is searched half a window either way: on a phone the first clear window comes a
+    // little after the walk starts, on a very clean signal it can come before
+    let start = c1, end = cN;
+    for (let i = 0; i < n && g.t[i] <= c1 + half; i++) if (g.t[i] >= c1 - half && rms(i) >= level) { start = g.t[i]; break; }
+    for (let i = n - 1; i >= 0 && g.t[i] >= cN - half; i--) if (g.t[i] <= cN + half && rms(i) >= level) { end = g.t[i]; break; }
+    // ∫ rhythm dt from kt[0] to x: straight lines between clear windows, held beyond them
+    const F = x => {
+      if (x <= kt[0]) return kf[0] * (x - kt[0]);
+      let sum = 0;
+      for (let k = 1; k < kt.length; k++) {
+        if (x <= kt[k]) { const fx = kf[k - 1] + (kf[k] - kf[k - 1]) * (x - kt[k - 1]) / (kt[k] - kt[k - 1]); return sum + (kf[k - 1] + fx) / 2 * (x - kt[k - 1]); }
+        sum += (kf[k - 1] + kf[k]) / 2 * (kt[k] - kt[k - 1]);
+      }
+      return sum + kf[kf.length - 1] * (x - kt[kt.length - 1]);
+    };
+    return { steps: F(end) - F(start), start, end, clear: kt.length };
+  }
+
   /* Harmonic ratio, a gait-symmetry measure (e.g. Menz et al. 2003): each stride (two steps,
      or one peak-to-peak when each peak is a stride) is one period; its Fourier amplitudes at
      harmonics 1–20 of the stride frequency are summed, even over odd. Identical left and right
@@ -2561,7 +2616,7 @@
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectralSteps, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

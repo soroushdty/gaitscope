@@ -324,6 +324,36 @@ values over time. Walking repeats, so its rhythm shows as a tall peak.
   band matters here, so above 50 Hz the signal is low-passed at 8 Hz and decimated to about
   20 Hz first (10 minutes at 460 Hz: 2.7 s down to 0.17 s). On a walk speeding up from 90
   to 130 steps/min the rhythm follows within 0.06 Hz, at 100 and 460 Hz.
+
+* **Steps from the rhythm** (`spectralSteps`, #98): a step count without detecting any
+  steps, shown as the *From the rhythm* column of the metrics table, in the hand-count
+  check, and in the exports' `spectrum` record. One cycle of the main rhythm is one step
+  (× 2 with One leg, as for the spectral cadence).
+  - **Adding up:** each 0.5 s of the walk contributes its window's rhythm × 0.5 s, so a
+    change of pace counts right; between windows the rhythm is interpolated.
+  - **Which windows:** a window counts when its peak is clear (5× the band's median) and
+    the signal matches itself one cycle later (autocorrelation at that lag at least 0.5).
+    The second test is needed because a still phone's noise passes the first in about half
+    its windows, which gave 45 "steps" on a recording of nothing. On the owner's walks the
+    autocorrelation's median is 0.6–0.93; on noise it is at most 0.44.
+  - **The walk's ends:** from the first to the last counted window, each end moved by at
+    most half a window either way to where the walking swing (1 s RMS of the signal
+    band-passed to 0.5–3.5 Hz) first or last reaches half its median. Without that, the
+    first and last second or so went uncounted on phone recordings (8.8 of 10, 57.7 of 60).
+
+  | Walk (owner, Pixel 9a / iPad, 2026-10-07) | Counted | Total | Vertical |
+  |---|---|---|---|
+  | Hand at chest, slow (Firefox) | 10 | 10.1 | 10.1 |
+  | Front pocket (Firefox) | 28 | 26.2 | 28.0 |
+  | Hand at chest (Chrome) | 60 | 60.2 | 59.8 |
+  | iPad at chest | 24 | 23.8 | 23.9 |
+
+  Not counted: the noisy walk gives 61.5 (62.8 from the Physics Toolbox recording made at
+  the same time) and the phyphox walk 55.0, against the detectors' 53–54 there. Pure noise
+  and the two short 2026-09-23 files (6.6 and 7.6 s, no clear repeating rhythm) give no
+  estimate. The synthetic walk gives 15.4 of 17: its
+  first and last steps are faint, under half size. It is an estimate: best on a steady walk,
+  rougher when the phone is handled at the ends.
 * The filter, spectra and rhythm are cached, and recomputed only when the channel or their own
   settings change, so moving h or an algorithm's settings stays quick.
 

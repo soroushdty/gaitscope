@@ -1272,3 +1272,30 @@ test('the sampling rate comes from the typical gaps: rounded times and dropped s
   const ds2 = C.buildDataset(['time', 'gFz (g)'], [Float64Array.from(keep), Float64Array.from(keep, v => Math.sin(v))], 'csv');
   assert.ok(Math.abs(C.prepareChannel(ds2, 1).fs - 57.4) < 0.05);
 });
+
+test('steps from the rhythm, without detecting steps (#98): still, walking, still; and a change of pace', () => {
+  let seed = 3; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+  // walking between `from` and `to` s, the rhythm given by freq(t); 1 cycle = 1 step
+  const walk = (dur, from, to, freq) => {
+    const fs = 60, n = Math.round(dur * fs), t = new Float64Array(n), A = new Float64Array(n);
+    let ph = 0, cycles = 0;
+    for (let i = 0; i < n; i++) {
+      t[i] = i / fs + 0.002 * rnd();
+      const on = t[i] >= from && t[i] < to;
+      if (on) { ph += 2 * Math.PI * freq(t[i]) / fs; }
+      A[i] = 1 + (on ? 0.25 * Math.sin(ph) + 0.08 * Math.sin(2 * ph + 0.5) : 0) + 0.01 * rnd();
+      cycles = ph / (2 * Math.PI);
+    }
+    return { t, A, cycles };
+  };
+  const a = walk(40, 4, 34, () => 1.7); // 51 steps
+  const ea = C.spectralSteps(a.A, a.t, { specWin: 4 });
+  assert.ok(Math.abs(ea.steps - a.cycles) < 1, ea.steps + ' vs ' + a.cycles);
+  assert.ok(Math.abs(ea.start - 4) < 0.5 && Math.abs(ea.end - 34) < 0.5, ea.start + '–' + ea.end);
+  const b = walk(40, 4, 34, t => (t < 19 ? 1.5 : 2.0)); // 22.5 + 30 = 52.5 steps
+  const eb = C.spectralSteps(b.A, b.t, { specWin: 4 });
+  assert.ok(Math.abs(eb.steps - b.cycles) < 1.5, eb.steps + ' vs ' + b.cycles);
+  // one average rate would say 1.75 Hz × 30 s; adding up the windows follows the pace instead
+  const noise = walk(20, 99, 99, () => 1); // no walking at all
+  assert.equal(C.spectralSteps(noise.A, noise.t, { specWin: 4 }), null);
+});

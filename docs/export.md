@@ -70,8 +70,10 @@ Python port.
 ### spectrum
 
 `dominant_hz` (the strongest walking frequency, NaN if none is clear), `cadence_steps_min`
-(60 × that, × 2 with Phone position *One leg*) and `segment_s` (Welch's segment length).
-Dashboard only.
+(60 × that, × 2 with Phone position *One leg*), `segment_s` (Welch's segment length), and the
+steps counted from the rhythm without detecting any (#98): `rhythm_steps` (not rounded), and
+the walk it covers, `rhythm_from_s` to `rhythm_to_s` (all NaN when the rhythm isn't clear
+enough). Dashboard only.
 
 ### indicators (table)
 
