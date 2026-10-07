@@ -2013,6 +2013,235 @@
     return { applied: true, A, t, fs, from, method, antialias: !!aa, n: m, checks, min: mn, max: mx };
   }
 
+  /* --------------------------------------------------------------- export (#53) */
+  // One content model, written as JSON, MATLAB .mat (v5), NumPy .npz or a zip of CSV files.
+  // The fields are described in docs/export.md; python/lab_step_det.py --export writes the
+  // same model (lab code only). Sample numbers are 1-based, like MATLAB, everywhere.
+  const VERSION = '0.1.0'; // as in package.json and pyproject.toml (a test keeps them equal)
+  const EXPORT_FORMAT_VERSION = 1;
+  // column types: text and true/false columns by name, every other column is a number
+  const TEXT_COLUMNS = new Set(['algorithm_status', 'metric', 'unit_lab_code', 'unit_algorithm', 'text']);
+  const BOOL_COLUMNS = new Set(['in_lab_code', 'in_algorithm']);
+  const columnKind = name => (TEXT_COLUMNS.has(name) ? 'str' : BOOL_COLUMNS.has(name) ? 'bool' : 'f8');
+  const TABLES = ['signals', 'recorded', 'steps', 'metrics', 'notes'], RECORDS = ['about', 'settings', 'params'];
+
+  /* Every peak either version marked, in time order, and what the algorithm made of it: kept,
+     a weak peak, a tied peak (the lab code's double count), or not found. idx 0-based. */
+  function stepStatus(origIdx, finalIdx, weakIdx, w, algoName) {
+    const origSet = new Set(origIdx), finalSet = new Set(finalIdx), weakSet = new Set(weakIdx || []);
+    const all = Array.from(new Set(origIdx.concat(finalIdx))).sort((a, b) => a - b);
+    let prevOrig = -10;
+    return all.map(i => {
+      const inO = origSet.has(i), inF = finalSet.has(i);
+      let why;
+      if (inF) why = 'kept';
+      else if (weakSet.has(i)) why = 'weak peak';
+      else if (inO && i - prevOrig <= w) why = 'tied peak';
+      else why = 'not found by ' + algoName;
+      if (inO) prevOrig = i;
+      return { i, inO, inF, why };
+    });
+  }
+
+  /* The metrics table: one row per metric, the lab code's and the algorithm's value and units
+     (NaN where a version has none). alg: timingMetrics; extra: {specCadence, hr}. */
+  function metricRows(orig, alg, extra, stride) {
+    const rows = [['steps', orig.steps, 'count'], ['average_step_duration', orig.avgStepDuration, 's (samples/100)'], ['cadence', NaN, ''],
+      ['pace_lab_formula', orig.pace, 'duration*60'], [stride ? 'stride_time_variability' : 'step_time_variability', orig.variabilitySamples, 'samples (SD)'],
+      ['coefficient_of_variation', NaN, ''], ['gait_asymmetry', orig.asymmetry, 'even/odd intervals'], ['cadence_spectrum', NaN, ''], ['harmonic_ratio', NaN, '']];
+    const out = { metric: rows.map(r => r[0]), lab_code: rows.map(r => r[1]), unit_lab_code: rows.map(r => r[2]) };
+    if (alg) {
+      Object.assign(out, {
+        algorithm: [alg.steps, alg.stepInterval, alg.cadence, NaN, alg.variabilityMs, alg.cv, stride ? NaN : alg.asymmetry, extra.specCadence, extra.hr ? extra.hr.ratio : NaN],
+        unit_algorithm: ['count', 's (timestamps)', 'steps/min', '', 'ms (SD)', '%', 'even/odd intervals', 'steps/min (dominant frequency × 60)',
+          'even/odd harmonics per stride' + (extra.hr ? ' (' + extra.hr.strides + ' strides)' : '')],
+      });
+    }
+    return out;
+  }
+
+  /* The export model. x: {about, settings, params, t, A (the signal the lab code gets),
+     filtered?, envelope? {lower, upper, mid}, recorded? {t, A} (before resampling), origIdx,
+     orig, algo? {name, idx, weak, metrics, specCadence, hr}, stride, w, notes [{t, text}],
+     parts {signals, envelope}}. Without algo (the Python port), steps and metrics have no
+     algorithm columns. */
+  function buildExport(x) {
+    const parts = Object.assign({ signals: true, envelope: false }, x.parts);
+    const model = {
+      about: Object.assign({ format: 'gaitscope-export', format_version: EXPORT_FORMAT_VERSION, generator: 'gaitscope dashboard', version: VERSION,
+        exported: new Date().toISOString(), sample_numbers: '1-based, like MATLAB (sample_matlab)', time: 's from the first sample of the recording' }, x.about),
+      settings: x.settings || {}, params: x.params || {},
+    };
+    if (parts.signals) {
+      model.signals = { time_s: Array.from(x.t), signal: Array.from(x.A) };
+      if (x.filtered) model.signals.filtered = Array.from(x.filtered);
+      if (parts.envelope && x.envelope) for (const k of ['lower', 'upper', 'mid']) if (x.envelope[k]) model.signals['envelope_' + k] = Array.from(x.envelope[k]);
+      if (x.recorded) model.recorded = { time_s: Array.from(x.recorded.t), value: Array.from(x.recorded.A) };
+    }
+    const rows = x.algo ? stepStatus(x.origIdx, x.algo.idx, x.algo.weak, x.w, x.algo.name) : x.origIdx.map(i => ({ i, inO: true }));
+    model.steps = { time_s: rows.map(r => x.t[r.i]), sample_matlab: rows.map(r => r.i + 1), value: rows.map(r => x.A[r.i]), in_lab_code: rows.map(r => r.inO) };
+    if (x.algo) Object.assign(model.steps, { in_algorithm: rows.map(r => r.inF), algorithm_status: rows.map(r => r.why) });
+    model.metrics = metricRows(x.orig, x.algo && x.algo.metrics, x.algo || {}, x.stride);
+    model.notes = { time_s: (x.notes || []).map(n => n.t), text: (x.notes || []).map(n => n.text) };
+    return model;
+  }
+
+  // JSON: one line per part. NaN and ±Infinity become null (JSON has no NaN).
+  function exportJson(model) {
+    const plain = v => (ArrayBuffer.isView(v) ? Array.from(v) : v);
+    const parts = Object.keys(model).map(k => JSON.stringify(k) + ': ' + JSON.stringify(model[k], (key, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : plain(v))));
+    return '{\n' + parts.join(',\n') + '\n}\n';
+  }
+  /* A JSON export read back: number columns with null as NaN. Throws InputError when it is
+     not a gaitscope export, or a later format_version than this page knows. */
+  function parseExportJson(text) {
+    let m;
+    try { m = JSON.parse(text); } catch (e) { throw new InputError('This JSON file could not be read: ' + e.message + '.', 'Export it from the dashboard again.'); }
+    if (!m || !m.about || m.about.format !== 'gaitscope-export') throw new InputError('This JSON file is not a gaitscope export.', 'Open a .json file saved with Export… → JSON, or the recording itself.');
+    if (!(m.about.format_version <= EXPORT_FORMAT_VERSION)) throw new InputError('This export uses format version ' + m.about.format_version + ', newer than this page (' + EXPORT_FORMAT_VERSION + ').', 'Reload the page to get the latest version.');
+    if (!m.signals || !Array.isArray(m.signals.time_s) || !Array.isArray(m.signals.signal)) throw new InputError('This export has no signals, so it can’t be reopened.', 'Export again with Signals ticked.');
+    for (const k of TABLES) if (m[k]) for (const c of Object.keys(m[k])) if (columnKind(c) === 'f8') m[k][c] = Float64Array.from(m[k][c], v => (v === null ? NaN : v));
+    return m;
+  }
+
+  // CSV for a table (columns of equal length) or a record ({key: value} as key,value rows).
+  const csvCell = v => { const s = typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '') : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  function tableCsv(table) {
+    const cols = Object.keys(table), n = cols.length ? table[cols[0]].length : 0, lines = [cols.map(csvCell).join(',')];
+    for (let i = 0; i < n; i++) lines.push(cols.map(c => csvCell(table[c][i])).join(','));
+    return lines.join('\n') + '\n';
+  }
+  const recordCsv = rec => ['key,value'].concat(Object.entries(rec).map(([k, v]) => csvCell(k) + ',' + csvCell(typeof v === 'object' ? JSON.stringify(v) : v))).join('\n') + '\n';
+
+  /* A zip with stored (uncompressed) entries, which is what .npz is too. files: [{name, data
+     (Uint8Array)}]. The page only loads pako's inflate, so nothing here is compressed. */
+  let crcTable = null;
+  function crc32(u8) {
+    if (!crcTable) { crcTable = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crcTable[n] = c >>> 0; } }
+    let c = 0xffffffff;
+    for (let i = 0; i < u8.length; i++) c = crcTable[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function zipStore(files, date) {
+    const d = date || new Date(), enc = new TextEncoder();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), day = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const local = [], central = [];
+    let off = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+      h.setUint16(10, time, true); h.setUint16(12, day, true); h.setUint32(14, crc, true); h.setUint32(18, size, true); h.setUint32(22, size, true);
+      h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+      local.push(new Uint8Array(h.buffer), name, f.data);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+      c.setUint16(12, time, true); c.setUint16(14, day, true); c.setUint32(16, crc, true); c.setUint32(20, size, true); c.setUint32(24, size, true);
+      c.setUint16(28, name.length, true); c.setUint32(42, off, true);
+      central.push(new Uint8Array(c.buffer), name);
+      off += 30 + name.length + size;
+    }
+    const cdSize = central.reduce((s, a) => s + a.length, 0), e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
+    return concatBytes(local.concat(central, [new Uint8Array(e.buffer)]));
+  }
+  function concatBytes(arrs) {
+    const out = new Uint8Array(arrs.reduce((s, a) => s + a.length, 0));
+    let p = 0; for (const a of arrs) { out.set(a, p); p += a.length; }
+    return out;
+  }
+
+  // a zip with one CSV per part: about.csv, settings.csv, params.csv, signals.csv, …
+  function exportCsvZip(model) {
+    const enc = new TextEncoder(), files = [];
+    for (const k of RECORDS) if (model[k]) files.push({ name: k + '.csv', data: enc.encode(recordCsv(model[k])) });
+    for (const k of TABLES) if (model[k]) files.push({ name: k + '.csv', data: enc.encode(tableCsv(model[k])) });
+    return zipStore(files);
+  }
+
+  /* NumPy .npz: a zip of .npy files, loadable with np.load(f, allow_pickle=False). about,
+     settings and params are 0-d text arrays holding JSON; each table column is its own array,
+     named table/column: float64, bool, or fixed-width unicode text (<U). */
+  function npyBytes(kind, values) {
+    const n = values.length, scalar = !Array.isArray(values) && !ArrayBuffer.isView(values);
+    const vals = scalar ? [values] : values;
+    let descr, body;
+    if (kind === 'f8') { descr = '<f8'; body = new Uint8Array(Float64Array.from(vals).buffer); }
+    else if (kind === 'bool') { descr = '|b1'; body = Uint8Array.from(vals, v => (v ? 1 : 0)); }
+    else {
+      const cps = vals.map(v => Array.from(String(v), ch => ch.codePointAt(0))), w = Math.max(1, ...cps.map(c => c.length));
+      descr = '<U' + w; const u = new Uint32Array(vals.length * w);
+      cps.forEach((c, i) => u.set(c, i * w));
+      body = new Uint8Array(u.buffer);
+    }
+    let header = "{'descr': '" + descr + "', 'fortran_order': False, 'shape': " + (scalar ? '()' : '(' + n + ',)') + ', }';
+    header += ' '.repeat(64 - ((10 + header.length + 1) % 64 || 64)) + '\n';
+    const head = new Uint8Array(10 + header.length);
+    head.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0, header.length & 0xff, header.length >> 8]);
+    for (let i = 0; i < header.length; i++) head[10 + i] = header.charCodeAt(i);
+    return concatBytes([head, body]);
+  }
+  function exportNpz(model) {
+    const files = [];
+    for (const k of RECORDS) if (model[k]) files.push({ name: k + '.npy', data: npyBytes('str', JSON.stringify(model[k], (key, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v))) });
+    for (const k of TABLES) if (model[k]) for (const c of Object.keys(model[k])) files.push({ name: k + '/' + c + '.npy', data: npyBytes(columnKind(c), model[k][c]) });
+    return zipStore(files);
+  }
+
+  /* MATLAB .mat (v5, uncompressed, like scipy's savemat default), read by MATLAB, Octave,
+     scipy.io.loadmat and this page's own parseMat. One struct, gaitscope, with a field per
+     part. A record becomes a struct of scalars and text; a table a struct of n×1 columns:
+     double, logical, or a cell array of text (struct2table turns it into a table). */
+  const MAT_NAME = /^[A-Za-z][A-Za-z0-9_]{0,30}$/;
+  function exportMat(model) {
+    // a data element: type, byte count, data, padded to 8 bytes
+    const el = (type, bytes) => {
+      const out = new Uint8Array(8 + bytes.length + (8 - (bytes.length % 8)) % 8), dv = new DataView(out.buffer);
+      dv.setUint32(0, type, true); dv.setUint32(4, bytes.length, true); out.set(bytes, 8);
+      return out;
+    };
+    const i32 = a => new Uint8Array(Int32Array.from(a).buffer), ascii = s => Uint8Array.from(s, ch => ch.charCodeAt(0));
+    // miMATRIX: array flags (class, logical bit), dimensions, name, then the data elements
+    const matrix = (cls, dims, data, opts = {}) => {
+      const flags = new Uint8Array(8); new DataView(flags.buffer).setUint32(0, cls | (opts.logical ? 0x0200 : 0), true);
+      return el(14, concatBytes([el(6, flags), el(5, i32(dims)), el(1, ascii(opts.name || '')), ...data]));
+    };
+    const text = v => {
+      // UTF-16, as MATLAB's char; characters beyond U+FFFF (emoji) take two units there and
+      // scipy can't read them back, so they become U+FFFD
+      const str = String(v).replace(/[\u{10000}-\u{10FFFF}]/gu, '\uFFFD'), u = new Uint16Array(str.length);
+      for (let i = 0; i < str.length; i++) u[i] = str.charCodeAt(i);
+      return matrix(4, str.length ? [1, str.length] : [0, 0], [el(17, new Uint8Array(u.buffer))]); // miUTF16
+    };
+    const dbl = (vals, dims) => matrix(6, dims, [el(9, new Uint8Array(Float64Array.from(vals).buffer))]);
+    const logical = (vals, dims) => matrix(9, dims, [el(2, Uint8Array.from(vals, v => (v ? 1 : 0)))], { logical: true });
+    const struct = (fields, name) => {
+      const names = Object.keys(fields), nameBytes = new Uint8Array(32 * names.length);
+      names.forEach((n, k) => {
+        if (!MAT_NAME.test(n)) throw new Error('Not a MATLAB field name: ' + n);
+        nameBytes.set(ascii(n), 32 * k);
+      });
+      return matrix(2, [1, 1], [el(5, i32([32])), el(1, nameBytes), ...names.map(n => fields[n])], { name });
+    };
+    const value = v => (typeof v === 'boolean' ? logical([v], [1, 1]) : typeof v === 'number' ? dbl([v], [1, 1])
+      : v && typeof v === 'object' ? record(v) : text(v === null || v === undefined ? '' : v));
+    const record = rec => struct(Object.fromEntries(Object.entries(rec).map(([k, v]) => [k, value(v)])));
+    const column = (name, vals) => {
+      const n = vals.length, kind = columnKind(name);
+      if (kind === 'f8') return dbl(vals, [n, 1]);
+      if (kind === 'bool') return logical(vals, [n, 1]);
+      return matrix(1, [n, 1], Array.from(vals, text)); // a cell array of text
+    };
+    const fields = {};
+    for (const k of RECORDS) if (model[k]) fields[k] = record(model[k]);
+    for (const k of TABLES) if (model[k]) fields[k] = struct(Object.fromEntries(Object.keys(model[k]).map(c => [c, column(c, model[k][c])])));
+    // 128-byte header: text, subsystem offset, version 0x0100, 'IM' (little-endian)
+    const head = new Uint8Array(128).fill(32);
+    head.set(ascii(('MATLAB 5.0 MAT-file, Platform: gaitscope ' + VERSION + ', Created on: ' + new Date().toUTCString()).slice(0, 116)));
+    head.fill(0, 116, 124); head.set([0x00, 0x01, 0x49, 0x4d], 124);
+    return concatBytes([head, struct(fields, 'gaitscope')]);
+  }
+
   /* Envelopes: curves drawn around the signal the algorithm sees, to show how the size of
      each swing changes. A view only: they never change the detected steps or metrics.
      compute(A, t, p) -> {upper?, lower?, mid?}, arrays with one value per sample; midName
@@ -2177,7 +2406,7 @@
     return { names: ['time', 'x', 'y', 'z', 'magnitude'], cols: [t, x, y, z, m] };
   }
 
-  const api = { InputError, MAX_BYTES, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, labRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
+  const api = { InputError, MAX_BYTES, VERSION, EXPORT_FORMAT_VERSION, stepStatus, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, labRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
     FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
