@@ -1429,12 +1429,13 @@
     return f;
   }
 
-  /* Power spectral density by Welch's method, as scipy.signal.welch(A, fs, window='hann',
-     nperseg, noverlap, nfft, detrend='constant', scaling='density'): the signal is cut into
-     segments overlapping by noverlap, each has its mean removed and is multiplied by a
-     periodic Hann window, and the one-sided |FFT|² of the segments are averaged. A signal
-     shorter than nperseg is one segment. Returns {f (Hz), psd (units²/Hz)}. */
-  function welch(A, fs, { nperseg, noverlap, nfft }) {
+  /* Short-time spectra, as scipy.signal.spectrogram(A, fs, window='hann', nperseg, noverlap,
+     nfft, detrend='constant', scaling='density', mode='psd'): the signal is cut into segments
+     overlapping by noverlap, each has its mean removed and is multiplied by a periodic Hann
+     window, and its one-sided |FFT|² is scaled to a power density. A signal shorter than
+     nperseg is one segment. Returns {f (Hz), t (segment centres, s from the start), S (one
+     Float64Array per segment)}. */
+  function spectrogram(A, fs, { nperseg, noverlap, nfft }) {
     const n = A.length;
     nperseg = Math.min(nperseg, n);
     noverlap = noverlap === undefined ? Math.floor(nperseg / 2) : Math.min(noverlap, nperseg - 1);
@@ -1442,19 +1443,26 @@
     const w = Float64Array.from({ length: nperseg }, (_, k) => 0.5 - 0.5 * Math.cos(2 * Math.PI * k / nperseg));
     let w2 = 0; for (const v of w) w2 += v * v;
     const step = nperseg - noverlap, segs = Math.floor((n - noverlap) / step), bins = Math.floor(nfft / 2) + 1;
-    const psd = new Float64Array(bins), seg = new Float64Array(nfft);
+    const scale = 1 / (fs * w2), seg = new Float64Array(nfft), S = [], times = [];
     for (let s = 0; s < segs; s++) {
       const o = s * step;
       let m = 0; for (let k = 0; k < nperseg; k++) m += A[o + k];
       m /= nperseg;
       seg.fill(0);
       for (let k = 0; k < nperseg; k++) seg[k] = (A[o + k] - m) * w[k];
-      const X = fft(seg);
-      for (let k = 0; k < bins; k++) psd[k] += X.re[k] * X.re[k] + X.im[k] * X.im[k];
+      const X = fft(seg), P = new Float64Array(bins);
+      for (let k = 0; k < bins; k++) P[k] = (X.re[k] * X.re[k] + X.im[k] * X.im[k]) * scale * (k === 0 || (nfft % 2 === 0 && k === bins - 1) ? 1 : 2);
+      S.push(P); times.push((o + nperseg / 2) / fs);
     }
-    const scale = 1 / (fs * w2 * segs);
-    for (let k = 0; k < bins; k++) psd[k] *= scale * (k === 0 || (nfft % 2 === 0 && k === bins - 1) ? 1 : 2);
-    return { f: Float64Array.from({ length: bins }, (_, k) => k * fs / nfft), psd };
+    return { f: Float64Array.from({ length: bins }, (_, k) => k * fs / nfft), t: Float64Array.from(times), S };
+  }
+  /* Power spectral density by Welch's method, as scipy.signal.welch with the same arguments:
+     the average of the spectrogram's segments. Returns {f (Hz), psd (units²/Hz)}. */
+  function welch(A, fs, opts) {
+    const sg = spectrogram(A, fs, opts), psd = new Float64Array(sg.f.length);
+    for (const P of sg.S) for (let k = 0; k < P.length; k++) psd[k] += P[k];
+    for (let k = 0; k < psd.length; k++) psd[k] /= sg.S.length;
+    return { f: sg.f, psd };
   }
 
   /* Amplitude gain of the selected filter at the given frequencies, as applied (so zero-phase
@@ -1483,6 +1491,19 @@
       if (f.id === 'savgol') { const w = oddWindow(p.sgWindow, fs, n, p.sgOrder + 2); return firGain(savgolWeights(w, p.sgOrder)((w - 1) / 2)); }
     } catch (e) { if (e instanceof RangeError) return null; throw e; }
     return null;
+  }
+
+  /* Cadence over time: the dominant walking frequency in windows of p.specWin seconds (default
+     4 s) every 0.5 s, on an even grid. Returns {t (window centres, in the recording's time),
+     freq (Hz, NaN where a window has no clear walking peak), window (s)}. */
+  const SPEC_HOP = 0.5;
+  function rhythmOverTime(A, t, p) {
+    const g = evenGrid(A, t), nperseg = Math.round((p.specWin || 4) * g.fs);
+    if (g.A.length < nperseg) return { t: new Float64Array(0), freq: new Float64Array(0), window: nperseg / g.fs };
+    let nfft = 1; while (nfft < Math.max(nperseg, Math.ceil(g.fs / 0.01))) nfft *= 2;
+    const sg = spectrogram(g.A, g.fs, { nperseg, noverlap: nperseg - Math.max(1, Math.round(SPEC_HOP * g.fs)), nfft });
+    const freq = Float64Array.from(sg.S, P => { const pk = dominantFrequency(sg.f, P); return pk.clear ? pk.freq : NaN; });
+    return { t: sg.t.map(v => v + g.t[0]), freq, window: nperseg / g.fs };
   }
 
   /* Analytic signal, as scipy.signal.hilbert: the FFT with negative frequencies removed and
@@ -1712,7 +1733,7 @@
   const api = { InputError, MAX_BYTES, parseMat, matCandidates, matToColumns, parseCsv, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, welch, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, oddWindow, movingAverage, movingMedian, savgol, notchSos, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

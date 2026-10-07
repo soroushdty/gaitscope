@@ -388,6 +388,23 @@ test('Welch spectrum matches scipy.signal.welch', () => {
   }
 });
 
+test('the spectrogram matches scipy.signal.spectrogram, and follows a walk that speeds up', () => {
+  for (const c of SPEC.spectrogram) {
+    const x = Float64Array.from({ length: Math.round(c.fs * 10) }, (_, i) => { const t = i / c.fs; return 1 + Math.sin(2 * Math.PI * 1.8 * t) + 0.3 * Math.sin(2 * Math.PI * 17 * t + 0.4) + 0.1 * Math.sin(2 * Math.PI * 0.2 * t); });
+    const r = C.spectrogram(x, c.fs, { nperseg: c.nperseg, noverlap: c.noverlap, nfft: c.nfft });
+    assert.equal(r.S.length, c.S.length, c.fs + ' Hz: segments');
+    r.t.forEach((v, k) => assert.ok(Math.abs(v - c.t[k]) < 1e-12));
+    const top = Math.max(...c.S.flat());
+    c.S.forEach((col, s) => col.forEach((v, k) => assert.ok(Math.abs(r.S[s][k] - v) < 1e-12 * top, c.fs + ' Hz, segment ' + s + ', bin ' + k)));
+  }
+  // cadence rising steadily from 90 to 130 steps/min over 30 s
+  const fs = 100, t = Float64Array.from({ length: 3000 }, (_, i) => i / fs);
+  let ph = 0; const A = t.map(v => { ph += 2 * Math.PI * (1.5 + v / 45) / fs; return Math.sin(ph); });
+  const r = C.rhythmOverTime(A, t, { specWin: 4 });
+  assert.ok(r.t.length > 40);
+  r.t.forEach((tc, k) => assert.ok(Math.abs(r.freq[k] - (1.5 + tc / 45)) < 0.06, 'at ' + tc + ' s: ' + r.freq[k]));
+});
+
 test('the spectrum finds the cadence of a known walk, and the stride rate of a one-leg walk', () => {
   for (const fsr of [57, 100, 460]) {
     const w = knownWalk({ fs: fsr, n: 40 });
