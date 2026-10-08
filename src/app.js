@@ -1457,12 +1457,12 @@
   showExport();
   $('expMetrics').addEventListener('click', exportMetrics);
   $('valToggle').addEventListener('click', () => { const open = $('valToggle').getAttribute('aria-expanded') !== 'true'; valOpenedByUser = open; setValOpen(open); });
-  /* Theme (#79): System, Light or Dark, remembered for this viewer only. System leaves
-     data-theme off, so the CSS follows the system setting; the plots redraw on any change
-     (the observer below). Storage can be blocked (private windows), so every use is guarded. */
   /* Theme (#79, #106): the page follows the system's light or dark setting; the button
      switches between the two. A switch away from the system's setting is remembered in this
-     browser; switching back to match it forgets it, so the page follows the system again. */
+     browser; switching back to match it forgets it, so the page follows the system again.
+     A script in index.html's <head> applies the remembered one before the page is drawn.
+     The plots redraw on any change (the observer below). Storage can be blocked (private
+     windows), so every use is guarded. */
   const THEMES = ['light', 'dark'], THEME_KEY = 'gaitscope-theme';
   const THEME_NAME = { light: 'Light', dark: 'Dark' };
   // drawn, not font glyphs: the page font has no half circle, sun or moon
