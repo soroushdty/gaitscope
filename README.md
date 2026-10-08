@@ -10,7 +10,8 @@ Health, and Wellness* (ASU, Dr. Aurel Coza): a MATLAB step detector and a sample
 is now a dashboard that
 loads or records a walk, checks that the file is usable, and puts any number of step
 detectors and envelopes on the plot side by side, with filters, a spectrum, gait metrics
-and exports. A Python port of Coza's detector gives exactly the same steps as MATLAB.
+and exports. A Python port of Coza's detector gives the same steps as MATLAB on the
+course's sample walk.
 
 ![GaitScope with the synthetic walk: Coza and Coza (modified) on the plot, a peak-trough envelope, and the step intervals underneath](docs/screenshot.png)
 
@@ -27,8 +28,9 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
   Tap Record, walk, then hold to stop. The page asks how many steps you counted and where
   the phone was, and compares your count with the detectors. The recording downloads as a
   CSV that both the dashboard and the Python port read. It needs https (the live page has
-  it) and the screen on. So far it has been tested with emulated sensors; the checks on
-  real phones are in [#51](https://github.com/soroushdty/gaitscope/issues/51).
+  it) and the screen on. It has been tested on a Pixel 9a (Chrome and Firefox) and an iPad
+  Air, at about 60 samples per second; an iPhone is still to be checked
+  ([#51](https://github.com/soroushdty/gaitscope/issues/51)).
 - **Validation.** Every file is checked against an [input schema](docs/schema.md) before
   analysis. Each problem comes with a concrete fix, such as the exact MATLAB line to re-save
   a file in a format the page can read.
@@ -39,12 +41,13 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
   also the vertical (along gravity) and horizontal (across it) acceleration.
 - **Resample** to a rate you choose, or just even out a phone's uneven timing, before
   anything else runs. This is linear (like MATLAB `interp1`) or monotone cubic, with an
-  optional anti-aliasing low-pass. It matches the Python port's `--resample` bit for bit,
-  so Coza finds the same steps in both.
+  optional anti-aliasing low-pass. On the test cases, linear resampling matches the Python
+  port's `--resample` bit for bit and the other two within 1e-12, so Coza finds the same
+  steps in both.
 - **Filter:** Butterworth, Bessel, Chebyshev I and II, and elliptic (low-pass or band-pass,
   order 2 to 6), moving average, median, Savitzky–Golay, wavelet denoising (Daubechies-4)
-  and notch. Each matches scipy (or PyWavelets) within 1e-9. Every detector and envelope
-  can use either the filtered or the recorded signal.
+  and notch. On the test cases, each matches scipy (or PyWavelets) within 1e-9. Every
+  detector and envelope can use either the filtered or the recorded signal.
 
 ### Detect steps
 
@@ -81,7 +84,8 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
     its cone of influence), octave wavelet bands (DWT) or the Hilbert–Huang spectrum (EMD
     modes read moment by moment), with the main rhythm drawn on top.
     A steady walk is one bright band; swinging the phone brings out a second band at half
-    the height (the stride). The wavelets match PyWavelets and the EMD matches PyEMD.
+    the height (the stride). On the test cases, the wavelets match PyWavelets and the EMD
+    matches PyEMD.
   The views never change the steps or metrics.
 - **Step intervals** under the plot: the time between steps for each detector, next to the
   spectrum's main rhythm over time.
