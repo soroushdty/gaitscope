@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use GaitScope in teaching or research, please cite it as below, with the version you used."
+type: software
+title: GaitScope
+abstract: >-
+  An interactive lab, in the browser, for learning how movement-sensor signals are
+  processed: record or load a walk from a phone's accelerometer, then filter it, look
+  at its spectrum, and compare step detectors side by side.
+authors:
+  - family-names: Dianaty
+    given-names: Soroush
+version: "0.1.0"
+license: MIT
+repository-code: "https://github.com/soroushdty/gaitscope"
+url: "https://soroushdianaty.com/gaitscope/"
+keywords:
+  - accelerometer
+  - step detection
+  - gait
+  - signal processing
+  - education

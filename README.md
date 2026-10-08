@@ -297,6 +297,11 @@ docs/                 input schema, algorithms, export formats, contributions
 data/                 local course files (git-ignored)
 ```
 
+## Citing GaitScope
+
+There is no paper yet. To cite the software, use [CITATION.cff](CITATION.cff) (GitHub's
+"Cite this repository" button reads it), and give the version you used.
+
 ## Credits and license
 
 - **Coza** and the sample walk (`Walking.mat`) come from BME 598/494 *Wearable Devices
