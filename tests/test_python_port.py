@@ -380,7 +380,8 @@ def test_version_is_the_same_everywhere():
     pyproject = tomllib.load(open(os.path.join(ROOT, "pyproject.toml"), "rb"))["project"]["version"]
     package = json.load(open(os.path.join(ROOT, "package.json")))["version"]
     core = re.search(r"const VERSION = '([^']+)'", open(os.path.join(ROOT, "src", "core.js")).read())[1]
-    assert lab_step_det.VERSION == pyproject == package == core
+    citation = re.search(r'^version: "([^"]+)"$', open(os.path.join(ROOT, "CITATION.cff")).read(), re.M)[1]
+    assert lab_step_det.VERSION == pyproject == package == core == citation
 
 
 def test_sampling_rate_from_typical_gaps():
