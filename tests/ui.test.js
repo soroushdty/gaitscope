@@ -1280,6 +1280,19 @@ test('the theme follows the system; the button switches light and dark and remem
   pg4.d.getElementById('themeBtn').click();
   assert.equal(pg4.d.documentElement.getAttribute('data-theme'), null);
 });
+test('a remembered theme is set in the <head>, before the page is drawn (#106)', () => {
+  // the page up to the stylesheet's end of <head> only: no body, no app.js
+  const head = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').split('</head>')[0]
+    .replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link[^>]+>/g, '');
+  const themeOf = storage => new JSDOM(head + '</head></html>', { runScripts: 'dangerously', beforeParse(w) {
+    Object.defineProperty(w, 'localStorage', { value: storage, configurable: true });
+  } }).window.document.documentElement.getAttribute('data-theme');
+  assert.equal(themeOf(memoryStorage({ 'gaitscope-theme': 'dark' })), 'dark');
+  assert.equal(themeOf(memoryStorage({ 'gaitscope-theme': 'light' })), 'light');
+  assert.equal(themeOf(memoryStorage()), null, 'nothing remembered: the system decides');
+  assert.equal(themeOf(memoryStorage({ 'gaitscope-theme': 'system' })), null, 'the old three-way setting means none');
+  assert.equal(themeOf({ getItem() { throw new Error('blocked'); } }), null, 'blocked storage: no error');
+});
 test('the header links to the repository (#106)', () => {
   const a = makePage().d.getElementById('repoLink');
   assert.equal(a.getAttribute('href'), 'https://github.com/soroushdty/gaitscope');
