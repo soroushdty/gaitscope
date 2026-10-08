@@ -56,7 +56,8 @@ behaviour when it matters.
 - **Never commit course files.** `data/` is git-ignored except its README. Test
   fixtures are synthetic (`scripts/make_fixtures.py`).
 - **The dashboard stays a static page** (GitHub Pages) with no build step. Its own scripts
-  are `src/core.js`, `src/record.js` and `src/app.js`; `tests/ui.test.js` inlines all three. The only
+  are `src/core.js`, `src/record.js` and `src/app.js`; `tests/ui.test.js` inlines all three. One line in `index.html`'s
+  `<head>` sets a remembered theme before the page is drawn (#106). The only
   external scripts are pako (inflating compressed MAT files) and plotly.js-basic, loaded
   with the page, and jsfive (MATLAB v7.3 / HDF5, `HDF5_URL` in `src/app.js`), loaded only
   when a v7.3 file is opened. All three are pinned on jsDelivr.
