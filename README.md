@@ -69,8 +69,9 @@ and exports. A Python port of Coza's detector gives exactly the same steps as MA
 - **Metrics** for each detector: steps, average step duration, cadence, step-time
   variability, gait asymmetry, walking span and harmonic ratio. While a Coza is shown,
   rows marked "Coza's formula" reproduce the `.m` file's own outputs exactly.
-- **Frequency domain** (closed by default; when closed it still shows the main rhythm and
-  the steps from the rhythm in one line). Two views, each with a choice of method:
+- **Frequency domain**, in the side panel: the main rhythm and the steps from the rhythm in
+  one line, the methods and their settings, and a switch for the charts (off by default),
+  which appear under the metrics. Two views, each with a choice of method:
   - *Whole recording:* Welch's spectrum (like scipy), Lomb–Scargle on the samples' own
     uneven times, or the autocorrelation (how often the walk repeats: a step, then a
     stride). Walking shows as a peak, which gives a cadence with no step detection at all,

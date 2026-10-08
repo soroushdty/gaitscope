@@ -165,7 +165,7 @@ recording faded behind it. All checks come from `resampleChannel` in `src/core.j
 | "To a rate" with no rate typed | warn + fix, not applied | Fix: type a rate. |
 | Grid over 2,000,000 samples, or under 20 | warn + fix, not applied | Fix: a lower or a higher rate. |
 | Going up in rate | info | Upsampling only draws lines or curves between samples; it adds no information. |
-| Going down without anti-aliasing | info + fix | Anything above half the new rate folds back in as aliasing. Fix: turn on Anti-aliasing under Advanced. |
+| Going down without anti-aliasing | info + fix | Anything above half the new rate folds back in as aliasing. Fix: turn on Anti-aliasing under Resample, in Detection. |
 | Anti-aliasing on a recording with long gaps | warn + fix | The filter runs as if evenly sampled, which blurs its cut-off (as for the other filters). |
 | Repeated timestamps | info | Averaged into one sample first, since interpolation needs one value per time. |
 | Gaps over 5× the median interval | warn + fix | They are bridged with made-up values, so steps found there are not real. Fix: trim or split the recording. |

@@ -78,9 +78,8 @@ details > summary { cursor: pointer; list-style: none; }
 details > summary::-webkit-details-marker { display: none; }
 details > summary::after { content: "▾"; margin-left: 6px; font-size: 11px; color: var(--muted); display: inline-block; transition: transform .15s; }
 details[open] > summary::after { transform: rotate(180deg); }
-.adv > summary { display: flex; align-items: baseline; }
-.adv > summary h2 { margin: 0; }
-.adv h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 0; }
+/* a menu's own settings, shown under it while it is in use */
+.sub-opts { margin: 4px 0 4px 2px; padding: 2px 0 4px 12px; border-left: 2px solid var(--line); }
 .howto { margin-top: 8px; font-size: 13px; color: var(--muted); }
 .howto > summary { color: var(--signal); }
 .howto p { margin: 6px 0 0; }
@@ -167,16 +166,11 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
 .card h2 { font-size: 15px; margin-bottom: 8px; }
 .freq { margin-top: 18px; }
-.freq > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.freq > summary h2 { margin: 0; }
-.freq-sum { font-size: 13px; color: var(--muted); }
-.freq-opts { max-width: 560px; }
+.freq > h2 { margin: 0; }
+.freq-sum { color: var(--ink); }
 .freq-view { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
 .freq-view h3 { font-size: 14px; margin: 0; }
-.card-head .field.method { display: inline-flex; align-items: baseline; gap: 6px; margin: 0; }
-.card-head .field.method select { display: inline-block; width: auto; margin: 0; padding: 4px 8px; font-size: 13px; }
-.method-tag { margin: 0 0 6px; }
-.method-box { max-width: 560px; }
+.method-tag { margin: 4px 0 6px; }
 .method-box .ctl { margin-top: 4px; }
 #specPlot { height: 280px; }
 #spectroPlot { height: 240px; }
