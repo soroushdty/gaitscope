@@ -69,6 +69,13 @@ behaviour when it matters.
 - **Every validation message says what went wrong and how to fix it.** See
   `docs/schema.md`; update that document when checks change.
 
+- **Claims carry their scope.** The README says what GaitScope is and isn't (a teaching
+  tool; not a validated gait instrument; not for clinical use) and lists the evidence
+  behind it, each kind with its limit ("How we know it computes what it says"). Every
+  agreement claim names its scope ("on the test cases", the tolerance). Update that section
+  when a check, a tolerance or the counted walks (#68) change, and the Status section when
+  the version or licence does.
+
 - **Keep the contribution record honest** (`docs/contributions.md`). In issues and PRs,
   say when an idea or recommendation comes from the session, and record the owner's
   decisions as theirs ("Decision (owner): …"). Update that page when roles change.
