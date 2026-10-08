@@ -2,7 +2,7 @@
   "name": "gaitscope",
   "version": "0.1.0",
   "private": true,
-  "description": "GaitScope: step detection and gait metrics from phone accelerometer recordings, in the browser",
+  "description": "GaitScope: an interactive lab, in the browser, for learning how movement-sensor signals are processed",
   "scripts": {
     "test": "node --test tests/*.test.js",
     "fixtures": "uv run --locked python scripts/make_fixtures.py",
