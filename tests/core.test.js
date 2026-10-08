@@ -407,7 +407,7 @@ test('a filter that cannot be built leaves the signal alone and says what to cha
   const r = C.applyFilter(A, t, 50, Object.assign({}, FP, { fLow: 30 }));
   assert.equal(r.applied, false); assert.equal(r.A, A);
   assert.equal(r.checks[0].title, 'Filter not applied');
-  assert.match(r.checks[0].detail, /under 25\.0 Hz/); assert.match(r.checks[0].fix, /Advanced/);
+  assert.match(r.checks[0].detail, /under 25\.0 Hz/); assert.match(r.checks[0].fix, /under Filter, in Detection/);
   assert.equal(C.filterLabel(Object.assign({}, FP, { filter: 'cheby2', fOrder: 2, fHigh: 0.3 })), 'Chebyshev II, 2nd order, 0.3\u20133.0 Hz band-pass, 40 dB stopband');
   assert.equal(C.filterLabel({ filter: 'none' }), 'none');
 });
@@ -947,7 +947,7 @@ test('anti-aliasing removes a tone above the new Nyquist frequency; without it t
   assert.ok(amp(plain, 30) > 0.3, '70 Hz shows up at 100 − 70 = 30 Hz');
   assert.ok(amp(aa, 30) < 0.005, 'and is gone after the low-pass');
   assert.ok(Math.abs(amp(aa, 1.8) - 1) < 0.02, 'the walking rhythm passes (the window holds 14.04 cycles, so a little leaks)');
-  assert.ok(plain.checks.some(k => k.title === 'No anti-aliasing' && /folds back/.test(k.detail) && /Anti-aliasing/.test(k.fix)));
+  assert.ok(plain.checks.some(k => k.title === 'No anti-aliasing' && /folds back/.test(k.detail) && /Anti-aliasing under Resample, in Detection/.test(k.fix)));
   assert.match(aa.checks[0].detail, /Low-passed at 40\.0 Hz first/);
 });
 test('resampling: even timing, upsampling, gaps and settings that cannot be used', () => {

@@ -61,8 +61,8 @@ function makePage(opts = {}) {
   return { w: dom.window, d: dom.window.document, plots, spectra, spectros, blobs };
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// the Frequency domain section starts closed (#101); its views are drawn when it opens
-async function openFreq(pg) { const f = pg.d.getElementById('freqSec'); if (!f.open) { f.open = true; f.dispatchEvent(new pg.w.Event('toggle')); } await sleep(30); }
+// the frequency charts start hidden (#101); its switch in the side panel shows and draws them
+async function openFreq(pg) { const f = pg.d.getElementById('freqShow'); if (!f.checked) { f.checked = true; f.dispatchEvent(new pg.w.Event('change')); } await sleep(30); }
 async function upload(pg, file) {
   const buf = fs.readFileSync(file);
   const f = new pg.w.File([buf], path.basename(file));
@@ -119,7 +119,7 @@ test('loads a MAT file and compares Coza with Coza (modified), side by side', as
   $('valToggle').click();
   assert.equal($('valList').hidden, false, 'and open on click');
   assert.equal($('analysis').hidden, false);
-  assert.equal($('advDetails').open, false, 'advanced options start closed');
+  assert.equal($('freqShow').checked, false, 'the frequency charts start hidden'); assert.equal($('freqViews').hidden, true);
   assert.equal($('chanSel').value, '1', 'defaults to column 2, like the .m file');
   // the page opens with the two Cozas, as indicators
   assert.deepEqual(indNames(pg, 'detList'), ['Coza', 'Coza (modified)']);
@@ -378,6 +378,9 @@ test('a filter feeds the indicators that take the filtered signal, drawn over th
   await sleep(40);
   assert.match(text(pg, 'filterDesc'), /ripple in the passband/);
   assert.equal($('filterOpts').hidden, false);
+  // its settings and their Reset sit right under the menu, in Detection, not folded away
+  assert.equal($('filterOpts').closest('section').id, 'detSec'); assert.equal($('filterOpts').closest('details'), null);
+  assert.equal($('resetParams').closest('#filterOpts'), $('filterOpts')); assert.equal($('resetParams').closest('[hidden]'), null);
   assert.equal($('fRippleIn').closest('.ctl').hidden, false, 'ripple shown');
   assert.equal($('fAttenIn').closest('.ctl').hidden, true, 'attenuation hidden');
   assert.equal(text(pg, 'fOrderOut'), '4th order'); assert.equal(text(pg, 'fHighOut'), 'off');
@@ -441,7 +444,7 @@ test('impossible filter settings are reported, not applied', async () => {
   lp.value = '0.5'; lp.dispatchEvent(new pg.w.Event('input'));
   hp.value = '0.8'; hp.dispatchEvent(new pg.w.Event('input'));
   await sleep(40);
-  assert.match(text(pg, 'valList'), /Filter not applied.*high-pass cut-off must be below the low-pass.*To fix: Change the filter settings under Advanced/);
+  assert.match(text(pg, 'valList'), /Filter not applied.*high-pass cut-off must be below the low-pass.*To fix: Change the filter’s settings under Filter, in Detection/);
   assert.equal(trace(pg, 'filtered'), undefined);
   assert.equal($('legFilter').hidden, true);
 });
@@ -744,12 +747,14 @@ test('a phone export opens on its total; a MAT file on column 2; the synthetic w
   assert.doesNotMatch(seen['plain_noheader.csv'], /magnitude/, 'no sensor named: the first signal, as before');
 });
 
-test('Frequency domain: closed by default with a summary, its own settings, a method per view (#101)', async () => {
+test('Frequency domain: in the side panel with a summary, its own settings, a method per view; charts off by default (#101)', async () => {
   const pg = makePage(), $ = id => pg.d.getElementById(id);
   pg.w.HTMLAnchorElement.prototype.click = function () {};
   $('demoBtn').click(); await sleep(40);
-  assert.equal($('freqSec').open, false);
-  assert.equal(pg.spectra.length + pg.spectros.length, 0, 'nothing drawn while closed');
+  assert.equal($('freqSec').closest('aside') !== null, true, 'in the side panel'); assert.equal($('freqSec').closest('details'), null, 'not folded away');
+  assert.equal($('freqShow').checked, false); assert.equal($('freqViews').hidden, true);
+  assert.equal(pg.spectra.length + pg.spectros.length, 0, 'nothing drawn while hidden');
+  assert.equal($('freqSum').hidden, false);
   assert.match(text(pg, 'freqSum'), /^Main rhythm 0\.9\d Hz \(5\d\/min\) · about 15 steps from the rhythm$/);
   assert.ok(metric(pg, 'Steps').at(-1).startsWith('≈ 15'), 'the numbers stay in the time view');
   assert.deepEqual([...$('wholeSel').options].map(o => o.value), ['welch', 'lombscargle', 'autocorr']);
@@ -758,12 +763,23 @@ test('Frequency domain: closed by default with a summary, its own settings, a me
   assert.equal($('wholeTag').querySelector('a').href, 'https://doi.org/10.1109/TAU.1967.1161901');
   assert.match(text(pg, 'timeTag'), /window that slides along the recording/);
   await openFreq(pg);
-  assert.ok(pg.spectra.length && pg.spectros.length, 'both views drawn when opened');
+  assert.ok(pg.spectra.length && pg.spectros.length, 'both views drawn when shown'); assert.equal($('freqViews').hidden, false);
+  assert.equal(text(pg, 'wholeTitle'), 'Whole recording: Fourier: Welch’s method'); assert.equal(text(pg, 'timeTitle'), 'Over time: Short-time Fourier (STFT)');
+  $('timeSel').value = 'cwt'; $('timeSel').dispatchEvent(new pg.w.Event('change')); await sleep(30);
+  assert.equal(text(pg, 'timeTitle'), 'Over time: Continuous wavelet (CWT, Morlet)', 'the heading follows the side panel');
+  $('timeSel').value = 'stft'; $('timeSel').dispatchEvent(new pg.w.Event('change')); await sleep(30);
+  // switched off: hidden again, and nothing more is drawn
+  const drawn = pg.spectra.length; $('freqShow').checked = false; $('freqShow').dispatchEvent(new pg.w.Event('change')); await sleep(30);
+  assert.equal($('freqViews').hidden, true);
+  $('wholeSel').value = 'lombscargle'; $('wholeSel').dispatchEvent(new pg.w.Event('change')); await sleep(30);
+  assert.equal(pg.spectra.length, drawn, 'not redrawn while hidden');
+  $('wholeSel').value = 'welch'; $('wholeSel').dispatchEvent(new pg.w.Event('change'));
+  await openFreq(pg);
   // its settings live in the section; each Reset touches only its own
   const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new pg.w.Event('input', { bubbles: true })); };
   set('specSegIn', '12'); set('fLowIn', '7'); await sleep(60);
   $('resetParams').click(); await sleep(60);
-  assert.equal($('specSegIn').value, '12', 'Advanced\u2019s reset leaves the frequency settings'); assert.equal($('fLowIn').value, '3');
+  assert.equal($('specSegIn').value, '12', 'the filter\u2019s reset leaves the frequency settings'); assert.equal($('fLowIn').value, '3');
   $('resetFreq').click(); await sleep(60);
   assert.equal($('specSegIn').value, '8');
   // the views travel with a JSON export
@@ -773,7 +789,7 @@ test('Frequency domain: closed by default with a summary, its own settings, a me
   // Home: back to the opening state, section closed
   $('homeBtn').click(); await sleep(20);
   if (!$('homeDialog').hidden) $('homeDiscard').click();
-  assert.equal($('freqSec').open, false);
+  assert.equal($('freqShow').checked, false); assert.equal($('freqViews').hidden, true);
 });
 
 test('Whole recording: Lomb\u2013Scargle on the samples\u2019 own times, and the autocorrelation\u2019s delays (#101)', async () => {
@@ -869,7 +885,7 @@ test('the spectrogram (#98): a picture on Plotly\u2019s axes, with the main rhyt
   assert.ok(line.y.filter(v => v !== null).every(v => v > 0.8 && v < 1.0), 'the synthetic walk\u2019s rhythm, about 0.9 Hz');
   assert.equal($('spectroPlot').hidden, false);
   assert.match(text(pg, 'spectroNote'), /^How strongly each rhythm shows along the recording, in 4 s windows every 0\.5 s .*blank at 20 dB below the strongest walking rhythm/);
-  // a longer window under Advanced: fewer, wider windows
+  // a longer window under Frequency domain: fewer, wider windows
   const win = $('specWinIn'); win.value = '8'; win.dispatchEvent(new pg.w.Event('input', { bubbles: true })); await sleep(60);
   assert.match(text(pg, 'spectroNote'), /in 8 s windows/);
   // shorter than one window: no picture, and says why (a new file starts from the default 4 s)
@@ -877,7 +893,7 @@ test('the spectrogram (#98): a picture on Plotly\u2019s axes, with the main rhyt
   fs.writeFileSync(tmp, 'time,ax\n' + Array.from({ length: 300 }, (_, i) => (i / 100) + ',' + Math.sin(i / 10).toFixed(3)).join('\n'));
   await upload(pg, tmp); fs.unlinkSync(tmp);
   assert.equal($('spectroPlot').hidden, true);
-  assert.match(text(pg, 'spectroNote'), /^The recording is shorter than one 4 s window \(Rhythm-over-time window, above\), so there is no picture\.$/);
+  assert.match(text(pg, 'spectroNote'), /^The recording is shorter than one 4 s window \(Rhythm-over-time window, in the side panel\), so there is no picture\.$/);
 });
 
 /* ------------------------------------------------------------ demo walks */

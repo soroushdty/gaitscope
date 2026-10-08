@@ -177,7 +177,7 @@ against scipy, edges included, on a signal with spikes (`other` in
 | Wavelet (Daubechies-4) | Decomposes into 1–6 levels (default 4) of frequency bands, soft-thresholds every detail level at the universal threshold σ·√(2 ln n) × a scale (default 1; σ = median of the finest level's \|d\| ÷ 0.6745), and rebuilds; as PyWavelets `wavedec`/`waverec` with `mode='symmetric'` | Symmetric extension | A frequency-domain method (#36): noise spreads thinly over the detail coefficients and is removed, while heel strikes are a few large coefficients and stay. On a test walk with 20 ms heel strikes in white noise it beats a Butterworth low-pass at 10, 20 or 40 Hz on both error and spike height (scale 0.5). Not linear, so no gain is drawn on the spectrum. |
 | Notch | Removes a band frequency ÷ Q wide around one frequency (default 50 Hz, Q 30), as scipy `iirnotch`, run forwards and backwards | Same odd padding as the other IIR filters | For mains hum or a known vibration. A narrow notch (high Q) rings for a few hundred milliseconds at each end of the recording. Only reachable at high sampling rates: the frequency stays below half the sampling rate (28.5 Hz on the Linear Accelerometer export). |
 
-Settings, under Advanced: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
+Settings, under the Filter menu in Detection: order 2–6 (default 4), low-pass cut-off (default 3 Hz,
 kept below half the sampling rate), and an optional high-pass cut-off (default off).
 Two presets set order 4 and a band-pass common in gait papers, walking 0.5–3 Hz and
 running 1–5 Hz, and keep the selected filter type. A
@@ -295,17 +295,17 @@ crossing can come up to about 0.07 s early.
 
 ## Spectrum and spectral cadence (`welch`, `spectrum`, #36)
 
-The **Frequency domain** section (#101), under the metrics and closed by default, shows the
-signal as frequencies instead of values over time. Closed, it still shows one line: the
-main rhythm and the steps counted from it. Open, it has two views, each with a choice of
-method from `TRANSFORMS` in `core.js` (each with a kind, its settings and its credits):
+The **Frequency domain** section (#101), in the side panel, shows the signal as frequencies
+instead of values over time. It always shows one line, the main rhythm and the steps counted
+from it, and holds the methods and their settings. Its switch, *Show the frequency charts*
+(off by default), draws two views under the metrics, each with a choice of method from `TRANSFORMS` in `core.js` (each with a kind, its settings and its credits):
 *Whole recording* (power by frequency; Welch below) and *Over time* (a time × frequency
 picture; the STFT below). The views never change steps or metrics: the spectral cadence,
 the steps from the rhythm and the checks always come from Welch and the STFT, whichever
 method is shown. Walking repeats, so its rhythm shows as a tall peak.
 
 * **Method:** Welch's method, as `scipy.signal.welch` (within 1e-12):
-  - the signal is cut into half-overlapping segments (default 8 s, under Advanced)
+  - the signal is cut into half-overlapping segments (default 8 s, Segment length under Frequency domain)
   - each segment has its mean removed and gets a Hann window
   - the power of the segments is averaged
   - uneven recordings go onto an even grid first (`evenGrid`, shared with the filters)

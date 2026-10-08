@@ -71,33 +71,18 @@
         <p class="hint">Preset: <button class="link" type="button" data-rs-rate="100">100 Hz, what Coza assumes</button></p>
       </div>
       <p class="hint" id="rsDesc"></p>
-      <label class="field">Filter<select id="filterSel"></select></label>
-      <p class="hint" id="filterDesc"></p>
-      <p class="hint credit" id="filterCredit" hidden></p>
-      <h3>Step detectors</h3>
-      <p class="hint" id="detNone" hidden>None on the plot: add one below.</p>
-      <ul class="ind-list" id="detList"></ul>
-      <label class="field add"><span class="sr">Add a step detector</span><select id="detAdd"></select></label>
-      <h3>Envelopes and bands</h3>
-      <ul class="ind-list" id="envList" hidden></ul>
-      <label class="field add"><span class="sr">Add an envelope or band</span><select id="envAdd"></select></label>
-      <p class="hint">Like a chart’s indicators: add any number, in any mix. Click a name for its settings; ◉ hides it, × removes it. Envelopes are a view and never change the steps.</p>
-    </section>
-
-    <section id="advSec">
-      <details class="adv" id="advDetails">
-        <summary><h2>Advanced</h2></summary>
-      <div id="rsOpts" hidden>
-      <h3>Resampling</h3>
-      <label class="field">Method<select id="rsMethod">
+      <div class="sub-opts" id="rsOpts" hidden>
+      <label class="field">Resampling method<select id="rsMethod">
         <option value="linear">Linear (like MATLAB interp1)</option>
         <option value="pchip">Monotone cubic (pchip)</option>
       </select></label>
       <label class="check"><input type="checkbox" id="rsAA"><span>Anti-aliasing</span>
         <small>When going down in rate, low-pass below half the new rate first, so faster motion can’t fold back in as slower motion. Off by default: walking has almost nothing that fast, and the filter rounds off sharp peaks.</small></label>
       </div>
-      <div class="filter-opts" id="filterOpts" hidden>
-      <h3>Filter</h3>
+      <label class="field">Filter<select id="filterSel"></select></label>
+      <p class="hint" id="filterDesc"></p>
+      <p class="hint credit" id="filterCredit" hidden></p>
+      <div class="sub-opts filter-opts" id="filterOpts" hidden>
       <p class="hint presets" data-only="butter bessel cheby1 cheby2 ellip">Presets (order 4, band-pass):
         <button class="link" type="button" data-preset="0.5 3">Walking 0.5–3 Hz</button>
         <button class="link" type="button" data-preset="1 5">Running 1–5 Hz</button></p>
@@ -157,9 +142,42 @@
         <div class="ctl-head"><label for="fAttenIn">Stopband attenuation</label><output id="fAttenOut" for="fAttenIn" data-unit="dB" data-dec="0">40 dB</output></div>
         <input type="range" id="fAttenIn" data-param="fAtten" min="20" max="80" value="40" step="5">
       </div>
+      <p class="hint"><button class="link" id="resetParams" type="button">Reset the filter settings</button></p>
       </div>
-      <p class="hint"><button class="link" id="resetParams" type="button" title="The filter options above">Reset these options</button></p>
-      </details>
+      <h3>Step detectors</h3>
+      <p class="hint" id="detNone" hidden>None on the plot: add one below.</p>
+      <ul class="ind-list" id="detList"></ul>
+      <label class="field add"><span class="sr">Add a step detector</span><select id="detAdd"></select></label>
+      <h3>Envelopes and bands</h3>
+      <ul class="ind-list" id="envList" hidden></ul>
+      <label class="field add"><span class="sr">Add an envelope or band</span><select id="envAdd"></select></label>
+      <p class="hint">Like a chart’s indicators: add any number, in any mix. Click a name for its settings; ◉ hides it, × removes it. Envelopes are a view and never change the steps.</p>
+    </section>
+
+    <section id="freqSec">
+      <h2>Frequency domain</h2>
+      <p class="hint freq-sum" id="freqSum" hidden></p>
+      <label class="check"><input type="checkbox" id="freqShow"><span>Show the frequency charts</span>
+        <small>Under the metrics: the signal’s rhythms over the whole recording and over time. They never change the steps or metrics.</small></label>
+      <label class="field">Whole recording<select id="wholeSel"></select></label>
+      <p class="hint method-tag" id="wholeTag"></p>
+      <div class="method-box" id="wholeParams"></div>
+      <label class="field">Over time<select id="timeSel"></select></label>
+      <p class="hint method-tag" id="timeTag"></p>
+      <div class="method-box" id="timeParams"></div>
+      <h3>Windows</h3>
+      <div class="ctl">
+        <div class="ctl-head"><label for="specSegIn">Segment length</label><output id="specSegOut" for="specSegIn" data-unit="s" data-dec="0">8 s</output></div>
+        <input type="range" id="specSegIn" data-param="specSeg" min="2" max="20" value="8" step="1">
+      </div>
+      <p class="hint">For the whole-recording spectrum and the spectral cadence. Longer segments separate close frequencies better (resolution about 1 ÷ length); shorter ones average more segments and look smoother.</p>
+      <div class="ctl">
+        <div class="ctl-head"><label for="specWinIn">Rhythm-over-time window</label><output id="specWinOut" for="specWinIn" data-unit="s" data-dec="0">4 s</output></div>
+        <input type="range" id="specWinIn" data-param="specWin" min="2" max="10" value="4" step="1">
+      </div>
+      <p class="hint">For Over time and for the metrics’ “From the rhythm” column, in windows of this length every 0.5 s. With Step intervals on, the strip under the signal shows how long the main rhythm takes.</p>
+      <p class="hint">The metrics’ “From the rhythm” column and the checks use Welch’s spectrum and the STFT, whichever methods are shown.</p>
+      <p class="hint"><button class="link" id="resetFreq" type="button">Reset the frequency settings</button></p>
     </section>
   </aside>
 
@@ -211,7 +229,7 @@
             </div>
           </div>
           <div class="plot-tools">
-            <label class="toggle iv" title="Show the time between consecutive steps under the signal; with Frequency domain open, also the period of the main rhythm over time"><input type="checkbox" id="showIntervals"><span>Step intervals</span></label>
+            <label class="toggle iv" title="Show the time between consecutive steps under the signal; with the frequency charts shown, also the period of the main rhythm over time"><input type="checkbox" id="showIntervals"><span>Step intervals</span></label>
             <label class="toggle" title="Click the plot to pin a note"><input type="checkbox" id="noteMode"><span>Add notes</span></label>
             <span class="note-opts" id="noteOpts" hidden>
               <label><span class="sr">Note at</span><select id="noteKind"><option value="time">At a time</option><option value="level">At a level</option><option value="point">At a point</option></select></label>
@@ -268,30 +286,14 @@
             <div class="tablewrap"><table id="stepsTable"></table></div>
           </details>
         </div>
-        <details class="card freq" id="freqSec">
-          <summary><h2>Frequency domain</h2><span class="freq-sum" id="freqSum"></span></summary>
-          <p class="hint">The signal’s rhythms as frequencies: one picture for the whole recording and one over time, each with a choice of method. These views never change the steps or metrics; the metrics’ “From the rhythm” column and the checks come from Welch’s spectrum and the STFT, whichever method is shown.</p>
-          <div class="freq-opts" id="freqOpts">
-          <div class="ctl">
-            <div class="ctl-head"><label for="specSegIn">Segment length</label><output id="specSegOut" for="specSegIn" data-unit="s" data-dec="0">8 s</output></div>
-            <input type="range" id="specSegIn" data-param="specSeg" min="2" max="20" value="8" step="1">
-          </div>
-          <p class="hint">For the whole-recording spectrum and the spectral cadence. Longer segments separate close frequencies better (resolution about 1 ÷ length); shorter ones average more segments and look smoother.</p>
-          <div class="ctl">
-            <div class="ctl-head"><label for="specWinIn">Rhythm-over-time window</label><output id="specWinOut" for="specWinIn" data-unit="s" data-dec="0">4 s</output></div>
-            <input type="range" id="specWinIn" data-param="specWin" min="2" max="10" value="4" step="1">
-          </div>
-          <p class="hint">For Over time and for the metrics’ “From the rhythm” column, in windows of this length every 0.5 s. With Step intervals on, the strip under the signal shows how long the main rhythm takes.</p>
-          <p class="hint"><button class="link" id="resetFreq" type="button">Reset these settings</button></p>
-          </div>
+        <section class="card freq" id="freqViews" hidden>
+          <h2>Frequency domain</h2>
+          <p class="hint">The methods and their settings are in the side panel, under Frequency domain.</p>
           <section class="freq-view spectrum-card" id="specCard">
           <div class="card-head">
-            <h3>Whole recording</h3>
-            <label class="field method">Method <select id="wholeSel"></select></label>
+            <h3 id="wholeTitle">Whole recording</h3>
             <label class="toggle" title="Show power on a logarithmic scale, to see the noise and what a filter removes"><input type="checkbox" id="specLog"><span>Log scale</span></label>
           </div>
-          <p class="hint method-tag" id="wholeTag"></p>
-          <div class="method-box" id="wholeParams"></div>
           <div class="plot-tools">
             <label class="toggle" title="Click the spectrum to pin a note"><input type="checkbox" id="specNoteMode"><span>Add notes</span></label>
             <span class="note-opts" id="specNoteOpts" hidden>
@@ -312,15 +314,12 @@
         </section>
           <section class="freq-view spectro-card" id="spectroCard">
           <div class="card-head">
-            <h3>Over time</h3>
-            <label class="field method">Method <select id="timeSel"></select></label>
+            <h3 id="timeTitle">Over time</h3>
           </div>
-          <p class="hint method-tag" id="timeTag"></p>
-          <div class="method-box" id="timeParams"></div>
           <div id="spectroPlot" role="img" aria-label="Spectrogram: how strongly each rhythm shows along the recording"></div>
           <p class="note" id="spectroNote"></p>
         </section>
-        </details>
+        </section>
       </div>
       <p class="privacy">Files are read in your browser and are not uploaded anywhere.</p>
     </div>

@@ -431,11 +431,10 @@
     for (const el of optionInputs()) updateOptionOut(el);
     renderIndicators(); // h's slider spans the signal; windows show their length in samples
   }
-  // The page-wide options under Advanced (filter) and in Frequency domain (spectrum) carry data-param (their key in
-  // params()). An <output for=…> with data-unit shows the value with data-dec decimals.
-  // data-zero: text shown for 0 (e.g. "off"); data-unit="order": "4th order"; "ordinal": "10th".
-  // the page-wide options: Advanced (filter) and the Frequency domain section's settings (#101)
-  const optionInputs = scope => document.querySelectorAll(scope === 'adv' ? '#advSec input[data-param]' : scope === 'freq' ? '#freqSec input[data-param]' : '#advSec input[data-param], #freqSec input[data-param]');
+  // The page-wide options, the filter's settings (under Filter, in Detection) and the Frequency domain section's
+  // (#101), carry data-param (their key in params()). An <output for=…> with data-unit shows the value with data-dec
+  // decimals. data-zero: text shown for 0 (e.g. "off"); data-unit="order": "4th order"; "ordinal": "10th".
+  const optionInputs = scope => document.querySelectorAll(scope === 'filter' ? '#filterOpts input[data-param]' : scope === 'freq' ? '#freqSec input[data-param]' : '#filterOpts input[data-param], #freqSec input[data-param]');
   const ordinal = n => n + ([, 'st', 'nd', 'rd'][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10] || 'th');
   function updateOptionOut(el) {
     const out = document.querySelector('output[for="' + el.id + '"][data-unit]');
@@ -850,8 +849,8 @@
           marker: { symbol: symbolOf(d.ind), size: 6, color: colorOf(d.ind) }, hovertemplate: esc(d.label) + ': %{y:.3f} s between steps<extra></extra>' });
       }
       // the period of the spectrum's main rhythm over time (gaps where no clear peak), with the
-      // Frequency domain section open (#101: closed, the time view keeps only the numbers)
-      if ($('freqSec').open) add({ role: 'rhythm' }, { x: Array.from(S.res.rhythm.t), y: Array.from(S.res.rhythm.freq, f => Number.isFinite(f) ? 1 / f : null), mode: 'lines', name: 'Spectrum rhythm',
+      // frequency charts shown (#101: hidden, the time view keeps only the numbers)
+      if (freqShown()) add({ role: 'rhythm' }, { x: Array.from(S.res.rhythm.t), y: Array.from(S.res.rhythm.freq, f => Number.isFinite(f) ? 1 / f : null), mode: 'lines', name: 'Spectrum rhythm',
         xaxis: 'x', yaxis: 'y2', connectgaps: false, line: { color: colors.signal, width: 1.6 },
         hovertemplate: 'Spectrum: main rhythm every %{y:.3f} s (%{customdata:.0f}/min)<extra></extra>', customdata: Array.from(S.res.rhythm.freq, f => f * 60) });
     }
@@ -886,9 +885,11 @@
 
   // Spectrum panel: power of the signal the algorithm sees (and of the recording, faded, when a
   // filter changed it), the filter's gain on a second axis, and the dominant walking frequency.
-  /* The Frequency domain section (#101): closed by default, with a one-line summary; open, its
-     two views (whole recording, over time) are drawn with the chosen methods. The views never
-     change steps or metrics. */
+  /* The Frequency domain section (#101), in the side panel: a one-line summary, the methods and
+     their settings, and a switch for its two charts (whole recording, over time), off by default.
+     The charts sit under the metrics, drawn only while shown; they never change steps or metrics. */
+  const freqShown = () => $('freqShow').checked;
+  function showFreqViews() { $('freqViews').hidden = !freqShown(); }
   const methodOf = sel => C.TRANSFORMS.find(d => d.id === $(sel).value) || C.TRANSFORMS.find(d => d.kind === (sel === 'wholeSel' ? 'whole' : 'time'));
   // each method's settings, as range controls with data-param (so params() reads them and the
   // Frequency domain Reset resets them); called before the option listeners are attached
@@ -905,8 +906,9 @@
     showMethodTags();
   }
   function showMethodTags() {
-    for (const [sel, tag, box] of [['wholeSel', 'wholeTag', 'wholeParams'], ['timeSel', 'timeTag', 'timeParams']]) {
+    for (const [sel, tag, box, title, name] of [['wholeSel', 'wholeTag', 'wholeParams', 'wholeTitle', 'Whole recording'], ['timeSel', 'timeTag', 'timeParams', 'timeTitle', 'Over time']]) {
       const d = methodOf(sel);
+      $(title).textContent = name + ': ' + d.name; // the chart's heading names the method chosen in the side panel
       $(tag).innerHTML = esc(d.tagline) + (d.credit.length ? ' <span class="credit">' + creditHtml(d.credit) + '</span>' : '');
       for (const el of $(box).querySelectorAll('.method-params')) el.hidden = el.dataset.method !== d.id;
     }
@@ -915,7 +917,8 @@
     const pk = S.res.spec.peak, sp = S.res.specSteps;
     $('freqSum').textContent = (pk.clear ? 'Main rhythm ' + fmt(pk.freq, 2) + ' Hz (' + fmt(pk.freq * 60, 0) + '/min)' : 'No clear walking rhythm') +
       (sp ? ' \u00b7 about ' + Math.round(sp.steps) + ' steps from the rhythm' : '');
-    if (!$('freqSec').open) return; // drawn when opened
+    $('freqSum').hidden = false;
+    if (!freqShown()) return; // drawn when shown
     renderSpectrum();
     renderSpectrogram();
   }
@@ -1011,7 +1014,7 @@
     if (!S.cache.views.has(key)) S.cache.views.set(key, def.compute(S.res.filt.A, t, S.res.g, { rhythm: S.res.rhythm }));
     const res = S.cache.views.get(key), im = res && C.gridImage(res.grid, hexRgb(colors.signal), res.image);
     el.hidden = !im;
-    if (!im) { $('spectroNote').textContent = def.id === 'stft' ? 'The recording is shorter than one ' + fmt(S.res.rhythm.window, 0) + ' s window (Rhythm-over-time window, above), so there is no picture.' : 'The recording is too short for this method (it needs a few seconds).'; return; }
+    if (!im) { $('spectroNote').textContent = def.id === 'stft' ? 'The recording is shorter than one ' + fmt(S.res.rhythm.window, 0) + ' s window (Rhythm-over-time window, in the side panel), so there is no picture.' : 'The recording is too short for this method (it needs a few seconds).'; return; }
     const ln = res.line, fMax = im.fMax;
     const traces = ln ? [{ x: Array.from(ln.t), y: Array.from(ln.f, f => (Number.isFinite(f) ? f : null)), type: 'scatter', mode: 'lines', name: 'Main rhythm', connectgaps: false,
       line: { color: colors.algo, width: 1.6 }, meta: { role: 'rhythmLine' }, customdata: Array.from(ln.f, f => f * 60),
@@ -1041,7 +1044,7 @@
     $('spectroNote').textContent = def.id === 'hht' ? 'Each mode\u2019s power at its moment-by-moment frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: blank at 30 dB below the strongest walking rhythm, full colour at it (a gentler scale than the others, since each mode is a thin track). The EMD found ' + res.modes + ' mode' + (res.modes === 1 ? '' : 's') + ' in the walking band (the slow rest left out). The line is the strongest walking rhythm at each moment. Each mode follows its own rhythm as it changes, so a speed-up shows as a band that bends; speckle is a mode switching between rhythms.' + stride
       : def.id === 'cwt' ? 'Wavelet power at each frequency along the recording, divided by the scale so equally strong swings look alike at any frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The line is the strongest walking rhythm at each moment. Outside the dashed lines the wavelet runs past the ends of the recording, so the picture there is weaker than it should be.' + stride
       : def.id === 'dwt' ? 'Each band\u2019s power along the recording, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The bands halve in frequency going down (dotted lines). Where they fall depends on the sampling rate: here ' + fmt(res.bands[0].hi * 2, 0) + ' Hz, after the signal is reduced to its walking band. When the step and the stride land in neighbouring bands, they show as separate blocks.'
-      : 'How strongly each rhythm shows along the recording, in ' + fmt(res.window, 0) + ' s windows every ' + fmt(res.hop, 1) + ' s (Rhythm-over-time window, above): ' + scale + ' The line is the main walking rhythm, as in the Step intervals strip.' + stride;
+      : 'How strongly each rhythm shows along the recording, in ' + fmt(res.window, 0) + ' s windows every ' + fmt(res.hop, 1) + ' s (Rhythm-over-time window, in the side panel): ' + scale + ' The line is the main walking rhythm, as in the Step intervals strip.' + stride;
   }
 
   /* ------------------------------------------------------------- notes */
@@ -1125,7 +1128,7 @@
     const n = S.notes.splice(i, 1)[0];
     renderNotes(); if (n) redrawNotes(n.plot);
   }
-  function redrawNotes(plot) { if (!S.ch || !S.res) return; if (plot !== 'spectrum') renderPlot(); else if ($('freqSec').open) renderSpectrum(); }
+  function redrawNotes(plot) { if (!S.ch || !S.res) return; if (plot !== 'spectrum') renderPlot(); else if (freqShown()) renderSpectrum(); }
   function renderNotes() {
     for (const plot of Object.keys(NOTE_UI)) {
       const u = NOTE_UI[plot], list = S.notes.map((n, i) => [n, i]).filter(([n]) => n.plot === plot);
@@ -1353,7 +1356,7 @@
     $('rsSel').value = 'off'; $('rsRate').value = ''; $('rsMethod').value = 'linear'; $('rsAA').checked = false; showRs();
     resetParams(false);
     for (const id of ['showIntervals', 'noteMode', 'specNoteMode', 'specLog']) $(id).checked = false;
-    $('freqSec').open = false; $('wholeSel').selectedIndex = 0; $('timeSel').selectedIndex = 0; showMethodTags();
+    $('freqShow').checked = false; showFreqViews(); $('freqSum').hidden = true; $('wholeSel').selectedIndex = 0; $('timeSel').selectedIndex = 0; showMethodTags();
     for (const id of ['noteSnap', 'specNoteSnap']) $(id).checked = true;
     for (const id of ['noteKind', 'specNoteKind']) $(id).value = 'time';
     renderNotes(); updateNoteUi();
@@ -1444,11 +1447,16 @@
   }
   // a spectrum note's rate follows Phone position
   $('posSel').addEventListener('change', renderNotes);
-  $('resetParams').addEventListener('click', () => resetParams(true, 'adv'));
+  $('resetParams').addEventListener('click', () => resetParams(true, 'filter'));
   // the Frequency domain section (#101): views only, so a method change redraws just its view
-  $('freqSec').addEventListener('toggle', () => { if (!S.ch || !S.res) return; renderFreq(); if ($('showIntervals').checked) renderPlot(); });
-  $('wholeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && $('freqSec').open) renderSpectrum(); });
-  $('timeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && $('freqSec').open) renderSpectrogram(); });
+  $('freqShow').addEventListener('change', () => {
+    showFreqViews();
+    if (!S.ch || !S.res) return;
+    renderFreq(); if ($('showIntervals').checked) renderPlot();
+    if (freqShown() && $('freqViews').scrollIntoView) $('freqViews').scrollIntoView({ behavior: 'smooth', block: 'start' }); // they sit under the metrics
+  });
+  $('wholeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && freqShown()) renderSpectrum(); });
+  $('timeSel').addEventListener('change', () => { showMethodTags(); if (S.ch && S.res && freqShown()) renderSpectrogram(); });
   $('resetFreq').addEventListener('click', () => { $('wholeSel').selectedIndex = 0; $('timeSel').selectedIndex = 0; showMethodTags(); resetParams(true, 'freq'); });
   $('expSteps').addEventListener('click', exportSteps);
   $('expFmt').addEventListener('change', showExport);

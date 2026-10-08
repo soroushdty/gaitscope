@@ -1693,7 +1693,7 @@
      indicators set to Filtered run on; one set to Unfiltered keeps the recorded signal.
      Each entry: tagline (one line under the dropdown), credit (see CREDIT), apply(A, fs, p) -> filtered copy of
      evenly spaced samples (throws a RangeError saying what to change when the settings
-     can't be used), label(p) for the export. Its settings are the rows under Advanced whose
+     can't be used), label(p) for the export. Its settings are the rows under Filter (in Detection) whose
      data-only lists its id. p: {filter, fOrder, fLow (Hz), fHigh (Hz, 0 = off), fRipple (dB),
      fAtten (dB)} */
   const ORDINAL = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
@@ -1791,7 +1791,7 @@
       return filterEvenly(A, t, fs, x => f.apply(x, fs, p));
     } catch (e) {
       if (!(e instanceof RangeError)) throw e;
-      return Object.assign(none, { checks: [{ level: 'warn', title: 'Filter not applied', detail: e.message + ' Detection runs on the recorded signal.', fix: 'Change the filter settings under Advanced.' }] });
+      return Object.assign(none, { checks: [{ level: 'warn', title: 'Filter not applied', detail: e.message + ' Detection runs on the recorded signal.', fix: 'Change the filter\u2019s settings under Filter, in Detection.' }] });
     }
   }
   /* ------------------------------------------------------- frequency domain (#36) */
@@ -2504,7 +2504,7 @@
     {
       id: 'welch', kind: 'whole', name: 'Fourier: Welch\u2019s method', params: [],
       credit: [{ text: 'Welch, 1967', doi: '10.1109/TAU.1967.1161901' }].concat(FFT_CREDIT),
-      tagline: 'The average power at each frequency over the whole recording, from half-overlapping segments (Segment length, above). A steady walk shows as a tall peak at its rhythm.',
+      tagline: 'The average power at each frequency over the whole recording, from half-overlapping segments (Segment length, below). A steady walk shows as a tall peak at its rhythm.',
       compute: (A, t, p, ctx) => (ctx && ctx.spec) || spectrum(A, t, p),
     },
     {
@@ -2523,7 +2523,7 @@
     },
     {
       id: 'stft', kind: 'time', name: 'Short-time Fourier (STFT)', params: [], credit: FFT_CREDIT,
-      tagline: 'The Fourier spectrum in a window that slides along the recording (Rhythm-over-time window, above). One window length for every frequency, so it is either sharp in time or sharp in frequency, not both.',
+      tagline: 'The Fourier spectrum in a window that slides along the recording (Rhythm-over-time window, below). One window length for every frequency, so it is either sharp in time or sharp in frequency, not both.',
       compute: (A, t, p, ctx) => {
         const r = (ctx && ctx.rhythm) || rhythmOverTime(A, t, p), grid = stftGrid(r);
         return grid && { grid, line: { t: r.t, f: r.freq }, window: r.window, hop: r.hop };
@@ -2657,7 +2657,7 @@
       (aa ? ' Low-passed at ' + fmt(aa.fc, 1) + ' Hz first (Chebyshev I, order ' + ANTIALIAS.order + ', like scipy decimate) so faster motion can’t fold back in.' : '') +
       ' The filter, every step detector and envelope, and the spectrum use the resampled signal; the plot shows the recording faded behind it.' }];
     if (fs > from * 1.01) checks.push({ level: 'info', title: 'Upsampling adds no information', detail: 'Going from about ' + fmt(from, 0) + ' Hz up to ' + fmt(fs, 0) + ' Hz only draws ' + (method === 'pchip' ? 'curves' : 'lines') + ' between the recorded samples. It can’t recover motion faster than the recording caught.' });
-    if (down && fs < from * 0.99 && !aa) checks.push({ level: 'info', title: 'No anti-aliasing', detail: 'Going down to ' + fmt(fs, 0) + ' Hz, anything faster than ' + fmt(fs / 2, 1) + ' Hz in the recording folds back in as slower motion (aliasing). Walking has little above 20 Hz, but impacts can.', fix: 'Turn on Anti-aliasing under Advanced to low-pass first.' });
+    if (down && fs < from * 0.99 && !aa) checks.push({ level: 'info', title: 'No anti-aliasing', detail: 'Going down to ' + fmt(fs, 0) + ' Hz, anything faster than ' + fmt(fs / 2, 1) + ' Hz in the recording folds back in as slower motion (aliasing). Walking has little above 20 Hz, but impacts can.', fix: 'Turn on Anti-aliasing under Resample, in Detection, to low-pass first.' });
     if (aa && aa.gaps) checks.push({ level: 'warn', title: 'Anti-aliasing filter run as if evenly sampled', detail: 'The recording has long gaps, so an even grid would be over 4 times its length; the filter’s cut-off is blurred.', fix: 'Trim the gaps or split the recording.' });
     if (u.merged) checks.push({ level: 'info', title: u.merged + ' repeated timestamp' + (u.merged > 1 ? 's' : '') + ' averaged', detail: 'Samples that share a timestamp were averaged into one before resampling, since interpolation needs one value per time.' });
     let gaps = 0, maxGap = 0;
