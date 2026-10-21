@@ -441,10 +441,20 @@ method is shown. Walking repeats, so its rhythm shows as a tall peak.
 
 * **Spectrogram** (`spectrogramImage`, #98): the same short-time spectra as a picture, in
   its own card under the spectrum. Time runs across, lined up with the signal plot;
-  frequency goes up to 5 Hz in rows of 0.05 Hz; the colour's strength is the power, from
-  20 dB below the strongest power in the walking band (blank) up to it, squared so faint
-  power fades quickly. A 30 dB straight scale washed out the owner's pocket walk, whose heel
-  strikes spread power across the band. The main rhythm is drawn on top as a line.
+  frequency goes up to 5 Hz in rows of 0.05 Hz; the colour is the power in dB, from 20 dB
+  below the strongest power in the walking band (blank) up to it (#114). The fraction of the
+  way up is raised to 1.5 before it picks the colour: the earlier one-hue opacity ramp
+  squared it, and a straight 30 dB scale washed out the owner's pocket walk, whose heel
+  strikes spread power across the band. A colour bar above the plot shows the same ramp
+  over the same dB scale. The main rhythm is drawn on top as a line, in the card's colour
+  with an ink outline, since it crosses every colour of the ramp.
+  - The ramp (`SPECTRO_RAMP`) is multi-hue on purpose, to tell more levels apart than one
+    hue can, but each step is lighter (dark theme) or darker (light theme) than the last,
+    so strong stands out from the page in both themes and the order reads in greyscale. The
+    steps were picked by hand and are checked in `tests/core.test.js` for monotone OKLCH
+    lightness, steps at least 0.06 apart, and the weakest colour at least 2:1 against the
+    card. A colour-vision simulation was not run on it; the lightness order is what carries
+    the meaning, and the colour bar and the hover on the main rhythm give the numbers.
   - Plotly's basic bundle, the only one the page loads, has no heatmap. So the picture is
     an RGBA image the page writes itself as a PNG (`pngBytes`: uncompressed zlib blocks,
     no deflate library needed), placed on Plotly's axes as a layout image and shown as crisp
