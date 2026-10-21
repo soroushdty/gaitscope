@@ -1037,7 +1037,8 @@
       }
     }
     const bandShapes = (res.bands || []).filter(b => b.lo < fMax).map(b => ({ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: Math.min(b.hi, fMax), y1: Math.min(b.hi, fMax), line: { color: colors.muted, width: 1, dash: 'dot' } }));
-    const bandNotes = (res.bands || []).filter(b => b.lo < fMax && Math.min(b.hi, fMax) - b.lo >= 0.4).map(b => ({ // room for a label xref: 'paper', x: 1, xanchor: 'right', yref: 'y', y: (b.lo + Math.min(b.hi, fMax)) / 2, showarrow: false,
+    const bandNotes = (res.bands || []).filter(b => b.lo < fMax && Math.min(b.hi, fMax) - b.lo >= 0.4).map(b => ({ // only bands with room for a label
+      xref: 'paper', x: 1, xanchor: 'right', yref: 'y', y: (b.lo + Math.min(b.hi, fMax)) / 2, showarrow: false, bgcolor: cssVar('--surface'), borderpad: 2, // opaque: it sits over the colours
       text: 'level ' + b.level + ': ' + fmt(b.lo, 2) + '\u2013' + fmt(b.hi, 2) + ' Hz', font: { color: colors.muted, size: 11 } }));
     const layout = {
       uirevision: S.file.name + '|' + S.chanKey, margin: { l: 58, r: 14, t: 8, b: 44 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',

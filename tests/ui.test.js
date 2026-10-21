@@ -858,6 +858,7 @@ test('Over time: the CWT with its cone of influence and width, the DWT bands, ke
   sg = pg.spectros.at(-1);
   assert.equal($('m_cwtB').closest('.method-params').hidden, true);
   assert.ok(sg.layout.shapes.length >= 4 && sg.layout.annotations.some(a => /^level \d: [\d.]+–[\d.]+ Hz$/.test(a.text)), 'band edges and labels');
+  for (const a of sg.layout.annotations.filter(a => /^level /.test(a.text))) assert.deepEqual([a.xref, a.x, a.showarrow, 'bgcolor' in a], ['paper', 1, false, true], 'a label at the right edge, readable over the colours, not an arrow');
   assert.match(text(pg, 'timeTag'), /Credit: Mallat, 1989 \(multiresolution analysis: one octave band per level\); Daubechies, 1988/);
   assert.deepEqual([...sg.traces].map(tr => tr.meta.role), ['colorbar'], 'no rhythm line on the coarse bands, only the colour scale');
   assert.match(text(pg, 'spectroNote'), /Where they fall depends on the sampling rate: here 2\d Hz, after the signal is reduced to its walking band/);
