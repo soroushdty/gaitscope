@@ -1963,14 +1963,32 @@
     return { t, hop: r.hop * group, df, rows, P };
   }
   /* A grid as an RGBA image, time across and frequency up (the top row is the highest). Each
-     pixel is the given colour with an opacity that grows with the power in decibels, from
-     `range` dB below the strongest power in the walking band (transparent) up to it (opaque),
-     squared so faint power fades quickly; it reads on a light or a dark background. Returns
-     {width, height, rgba, x0, x1 (s, the image's left and right edges), fMax}. */
-  // 20 dB, with the opacity squared, keeps a steady walk's band clear of the rest; 30 dB and a
-  // straight line washed the owner's pocket walk out (its heel strikes spread power widely)
-  const SPECTRO_DB = 20, SPECTRO_GAMMA = 2;
-  function gridImage(grid, color, opts) {
+     pixel's colour comes from a ramp (SPECTRO_RAMP), by the power in decibels: the ramp's first
+     colour `range` dB below the strongest power in the walking band, its last at it. The
+     fraction of the way up, raised to `gamma`, picks the colour; the weakest part also fades
+     out (SPECTRO_FADE), so what is `range` dB down is blank and the plot's grid shows through.
+     Returns {width, height, rgba, x0, x1 (s, the image's left and right edges), fMax}. */
+  // 20 dB keeps a steady walk's band clear of the rest; 30 dB washed the owner's pocket walk out
+  // (its heel strikes spread power widely). The opacity ramp squared the fraction (gamma 2); with a
+  // colour ramp, 1.5 shows more of the fainter levels and still keeps a steady walk's band clear (#114).
+  const SPECTRO_DB = 20, SPECTRO_GAMMA = 1.5, SPECTRO_FADE = 0.12;
+  /* The ramps, weak to strong: one for the light theme (strong is darkest) and one for the dark
+     (strong is lightest), so strong stands out from the page in both. Multi-hue on purpose, to tell
+     more levels apart than one hue can, but each step is lighter (or darker) than the last, so
+     the order reads in greyscale and under colour-vision differences. Hand-picked, and checked
+     for monotone OKLCH lightness, steps at least 0.06 apart, and the weak end at least 2:1
+     against the card (`tests/core.test.js`). */
+  const SPECTRO_RAMP = {
+    light: ['#6BC0AE', '#3A91C2', '#2F6BB0', '#2F4A9C', '#2A2F80', '#1A1F5C'],
+    dark: ['#5A45C0', '#A24AAE', '#DC5A74', '#F27F45', '#F8BF52', '#FFF0B0'],
+  };
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  // the colour a fraction x (0 weakest, 1 strongest) of the way up a ramp, blended between its steps
+  function rampColor(ramp, x) {
+    const pos = Math.max(0, Math.min(1, x)) * (ramp.length - 1), k = Math.min(ramp.length - 2, Math.floor(pos)), u = pos - k, a = hexRgb(ramp[k]), b = hexRgb(ramp[k + 1]);
+    return a.map((v, i) => Math.round(v + (b[i] - v) * u));
+  }
+  function gridImage(grid, ramp, opts) {
     opts = opts || {};
     const range = opts.range || SPECTRO_DB, gamma = opts.gamma || SPECTRO_GAMMA, { P, rows, df } = grid, width = P.length;
     let top = 0;
@@ -1978,15 +1996,24 @@
     const rgba = new Uint8Array(width * rows * 4);
     for (let c = 0; c < width; c++) for (let i = 0; i < rows; i++) {
       const db = top > 0 && P[c][i] > 0 ? 10 * Math.log10(P[c][i] / top) : -Infinity;
-      const a = Math.pow(Math.max(0, Math.min(1, 1 + db / range)), gamma), o = ((rows - 1 - i) * width + c) * 4;
-      rgba[o] = color[0]; rgba[o + 1] = color[1]; rgba[o + 2] = color[2]; rgba[o + 3] = Math.round(255 * a);
+      const x = Math.pow(Math.max(0, Math.min(1, 1 + db / range)), gamma), o = ((rows - 1 - i) * width + c) * 4, rgb = rampColor(ramp, x);
+      rgba[o] = rgb[0]; rgba[o + 1] = rgb[1]; rgba[o + 2] = rgb[2]; rgba[o + 3] = Math.round(255 * Math.min(1, x / SPECTRO_FADE));
     }
     return { width, height: rows, rgba, x0: grid.t[0] - grid.hop / 2, x1: grid.t[0] - grid.hop / 2 + grid.hop * width, fMax: rows * df };
   }
+  /* The same ramp as a colour scale for Plotly's colour bar, which reads in dB: position p
+     along it is p·range dB above the weakest level, so the colour there is the ramp's at p^gamma
+     (the gamma spaces the steps unevenly along the bar). `n` + 1 stops. */
+  function rampScale(ramp, opts, n) {
+    opts = opts || {};
+    const gamma = opts.gamma || SPECTRO_GAMMA, out = [];
+    for (let k = 0; k <= (n || 16); k++) { const p = k / (n || 16), c = rampColor(ramp, Math.pow(p, gamma)); out.push([p, 'rgb(' + c.join(',') + ')']); }
+    return out;
+  }
   // the STFT picture in one call (#98)
-  function spectrogramImage(r, color, opts) {
+  function spectrogramImage(r, ramp, opts) {
     const g = stftGrid(r, opts);
-    return g && gridImage(g, color, opts);
+    return g && gridImage(g, ramp, opts);
   }
 
   /* An RGBA image as PNG bytes, uncompressed (zlib stored blocks), so no deflate library is
@@ -3123,7 +3150,7 @@
   const api = { InputError, MAX_BYTES, defaultParams, paramSummary, VERSION, EXPORT_FORMAT_VERSION, stepTable, indicatorIds, metricRows, buildExport, exportJson, parseExportJson, exportCsvZip, exportNpz, exportMat, zipStore, crc32, tableCsv, recordingCsv, recordingChecks, STANDARD_GRAVITY, PHONE_POSITIONS, resampleChannel, interpLinear, cozaRateCheck, ANTIALIAS, parseMat, isMat73, parseMat73, matCandidates, matToColumns, parseCsv, isZip, parseZip, readPhyphoxZip, buildDataset,
     prepareChannel, detectOriginal, originalMetrics, detectCoza, timingMetrics, ALGORITHMS, WEAK_RATIO, RHYTHM_RATIO, windowExtreme, windowSamples,
     lowpass, designFilter, sosfiltfilt, dynamicThreshold, detectThresholdPeaks, detectPeakToValley, detectZeroCrossing,
-    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, walkingGrid, cwtMorlet, cwtGrid, mra, dwtGrid, lombScargle, lombScargleSpectrum, acf, autocorrelation, emd, cubicNotAKnot, hhtGrid, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
+    FILTERS, filterLabel, applyFilter, interpAt, evenGrid, fft, ifft, spectrogram, welch, rhythmOverTime, walkingGrid, cwtMorlet, cwtGrid, mra, dwtGrid, lombScargle, lombScargleSpectrum, acf, autocorrelation, emd, cubicNotAKnot, hhtGrid, spectralSteps, spectrogramImage, stftGrid, gridImage, SPECTRO_DB, SPECTRO_RAMP, rampColor, rampScale, TRANSFORMS, pngBytes, base64, spectrum, dominantFrequency, GAIT_BAND, filterGain, hilbert, harmonicRatio, oddWindow, movingAverage, movingMedian, savgol, notchSos, dwt, idwt, waveletDenoise, DB4, gravitySplit, datasetRate, ENVELOPES, localExtrema, halfWindow, movingMeanSd, movingPercentiles, pchip,
     median, mean, std, fmt, demoWalk, looksLikeText, creditText, noteOf, exportNotes, NOTE_KINDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StepCore = api;

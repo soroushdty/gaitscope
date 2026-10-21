@@ -975,12 +975,9 @@
 
   /* The spectrogram (#98): the rhythm-over-time spectra as a picture on Plotly's axes, since
      the basic bundle the page loads has no heatmap. Time runs across, lined up with the signal
-     plot; frequency goes up to 5 Hz; the colour's strength is the power, from SPECTRO_DB below
-     the strongest walking rhythm (blank) up to it. The main rhythm is drawn on top as a line. */
-  const hexRgb = h => {
-    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h || '') || /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(h || '');
-    return m ? m.slice(1, 4).map(v => parseInt(v.length === 1 ? v + v : v, 16)) : [61, 95, 130];
-  };
+     plot; frequency goes up to 5 Hz; the colour (SPECTRO_RAMP, with a colour bar above the plot)
+     is the power, from SPECTRO_DB below the strongest walking rhythm (blank) up to it. The main
+     rhythm is drawn on top as a line. */
   // the autocorrelation: how alike the signal is to itself after each delay (#101)
   function renderDelays(res) {
     const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') }, pk = res.peaks.slice(0, 2);
@@ -1006,19 +1003,32 @@
   function renderSpectrogram() {
     if (typeof Plotly === 'undefined') return;
     const el = $('spectroPlot'), { t } = S.ch, def = methodOf('timeSel');
-    const colors = { signal: cssVar('--signal'), algo: cssVar('--algo'), muted: cssVar('--muted'), line: cssVar('--line') };
+    const colors = { ink: cssVar('--ink'), muted: cssVar('--muted'), line: cssVar('--line') };
     // the CWT and DWT are slower than the rest, so a result is kept until the signal, the
     // filter (S.cache is new then), the method or its settings change
     const key = JSON.stringify([def.id, S.res.g.specWin, def.params.map(q => S.res.g[q.key])]);
     S.cache.views = S.cache.views || new Map();
     if (!S.cache.views.has(key)) S.cache.views.set(key, def.compute(S.res.filt.A, t, S.res.g, { rhythm: S.res.rhythm }));
-    const res = S.cache.views.get(key), im = res && C.gridImage(res.grid, hexRgb(colors.signal), res.image);
+    const res = S.cache.views.get(key), ramp = C.SPECTRO_RAMP[darkTheme() ? 'dark' : 'light'], im = res && C.gridImage(res.grid, ramp, res.image);
     el.hidden = !im;
     if (!im) { $('spectroNote').textContent = def.id === 'stft' ? 'The recording is shorter than one ' + fmt(S.res.rhythm.window, 0) + ' s window (Rhythm-over-time window, in the side panel), so there is no picture.' : 'The recording is too short for this method (it needs a few seconds).'; return; }
     const ln = res.line, fMax = im.fMax;
-    const traces = ln ? [{ x: Array.from(ln.t), y: Array.from(ln.f, f => (Number.isFinite(f) ? f : null)), type: 'scatter', mode: 'lines', name: 'Main rhythm', connectgaps: false,
-      line: { color: colors.algo, width: 1.6 }, meta: { role: 'rhythmLine' }, customdata: Array.from(ln.f, f => f * 60),
-      hovertemplate: '%{x:.1f} s: main rhythm %{y:.2f} Hz (%{customdata:.0f}/min)<extra></extra>' }] : [];
+    // the line crosses every colour of the ramp, so it is the card's colour with an ink outline
+    const traces = [];
+    if (ln) {
+      const x = Array.from(ln.t), y = Array.from(ln.f, f => (Number.isFinite(f) ? f : null));
+      traces.push({ x, y, type: 'scatter', mode: 'lines', name: 'Main rhythm (halo)', connectgaps: false, hoverinfo: 'skip', line: { color: colors.ink, width: 4.6 }, meta: { role: 'rhythmHalo' } });
+      traces.push({ x, y, type: 'scatter', mode: 'lines', name: 'Main rhythm', connectgaps: false, line: { color: cssVar('--surface'), width: 2 }, meta: { role: 'rhythmLine' }, customdata: Array.from(ln.f, f => f * 60),
+        hovertemplate: '%{x:.1f} s: main rhythm %{y:.2f} Hz (%{customdata:.0f}/min)<extra></extra>' });
+    }
+    // Plotly's basic bundle has no heatmap and so no colour bar of its own: a trace with no
+    // points still draws one, over the same dB scale as the picture (a horizontal bar above the
+    // plot, so the time axis stays lined up with the signal plot's)
+    const range = (res.image && res.image.range) || C.SPECTRO_DB;
+    traces.push({ x: [null], y: [null], type: 'scatter', mode: 'markers', hoverinfo: 'skip', name: 'Colour scale', meta: { role: 'colorbar' },
+      marker: { color: [-range, 0], cmin: -range, cmax: 0, colorscale: C.rampScale(ramp, res.image), showscale: true,
+        colorbar: { orientation: 'h', x: 1, xanchor: 'right', y: 1.04, yanchor: 'bottom', len: 0.4, lenmode: 'fraction', thickness: 10, outlinewidth: 0,
+          title: { text: 'dB below the strongest walking rhythm', side: 'top', font: { size: 11 } }, ticks: 'outside', ticklen: 3, tickcolor: colors.line, nticks: 5, tickfont: { size: 11 } } } });
     if (res.coi) { // the cone of influence: within the wavelet's e-folding time of either end
       const fs = []; for (let f = C.GAIT_BAND[0] / 2; f <= fMax; f += 0.05) fs.push(f);
       for (const [side, edge] of [['start', f => res.coi.from + res.coi.efold(f)], ['end', f => res.coi.to - res.coi.efold(f)]]) {
@@ -1040,8 +1050,8 @@
     };
     const config = { responsive: true, displaylogo: false, displayModeBar: 'hover', modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'] };
     Plotly.react(el, traces, layout, config);
-    const scale = 'blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, full colour at it.', stride = ' A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
-    $('spectroNote').textContent = def.id === 'hht' ? 'Each mode\u2019s power at its moment-by-moment frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: blank at 30 dB below the strongest walking rhythm, full colour at it (a gentler scale than the others, since each mode is a thin track). The EMD found ' + res.modes + ' mode' + (res.modes === 1 ? '' : 's') + ' in the walking band (the slow rest left out). The line is the strongest walking rhythm at each moment. Each mode follows its own rhythm as it changes, so a speed-up shows as a band that bends; speckle is a mode switching between rhythms.' + stride
+    const scale = 'blank at ' + C.SPECTRO_DB + ' dB below the strongest walking rhythm, the colour bar\u2019s last colour at it.', stride = ' A steady walk makes one bright band; a band at half its height is the stride (left plus right step), which swinging the phone or a sideways signal brings out.';
+    $('spectroNote').textContent = def.id === 'hht' ? 'Each mode\u2019s power at its moment-by-moment frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: blank at 30 dB below the strongest walking rhythm, the colour bar\u2019s last colour at it (a gentler scale than the others, since each mode is a thin track). The EMD found ' + res.modes + ' mode' + (res.modes === 1 ? '' : 's') + ' in the walking band (the slow rest left out). The line is the strongest walking rhythm at each moment. Each mode follows its own rhythm as it changes, so a speed-up shows as a band that bends; speckle is a mode switching between rhythms.' + stride
       : def.id === 'cwt' ? 'Wavelet power at each frequency along the recording, divided by the scale so equally strong swings look alike at any frequency, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The line is the strongest walking rhythm at each moment. Outside the dashed lines the wavelet runs past the ends of the recording, so the picture there is weaker than it should be.' + stride
       : def.id === 'dwt' ? 'Each band\u2019s power along the recording, in ' + fmt(res.grid.hop, 1) + ' s steps: ' + scale + ' The bands halve in frequency going down (dotted lines). Where they fall depends on the sampling rate: here ' + fmt(res.bands[0].hi * 2, 0) + ' Hz, after the signal is reduced to its walking band. When the step and the stride land in neighbouring bands, they show as separate blocks.'
       : 'How strongly each rhythm shows along the recording, in ' + fmt(res.window, 0) + ' s windows every ' + fmt(res.hop, 1) + ' s (Rhythm-over-time window, in the side panel): ' + scale + ' The line is the main walking rhythm, as in the Step intervals strip.' + stride;
@@ -1481,6 +1491,7 @@
   };
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const systemTheme = () => (mq.matches ? 'dark' : 'light');
+  const darkTheme = () => (themeChoice || systemTheme()) === 'dark';
   // a stored 'light' or 'dark' is a switch away from the system; anything else (the old 'system') is none
   function storedTheme() { try { const v = window.localStorage.getItem(THEME_KEY); return THEMES.includes(v) ? v : null; } catch (e) { return null; } }
   let themeChoice = storedTheme();

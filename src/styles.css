@@ -173,7 +173,7 @@ main { padding: 20px 28px 40px; min-width: 0; border-left: 1px solid var(--line)
 .method-tag { margin: 4px 0 6px; }
 .method-box .ctl { margin-top: 4px; }
 #specPlot { height: 280px; }
-#spectroPlot { height: 240px; }
+#spectroPlot { height: 290px; } /* includes the colour bar above the plot */
 #spectroPlot image { image-rendering: pixelated; } /* one block per window and row, not smeared between them */
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
 .card-head h2 { margin-bottom: 0; }

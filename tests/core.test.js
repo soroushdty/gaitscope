@@ -1315,22 +1315,49 @@ test('the spectrogram picture (#98): a PNG that decodes back to its pixels, the 
   assert.equal(C.base64(png), b.toString('base64'));
   for (const n of [0, 1, 2, 3, 4]) assert.equal(C.base64(Uint8Array.from({ length: n }, (_, i) => 250 + i)), Buffer.from(Uint8Array.from({ length: n }, (_, i) => 250 + i)).toString('base64'));
 
-  // a 1.6 Hz walk for 20 s: in every column the most opaque row holds 1.6 Hz
+  // a 1.6 Hz walk for 20 s: in every column the strongest colour (the ramp's last, fully opaque) sits at 1.6 Hz
   const fs = 60, t = Float64Array.from({ length: 20 * fs }, (_, i) => i / fs), A = t.map(v => 1 + 0.3 * Math.sin(2 * Math.PI * 1.6 * v) + 0.05 * Math.sin(2 * Math.PI * 3.2 * v));
-  const r = C.rhythmOverTime(A, t, { specWin: 4 }), im = C.spectrogramImage(r, [10, 20, 30]);
+  const ramp = ['#000000', '#808080', '#0A141E'], r = C.rhythmOverTime(A, t, { specWin: 4 }), im = C.spectrogramImage(r, ramp);
   assert.equal(im.height, 100); assert.equal(im.width, r.S.length); assert.equal(im.fMax, 5);
   assert.ok(Math.abs(im.x0 - (r.t[0] - r.hop / 2)) < 1e-9 && Math.abs(im.x1 - (r.t.at(-1) + r.hop / 2)) < 1e-9);
   for (let c = 0; c < im.width; c++) {
-    let best = 0, row = -1;
-    for (let y = 0; y < im.height; y++) { const a = im.rgba[(y * im.width + c) * 4 + 3]; if (a > best) { best = a; row = y; } }
-    const f = (im.height - 1 - row + 0.5) * 0.05;
-    assert.ok(Math.abs(f - 1.6) <= 0.05 && best === 255, c + ': ' + f + ' Hz, alpha ' + best);
-    assert.deepEqual([...im.rgba.subarray((row * im.width + c) * 4, (row * im.width + c) * 4 + 3)], [10, 20, 30]);
+    const rows = []; // rows drawn in the last colour, fully opaque
+    for (let y = 0; y < im.height; y++) { const o = (y * im.width + c) * 4; if (im.rgba[o + 3] === 255 && im.rgba[o] === 10 && im.rgba[o + 1] === 20 && im.rgba[o + 2] === 30) rows.push(y); }
+    assert.ok(rows.length >= 1, c + ': the strongest level is drawn');
+    for (const y of rows) assert.ok(Math.abs((im.height - 1 - y + 0.5) * 0.05 - 1.6) <= 0.05, c + ': row ' + y);
   }
+  // three rows at 0.5, 1.5 and 2.5 Hz (drawn top-down): 90 dB down and no power are blank, the strongest is opaque
+  const rows3 = C.gridImage({ t: Float64Array.of(1), hop: 1, df: 1, rows: 3, P: [Float64Array.of(1, 0, 1e-9)] }, ramp, { range: 20 });
+  assert.deepEqual([rows3.rgba[3], rows3.rgba[7], rows3.rgba[11]], [0, 0, 255]);
+  assert.deepEqual([...C.rampColor(ramp, 0)], [0, 0, 0]); assert.deepEqual([...C.rampColor(ramp, 0.5)], [128, 128, 128]); assert.deepEqual([...C.rampColor(ramp, 1)], [10, 20, 30]);
   // long recordings: at most maxCols columns, neighbours averaged
-  const many = C.spectrogramImage(r, [0, 0, 0], { maxCols: 10 });
+  const many = C.spectrogramImage(r, ramp, { maxCols: 10 });
   assert.ok(many.width <= 10 && Math.abs(many.x0 - im.x0) < 1e-9);
-  assert.equal(C.spectrogramImage({ t: new Float64Array(0), S: [], f: new Float64Array(0), hop: 0.5 }, [0, 0, 0]), null);
+  assert.equal(C.spectrogramImage({ t: new Float64Array(0), S: [], f: new Float64Array(0), hop: 0.5 }, ramp), null);
+});
+
+/* The spectrogram's colour ramps (#114): each reads as a ramp (lightness only goes one way, in steps
+   you can tell apart), strong stands out from the card in both themes, and the colour bar's scale
+   is the same ramp. OKLCH lightness, as the dataviz checks compute it. */
+test('spectrogram colour ramps: monotone lightness, distinct steps, weak end clear of the card (#114)', () => {
+  const lin = h => [1, 3, 5].map(i => { const c = parseInt(h.slice(i, i + 2), 16) / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+  const L = h => { const [r, g, b] = lin(h); return Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) * 0.2104542553 + Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.0883024619 * b) * 0.7936177850 - Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) * 0.0040720468; };
+  const lum = h => { const [r, g, b] = lin(h); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }, contrast = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  for (const [theme, surface, strongestDarker] of [['light', '#FFFFFF', true], ['dark', '#172029', false]]) {
+    const ramp = C.SPECTRO_RAMP[theme], Ls = ramp.map(L);
+    for (let i = 1; i < Ls.length; i++) {
+      assert.ok(strongestDarker ? Ls[i] < Ls[i - 1] : Ls[i] > Ls[i - 1], theme + ' step ' + i + ' goes the wrong way');
+      assert.ok(Math.abs(Ls[i] - Ls[i - 1]) >= 0.06, theme + ' step ' + i + ' is too close to the last: ' + Math.abs(Ls[i] - Ls[i - 1]).toFixed(3));
+    }
+    assert.ok(contrast(ramp[0], surface) >= 2, theme + ': the weakest colour needs 2:1 against the card, has ' + contrast(ramp[0], surface).toFixed(2));
+    assert.ok(contrast(ramp.at(-1), surface) >= 3, theme + ': the strongest stands out from the card');
+  }
+  // the colour bar: dB position p has the ramp's colour at p^gamma
+  const sc = C.rampScale(C.SPECTRO_RAMP.light, { gamma: 2 }, 4);
+  assert.deepEqual(sc.map(v => v[0]), [0, 0.25, 0.5, 0.75, 1]);
+  assert.equal(sc[0][1], 'rgb(' + C.rampColor(C.SPECTRO_RAMP.light, 0).join(',') + ')');
+  assert.equal(sc[2][1], 'rgb(' + C.rampColor(C.SPECTRO_RAMP.light, 0.25).join(',') + ')');
+  assert.equal(sc[4][1], 'rgb(' + C.rampColor(C.SPECTRO_RAMP.light, 1).join(',') + ')');
 });
 
 test('Frequency domain methods (#101): one registry, both kinds, each explained and credited', () => {
@@ -1348,7 +1375,7 @@ test('Frequency domain methods (#101): one registry, both kinds, each explained 
   assert.ok(Math.abs(welch.compute(A, t, { specSeg: 8 }).peak.freq - 1.6) < 0.02);
   const v = stft.compute(A, t, { specWin: 4 }, { rhythm });
   assert.equal(v.grid.P.length, rhythm.S.length); assert.equal(v.line.f, rhythm.freq);
-  assert.deepEqual(C.gridImage(v.grid, [1, 2, 3]), C.spectrogramImage(rhythm, [1, 2, 3]));
+  assert.deepEqual(C.gridImage(v.grid, C.SPECTRO_RAMP.light), C.spectrogramImage(rhythm, C.SPECTRO_RAMP.light));
 });
 
 const WAVE = JSON.parse(fs.readFileSync(path.join(FIX, 'wavelets.json'), 'utf8'));

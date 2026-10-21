@@ -859,7 +859,7 @@ test('Over time: the CWT with its cone of influence and width, the DWT bands, ke
   assert.equal($('m_cwtB').closest('.method-params').hidden, true);
   assert.ok(sg.layout.shapes.length >= 4 && sg.layout.annotations.some(a => /^level \d: [\d.]+–[\d.]+ Hz$/.test(a.text)), 'band edges and labels');
   assert.match(text(pg, 'timeTag'), /Credit: Mallat, 1989 \(multiresolution analysis: one octave band per level\); Daubechies, 1988/);
-  assert.equal([...sg.traces].length, 0, 'no rhythm line on the coarse bands');
+  assert.deepEqual([...sg.traces].map(tr => tr.meta.role), ['colorbar'], 'no rhythm line on the coarse bands, only the colour scale');
   assert.match(text(pg, 'spectroNote'), /Where they fall depends on the sampling rate: here 2\d Hz, after the signal is reduced to its walking band/);
   // the method and its setting travel with a JSON export, and come back
   $('expFmt').value = 'json'; $('expFmt').dispatchEvent(new pg.w.Event('change')); $('expGo').click(); await sleep(20);
@@ -883,6 +883,11 @@ test('the spectrogram (#98): a picture on Plotly\u2019s axes, with the main rhyt
   assert.deepEqual([...sg.layout.xaxis.range], [t[0], t.at(-1)], 'lined up with the signal plot');
   const line = [...sg.traces].find(tr => tr.meta && tr.meta.role === 'rhythmLine');
   assert.ok(line.y.filter(v => v !== null).every(v => v > 0.8 && v < 1.0), 'the synthetic walk\u2019s rhythm, about 0.9 Hz');
+  // the colour bar: the same ramp as the picture, over the same dB scale, and the line is outlined so it shows on every colour
+  const C = pg.w.StepCore, bar = [...sg.traces].find(tr => tr.meta && tr.meta.role === 'colorbar').marker;
+  assert.deepEqual([bar.cmin, bar.cmax, bar.showscale, bar.colorbar.orientation], [-C.SPECTRO_DB, 0, true, 'h']);
+  assert.deepEqual(bar.colorscale, C.rampScale(C.SPECTRO_RAMP.light, undefined), 'light theme: the light ramp');
+  assert.ok([...sg.traces].some(tr => tr.meta && tr.meta.role === 'rhythmHalo'), 'the line has an outline');
   assert.equal($('spectroPlot').hidden, false);
   assert.match(text(pg, 'spectroNote'), /^How strongly each rhythm shows along the recording, in 4 s windows every 0\.5 s .*blank at 20 dB below the strongest walking rhythm/);
   // a longer window under Frequency domain: fewer, wider windows
